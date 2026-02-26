@@ -36,8 +36,8 @@
 
 - [x] E1 CRUD `properties` + pagination cursor (commit: 1310f93)
 - [x] E2 `PATCH /properties/:id/status` + timeline event auto (commit: 10bbf15)
-- [x] E3 Participants PropertyParty + endpoints
-- [ ] E4 Tests unitaires services biens + couverture
+- [x] E3 Participants PropertyParty + endpoints (commit: 691ab57)
+- [x] E4 Tests unitaires services biens + couverture
 
 ## F) Fichiers & classification
 
