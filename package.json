@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "dev:backend": "bun run --cwd backend src/index.ts",
+    "dev:infra:up": "docker compose up -d redis redisinsight",
+    "dev:infra:down": "docker compose down",
     "test:backend": "bun run --cwd backend test",
     "build:backend": "bun run --cwd backend build",
     "build:front": "bun run --cwd front build",

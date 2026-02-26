@@ -6,8 +6,8 @@
 ## A) Monorepo & CI
 
 - [x] A1 Créer monorepo avec `/backend /front /ios /marketing-site` (commit: bf6a6ef)
-- [x] A2 GitHub Actions : build + tests + coverage (backend+front) + seuil 80% bloquant
-- [ ] A3 Docker compose dev : Redis + (optionnel) services dev
+- [x] A2 GitHub Actions : build + tests + coverage (backend+front) + seuil 80% bloquant (commit: b7a5df7)
+- [x] A3 Docker compose dev : Redis + (optionnel) services dev
 
 ## B) OpenAPI spec-first + DTO convention
 
