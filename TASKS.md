@@ -28,8 +28,8 @@
 ## D) Stockage fichiers (abstraction)
 
 - [x] D1 Implémenter `StorageProvider` + `LocalStorageProvider` (commit: 7c483c0)
-- [x] D2 Implémenter `S3StorageProvider` (AWS S3 + URLs signées)
-- [ ] D3 Switch provider via env (dev=local, prod=s3)
+- [x] D2 Implémenter `S3StorageProvider` (AWS S3 + URLs signées) (commit: bb462e3)
+- [x] D3 Switch provider via env (dev=local, prod=s3)
 - [ ] D4 Tests unitaires provider local + mocks S3
 
 ## E) Biens (kanban-ready)
