@@ -1,6 +1,6 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/client";
-import { properties, propertyTimelineEvents } from "../db/schema";
+import { properties, propertyParties, propertyTimelineEvents } from "../db/schema";
 import { HttpError } from "../http/errors";
 
 type PropertyRow = typeof properties.$inferSelect;
@@ -201,5 +201,40 @@ export const propertiesService = {
     }
 
     return toPropertyResponse(updated);
+  },
+
+  async addParticipant(input: {
+    orgId: string;
+    propertyId: string;
+    contactId: string;
+    role: string;
+  }) {
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!property) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const createdAt = new Date();
+    const participantId = crypto.randomUUID();
+
+    await db.insert(propertyParties).values({
+      id: participantId,
+      propertyId: input.propertyId,
+      orgId: input.orgId,
+      contactId: input.contactId,
+      role: input.role,
+      createdAt,
+    });
+
+    return {
+      id: participantId,
+      propertyId: input.propertyId,
+      contactId: input.contactId,
+      role: input.role,
+      createdAt: createdAt.toISOString(),
+    };
   },
 };

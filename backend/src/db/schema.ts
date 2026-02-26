@@ -50,3 +50,16 @@ export const propertyTimelineEvents = sqliteTable("property_timeline_events", {
   payload: text("payload").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+export const propertyParties = sqliteTable("property_parties", {
+  id: text("id").primaryKey(),
+  propertyId: text("property_id")
+    .notNull()
+    .references(() => properties.id),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  contactId: text("contact_id").notNull(),
+  role: text("role").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});

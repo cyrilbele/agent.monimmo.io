@@ -4,7 +4,11 @@ import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { properties, propertyTimelineEvents } from "../src/db/schema";
+import {
+  properties,
+  propertyParties,
+  propertyTimelineEvents,
+} from "../src/db/schema";
 import { createApp } from "../src/server";
 
 const loginAndGetAccessToken = async (): Promise<string> => {
@@ -243,6 +247,55 @@ describe("properties endpoints", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("ajoute un participant à un bien", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const createResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien participant",
+          city: "Nice",
+          postalCode: "06000",
+          status: "PROSPECTION",
+        }),
+      }),
+    );
+    const created = await createResponse.json();
+
+    const participantResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${created.id}/participants`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          contactId: "contact_123",
+          role: "VENDEUR",
+        }),
+      }),
+    );
+
+    expect(participantResponse.status).toBe(201);
+    const participantPayload = await participantResponse.json();
+    expect(participantPayload.propertyId).toBe(created.id);
+    expect(participantPayload.contactId).toBe("contact_123");
+    expect(participantPayload.role).toBe("VENDEUR");
+
+    const dbParticipant = await db.query.propertyParties.findFirst({
+      where: and(
+        eq(propertyParties.propertyId, created.id),
+        eq(propertyParties.contactId, "contact_123"),
+      ),
+    });
+    expect(dbParticipant).not.toBeNull();
   });
 
   it("retourne 404 sur un bien inexistant", async () => {

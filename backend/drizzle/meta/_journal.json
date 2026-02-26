@@ -15,6 +15,13 @@
       "when": 1772095710982,
       "tag": "0001_parched_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772095777852,
+      "tag": "0002_normal_valeria_richards",
+      "breakpoints": true
     }
   ]
 }
