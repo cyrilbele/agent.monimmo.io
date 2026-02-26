@@ -3,6 +3,7 @@ import { db } from "../db/client";
 import { organizations, users } from "../db/schema";
 import { HttpError } from "../http/errors";
 import { passwordResetStore } from "./password-reset-store";
+import { assertOrgScope, assertRoleAllowed } from "./rbac";
 import { issueTokenPair, verifyAccessToken, verifyRefreshToken } from "./jwt";
 import { refreshTokenStore } from "./refresh-token-store";
 
@@ -18,13 +19,17 @@ const toUserResponse = (user: UserRow) => ({
   createdAt: user.createdAt.toISOString(),
 });
 
-const loadUserById = async (id: string): Promise<UserRow> => {
+const loadUserById = async (id: string, expectedOrgId?: string): Promise<UserRow> => {
   const user = await db.query.users.findFirst({
     where: eq(users.id, id),
   });
 
   if (!user) {
     throw new HttpError(401, "UNAUTHORIZED", "Utilisateur introuvable");
+  }
+
+  if (expectedOrgId) {
+    assertOrgScope(expectedOrgId, user.orgId);
   }
 
   return user;
@@ -132,7 +137,7 @@ export const authService = {
     }
 
     refreshTokenStore.revoke(jti);
-    const user = await loadUserById(payload.sub);
+    const user = await loadUserById(payload.sub, payload.orgId);
 
     const tokenPair = await issueAuthTokens(user);
 
@@ -148,6 +153,7 @@ export const authService = {
       throw new HttpError(401, "INVALID_REFRESH_TOKEN", "Refresh token invalide");
     }
 
+    await loadUserById(payload.sub, payload.orgId);
     refreshTokenStore.revoke(payload.jti);
   },
 
@@ -186,7 +192,8 @@ export const authService = {
 
   async me(accessToken: string) {
     const payload = await verifyAccessToken(accessToken);
-    const user = await loadUserById(payload.sub);
+    assertRoleAllowed(payload.role);
+    const user = await loadUserById(payload.sub, payload.orgId);
 
     return {
       user: toUserResponse(user),

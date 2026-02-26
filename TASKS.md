@@ -22,8 +22,8 @@
 - [x] C2 Gestion erreurs normalisées `{code,message,details?}` (commit: f5513e5)
 - [x] C3 Drizzle + SQLite + migrations + seed minimal (commit: 2f84d4c)
 - [x] C4 Auth JWT access+refresh : login/refresh/logout + `GET /me` (commit: 4a4fb3a)
-- [x] C5 Auth utilisateur : `POST /auth/register`, `POST /auth/forgot-password`, `POST /auth/reset-password`
-- [ ] C6 RBAC + scoping `orgId` partout (tests obligatoires)
+- [x] C5 Auth utilisateur : `POST /auth/register`, `POST /auth/forgot-password`, `POST /auth/reset-password` (commit: 1d1e706)
+- [x] C6 RBAC + scoping `orgId` partout (tests obligatoires)
 
 ## D) Stockage fichiers (abstraction)
 

@@ -1,8 +1,11 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { eq } from "drizzle-orm";
 import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
 import { passwordResetStore } from "../src/auth/password-reset-store";
+import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
+import { organizations, users } from "../src/db/schema";
 import { createApp } from "../src/server";
 
 describe("auth endpoints", () => {
@@ -206,5 +209,139 @@ describe("auth endpoints", () => {
 
     expect(loginResponse.status).toBe(200);
 
+    await createApp().fetch(
+      new Request("http://localhost/auth/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: DEMO_AUTH_EMAIL }),
+      }),
+    );
+
+    const rollbackToken = passwordResetStore.peekTokenForEmail(DEMO_AUTH_EMAIL);
+    expect(typeof rollbackToken).toBe("string");
+
+    const rollbackResponse = await createApp().fetch(
+      new Request("http://localhost/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token: rollbackToken,
+          newPassword: DEMO_AUTH_PASSWORD,
+        }),
+      }),
+    );
+
+    expect(rollbackResponse.status).toBe(204);
+  });
+
+  it("bloque /me si le rôle n'est pas autorisé", async () => {
+    const orgId = `org_role_${crypto.randomUUID()}`;
+    const userId = `user_role_${crypto.randomUUID()}`;
+    const email = `role.bloque.${crypto.randomUUID()}@monimmo.fr`;
+    const password = "RoleBlocked123!";
+
+    await db.insert(organizations).values({
+      id: orgId,
+      name: "Org Role Test",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await db.insert(users).values({
+      id: userId,
+      orgId,
+      email,
+      firstName: "Role",
+      lastName: "Blocked",
+      role: "VIEWER",
+      passwordHash: await Bun.password.hash(password),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const loginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      }),
+    );
+    const loginPayload = await loginResponse.json();
+
+    const meResponse = await createApp().fetch(
+      new Request("http://localhost/me", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+      }),
+    );
+
+    expect(meResponse.status).toBe(403);
+    expect(await meResponse.json()).toEqual({
+      code: "FORBIDDEN_ROLE",
+      message: "Rôle non autorisé",
+      details: {
+        role: "VIEWER",
+        allowedRoles: ["AGENT", "MANAGER", "ADMIN"],
+      },
+    });
+  });
+
+  it("bloque /me si l'orgId du token ne correspond plus", async () => {
+    const loginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_AUTH_EMAIL,
+          password: DEMO_AUTH_PASSWORD,
+        }),
+      }),
+    );
+    const loginPayload = await loginResponse.json();
+
+    const movedOrgId = `org_scope_${crypto.randomUUID()}`;
+    await db.insert(organizations).values({
+      id: movedOrgId,
+      name: "Org Scope Changed",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await db
+      .update(users)
+      .set({
+        orgId: movedOrgId,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.email, DEMO_AUTH_EMAIL));
+
+    const meResponse = await createApp().fetch(
+      new Request("http://localhost/me", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+      }),
+    );
+
+    expect(meResponse.status).toBe(403);
+    expect(await meResponse.json()).toEqual({
+      code: "ORG_SCOPE_MISMATCH",
+      message: "Le token ne correspond pas à l'organisation de l'utilisateur",
+      details: {
+        tokenOrgId: "org_demo",
+        userOrgId: movedOrgId,
+      },
+    });
+
+    await db
+      .update(users)
+      .set({
+        orgId: "org_demo",
+        updatedAt: new Date(),
+      })
+      .where(eq(users.email, DEMO_AUTH_EMAIL));
   });
 });
