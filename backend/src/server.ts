@@ -1,3 +1,10 @@
+import { z } from "zod";
+import { authService } from "./auth/service";
+import {
+  LoginRequestSchema,
+  LogoutRequestSchema,
+  RefreshRequestSchema,
+} from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
@@ -39,8 +46,58 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       const url = new URL(request.url);
       const openapiPath = options?.openapiPath ?? "openapi/openapi.yaml";
 
+      const parseJson = async <T extends z.ZodTypeAny>(schema: T): Promise<z.infer<T>> => {
+        let body: unknown;
+
+        try {
+          body = await request.json();
+        } catch {
+          throw new HttpError(400, "INVALID_JSON", "Corps JSON invalide");
+        }
+
+        const parsed = schema.safeParse(body);
+        if (!parsed.success) {
+          throw new HttpError(400, "VALIDATION_ERROR", "Payload invalide", parsed.error.flatten());
+        }
+
+        return parsed.data;
+      };
+
+      const getBearerToken = (): string => {
+        const authHeader = request.headers.get("authorization");
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+          throw new HttpError(401, "UNAUTHORIZED", "Token d'accès manquant");
+        }
+
+        return authHeader.slice("Bearer ".length).trim();
+      };
+
       if (request.method === "GET" && url.pathname === "/health") {
         return json({ status: "ok" }, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/login") {
+        const payload = await parseJson(LoginRequestSchema);
+        const response = await authService.login(payload);
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/refresh") {
+        const payload = await parseJson(RefreshRequestSchema);
+        const response = await authService.refresh(payload);
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/logout") {
+        const payload = await parseJson(LogoutRequestSchema);
+        await authService.logout(payload);
+        return new Response(null, { status: 204 });
+      }
+
+      if (request.method === "GET" && url.pathname === "/me") {
+        const accessToken = getBearerToken();
+        const response = await authService.me(accessToken);
+        return json(response, { status: 200 });
       }
 
       if (request.method === "GET" && url.pathname === "/openapi.yaml") {

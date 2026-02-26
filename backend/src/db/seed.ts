@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
+import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../auth/constants";
 import { db } from "./client";
 import { organizations, properties, users } from "./schema";
 
-const now = new Date();
-
-const seed = async () => {
+export const runSeed = async () => {
+  const now = new Date();
+  const passwordHash = await Bun.password.hash(DEMO_AUTH_PASSWORD);
   const orgId = "org_demo";
   const userId = "user_demo";
   const propertyId = "property_demo";
@@ -30,14 +31,26 @@ const seed = async () => {
     await db.insert(users).values({
       id: userId,
       orgId,
-      email: "agent.demo@monimmo.fr",
+      email: DEMO_AUTH_EMAIL,
       firstName: "Camille",
       lastName: "Martin",
       role: "AGENT",
-      passwordHash: "not-set-yet",
+      passwordHash,
       createdAt: now,
       updatedAt: now,
     });
+  } else {
+    await db
+      .update(users)
+      .set({
+        email: DEMO_AUTH_EMAIL,
+        firstName: "Camille",
+        lastName: "Martin",
+        role: "AGENT",
+        passwordHash,
+        updatedAt: now,
+      })
+      .where(eq(users.id, userId));
   }
 
   const existingProperty = await db.query.properties.findFirst({
@@ -62,5 +75,6 @@ const seed = async () => {
   console.info("Seed minimal appliqué.");
 };
 
-await seed();
-
+if (import.meta.main) {
+  await runSeed();
+}

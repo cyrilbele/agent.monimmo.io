@@ -11,8 +11,12 @@ const ensureDbFolder = () => {
   }
 };
 
-ensureDbFolder();
-migrate(db, { migrationsFolder: "drizzle" });
+export const runMigrations = () => {
+  ensureDbFolder();
+  migrate(db, { migrationsFolder: "drizzle" });
+  console.info("Migrations appliquées avec succès.");
+};
 
-console.info("Migrations appliquées avec succès.");
-
+if (import.meta.main) {
+  runMigrations();
+}

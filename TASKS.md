@@ -20,8 +20,8 @@
 
 - [x] C1 Serveur Bun + `GET /health` (commit: bf6a6ef)
 - [x] C2 Gestion erreurs normalisées `{code,message,details?}` (commit: f5513e5)
-- [x] C3 Drizzle + SQLite + migrations + seed minimal
-- [ ] C4 Auth JWT access+refresh : login/refresh/logout + `GET /me`
+- [x] C3 Drizzle + SQLite + migrations + seed minimal (commit: 2f84d4c)
+- [x] C4 Auth JWT access+refresh : login/refresh/logout + `GET /me`
 - [ ] C5 Auth utilisateur : `POST /auth/register`, `POST /auth/forgot-password`, `POST /auth/reset-password`
 - [ ] C6 RBAC + scoping `orgId` partout (tests obligatoires)
 
