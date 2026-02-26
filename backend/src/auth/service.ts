@@ -80,7 +80,6 @@ export const authService = {
     password: string;
     firstName: string;
     lastName: string;
-    orgId: string;
   }) {
     const existingUser = await db.query.users.findFirst({
       where: eq(users.email, input.email),
@@ -91,25 +90,20 @@ export const authService = {
     }
 
     const now = new Date();
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, input.orgId),
+    const orgId = `org_${crypto.randomUUID()}`;
+    await db.insert(organizations).values({
+      id: orgId,
+      name: `Organisation ${input.firstName} ${input.lastName}`.trim(),
+      createdAt: now,
+      updatedAt: now,
     });
-
-    if (!org) {
-      await db.insert(organizations).values({
-        id: input.orgId,
-        name: `Organisation ${input.orgId}`,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
 
     const userId = crypto.randomUUID();
     const passwordHash = await Bun.password.hash(input.password);
 
     await db.insert(users).values({
       id: userId,
-      orgId: input.orgId,
+      orgId,
       email: input.email,
       firstName: input.firstName,
       lastName: input.lastName,

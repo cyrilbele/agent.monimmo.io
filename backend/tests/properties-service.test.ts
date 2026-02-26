@@ -7,8 +7,17 @@ import {
   properties,
   propertyParties,
   propertyTimelineEvents,
+  propertyUserLinks,
+  users,
 } from "../src/db/schema";
 import { propertiesService } from "../src/properties/service";
+
+const ownerPayload = () => ({
+  firstName: "Louise",
+  lastName: "Bernard",
+  phone: "0601020304",
+  email: `proprietaire.${crypto.randomUUID()}@monimmo.fr`,
+});
 
 describe("propertiesService", () => {
   beforeAll(async () => {
@@ -16,23 +25,40 @@ describe("propertiesService", () => {
     await runSeed();
   });
 
-  it("crée puis lit un bien", async () => {
+  it("crée puis lit un bien avec création du compte propriétaire lié", async () => {
+    const owner = ownerPayload();
     const created = await propertiesService.create({
       orgId: "org_demo",
       title: "Service Bien",
       city: "Marseille",
       postalCode: "13001",
-      status: "PROSPECTION",
+      address: "15 rue Saint-Ferréol",
+      owner,
     });
 
     expect(created.id).toBeDefined();
     expect(created.orgId).toBe("org_demo");
+    expect(created.status).toBe("PROSPECTION");
 
     const loaded = await propertiesService.getById({
       orgId: "org_demo",
       id: created.id,
     });
     expect(loaded.title).toBe("Service Bien");
+
+    const ownerUser = await db.query.users.findFirst({
+      where: eq(users.email, owner.email.toLowerCase()),
+    });
+    expect(ownerUser?.firstName).toBe(owner.firstName);
+    expect(ownerUser?.phone).toBe(owner.phone);
+
+    const ownerLink = await db.query.propertyUserLinks.findFirst({
+      where: and(
+        eq(propertyUserLinks.propertyId, created.id),
+        eq(propertyUserLinks.userId, ownerUser?.id ?? ""),
+      ),
+    });
+    expect(ownerLink?.role).toBe("OWNER");
   });
 
   it("pagine la liste des biens", async () => {
@@ -41,7 +67,8 @@ describe("propertiesService", () => {
       title: `Service A ${crypto.randomUUID()}`,
       city: "Paris",
       postalCode: "75001",
-      status: "PROSPECTION",
+      address: "10 rue de Rivoli",
+      owner: ownerPayload(),
     });
     await Bun.sleep(2);
     await propertiesService.create({
@@ -49,7 +76,8 @@ describe("propertiesService", () => {
       title: `Service B ${crypto.randomUUID()}`,
       city: "Paris",
       postalCode: "75002",
-      status: "PROSPECTION",
+      address: "2 place Vendôme",
+      owner: ownerPayload(),
     });
 
     const firstPage = await propertiesService.list({
@@ -73,7 +101,8 @@ describe("propertiesService", () => {
       title: "Service Patch",
       city: "Tours",
       postalCode: "37000",
-      status: "PROSPECTION",
+      address: "4 place Plumereau",
+      owner: ownerPayload(),
     });
 
     const patched = await propertiesService.patchById({
@@ -107,7 +136,8 @@ describe("propertiesService", () => {
       title: "Service Participant",
       city: "Reims",
       postalCode: "51100",
-      status: "PROSPECTION",
+      address: "8 boulevard Lundy",
+      owner: ownerPayload(),
     });
 
     const participant = await propertiesService.addParticipant({
@@ -135,7 +165,8 @@ describe("propertiesService", () => {
       title: "Scope Test",
       city: "Dijon",
       postalCode: "21000",
-      status: "PROSPECTION",
+      address: "5 rue de la Liberté",
+      owner: ownerPayload(),
     });
 
     const missing = await db.query.properties.findFirst({

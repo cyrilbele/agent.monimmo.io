@@ -57,7 +57,6 @@ export const RegisterRequestSchema = z.object({
   password: z.string().min(8),
   firstName: z.string(),
   lastName: z.string(),
-  orgId: z.string(),
 });
 
 export const ForgotPasswordRequestSchema = z.object({
@@ -80,13 +79,19 @@ export const PropertyStatusSchema = z.enum([
   "ARCHIVE",
 ]);
 
+export const OwnerContactSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  phone: z.string().min(1),
+  email: z.email(),
+});
+
 export const PropertyCreateRequestSchema = z.object({
-  title: z.string(),
-  city: z.string(),
-  postalCode: z.string(),
-  address: z.string().optional(),
-  price: z.number().optional(),
-  status: PropertyStatusSchema,
+  title: z.string().min(1),
+  city: z.string().min(1),
+  postalCode: z.string().min(1),
+  address: z.string().min(1),
+  owner: OwnerContactSchema,
 });
 
 export const PropertyPatchRequestSchema = z.object({
@@ -95,7 +100,6 @@ export const PropertyPatchRequestSchema = z.object({
   postalCode: z.string().optional(),
   address: z.string().optional(),
   price: z.number().optional(),
-  status: PropertyStatusSchema.optional(),
 });
 
 export const PropertyResponseSchema = z.object({
@@ -183,10 +187,12 @@ export const TypeDocumentSchema = z.enum([
 export const FileStatusSchema = z.enum(["UPLOADED", "CLASSIFIED", "REVIEW_REQUIRED"]);
 
 export const FileUploadRequestSchema = z.object({
-  propertyId: z.string().nullable().optional(),
+  propertyId: z.string(),
+  typeDocument: TypeDocumentSchema,
   fileName: z.string(),
   mimeType: z.string(),
   size: z.number().int(),
+  contentBase64: z.string().optional(),
 });
 
 export const FileUpdateRequestSchema = z.object({
@@ -205,6 +211,11 @@ export const FileResponseSchema = z.object({
   status: FileStatusSchema,
   storageKey: z.string(),
   createdAt: z.iso.datetime(),
+});
+
+export const FileListResponseSchema = z.object({
+  items: z.array(FileResponseSchema),
+  nextCursor: z.string().nullable().optional(),
 });
 
 export const FileDownloadUrlResponseSchema = z.object({
@@ -328,6 +339,7 @@ export const DtoSchemaMap = {
   ForgotPasswordRequest: ForgotPasswordRequestSchema,
   ResetPasswordRequest: ResetPasswordRequestSchema,
   PropertyStatus: PropertyStatusSchema,
+  OwnerContact: OwnerContactSchema,
   PropertyCreateRequest: PropertyCreateRequestSchema,
   PropertyPatchRequest: PropertyPatchRequestSchema,
   PropertyResponse: PropertyResponseSchema,
@@ -340,6 +352,7 @@ export const DtoSchemaMap = {
   FileUploadRequest: FileUploadRequestSchema,
   FileUpdateRequest: FileUpdateRequestSchema,
   FileResponse: FileResponseSchema,
+  FileListResponse: FileListResponseSchema,
   FileDownloadUrlResponse: FileDownloadUrlResponseSchema,
   MessageChannel: MessageChannelSchema,
   MessageAIStatus: MessageAIStatusSchema,
@@ -361,4 +374,3 @@ export const DtoSchemaMap = {
 } as const;
 
 export type DtoSchemaName = keyof typeof DtoSchemaMap;
-

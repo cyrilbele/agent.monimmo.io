@@ -39,6 +39,7 @@ Variables importantes:
 - `AI_PROVIDER`: provider IA (`mock`)
 - `CONNECTOR_RUNTIME`: runtime des connecteurs externes (`mock`)
 - `INTEGRATION_TOKEN_SECRET`: secret de chiffrement tokens OAuth
+- `CORS_ALLOWED_ORIGINS`: origines front autorisées (liste séparée par virgules)
 
 ## Lancer chaque piece
 
@@ -81,7 +82,7 @@ Important: Redis doit etre actif.
 
 ### 4) Front
 
-Le front est encore un squelette technique. Commandes disponibles:
+Commandes disponibles:
 
 ```bash
 cd front
@@ -89,6 +90,15 @@ bun run build
 ```
 
 Le build est genere dans `front/dist/`.
+
+### 4 bis) Lancer backend + front en meme temps
+
+```bash
+bun run dev
+```
+
+- Backend: `http://localhost:3000`
+- Front: `http://localhost:5173`
 
 ### 5) Marketing site
 

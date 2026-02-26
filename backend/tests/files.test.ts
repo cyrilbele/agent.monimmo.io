@@ -20,6 +20,36 @@ const loginAndGetAccessToken = async (): Promise<string> => {
   return payload.accessToken as string;
 };
 
+const ownerPayload = () => ({
+  firstName: "Alice",
+  lastName: "Bernier",
+  phone: "0610101010",
+  email: `owner.${crypto.randomUUID()}@monimmo.fr`,
+});
+
+const createProperty = async (token: string): Promise<{ id: string }> => {
+  const createPropertyResponse = await createApp().fetch(
+    new Request("http://localhost/properties", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: `Bien fichier ${crypto.randomUUID()}`,
+        city: "Paris",
+        postalCode: "75011",
+        address: "6 rue Oberkampf",
+        owner: ownerPayload(),
+      }),
+    }),
+  );
+
+  return (await createPropertyResponse.json()) as { id: string };
+};
+
+const smallPdfBase64 = Buffer.from("%PDF-1.4 test").toString("base64");
+
 describe("files endpoints", () => {
   beforeAll(async () => {
     runMigrations();
@@ -28,6 +58,7 @@ describe("files endpoints", () => {
 
   it("upload un fichier et le lit", async () => {
     const token = await loginAndGetAccessToken();
+    const property = await createProperty(token);
 
     const uploadResponse = await createApp().fetch(
       new Request("http://localhost/files/upload", {
@@ -37,9 +68,12 @@ describe("files endpoints", () => {
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          propertyId: property.id,
+          typeDocument: "MANDAT_VENTE_SIGNE",
           fileName: "mandat-vente.pdf",
           mimeType: "application/pdf",
           size: 123456,
+          contentBase64: smallPdfBase64,
         }),
       }),
     );
@@ -48,6 +82,8 @@ describe("files endpoints", () => {
     const uploaded = await uploadResponse.json();
     expect(uploaded.fileName).toBe("mandat-vente.pdf");
     expect(uploaded.status).toBe("UPLOADED");
+    expect(uploaded.typeDocument).toBe("MANDAT_VENTE_SIGNE");
+    expect(uploaded.propertyId).toBe(property.id);
 
     const getResponse = await createApp().fetch(
       new Request(`http://localhost/files/${uploaded.id}`, {
@@ -63,6 +99,7 @@ describe("files endpoints", () => {
 
   it("retourne une download-url", async () => {
     const token = await loginAndGetAccessToken();
+    const property = await createProperty(token);
 
     const uploadResponse = await createApp().fetch(
       new Request("http://localhost/files/upload", {
@@ -72,9 +109,12 @@ describe("files endpoints", () => {
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          propertyId: property.id,
+          typeDocument: "DPE",
           fileName: "dpe.pdf",
           mimeType: "application/pdf",
           size: 2048,
+          contentBase64: smallPdfBase64,
         }),
       }),
     );
@@ -93,25 +133,69 @@ describe("files endpoints", () => {
     expect(typeof payload.expiresAt).toBe("string");
   });
 
-  it("met à jour propertyId/typeDocument/status", async () => {
+  it("liste les fichiers par bien", async () => {
     const token = await loginAndGetAccessToken();
+    const propertyA = await createProperty(token);
+    const propertyB = await createProperty(token);
 
-    const createPropertyResponse = await createApp().fetch(
-      new Request("http://localhost/properties", {
+    await createApp().fetch(
+      new Request("http://localhost/files/upload", {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          title: "Bien fichier",
-          city: "Paris",
-          postalCode: "75011",
-          status: "PROSPECTION",
+          propertyId: propertyA.id,
+          typeDocument: "DPE",
+          fileName: "a.pdf",
+          mimeType: "application/pdf",
+          size: 111,
+          contentBase64: smallPdfBase64,
         }),
       }),
     );
-    const property = await createPropertyResponse.json();
+
+    await createApp().fetch(
+      new Request("http://localhost/files/upload", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          propertyId: propertyB.id,
+          typeDocument: "AMIANTE",
+          fileName: "b.pdf",
+          mimeType: "application/pdf",
+          size: 222,
+          contentBase64: smallPdfBase64,
+        }),
+      }),
+    );
+
+    const listResponse = await createApp().fetch(
+      new Request(`http://localhost/files?propertyId=${encodeURIComponent(propertyA.id)}&limit=50`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+
+    expect(listResponse.status).toBe(200);
+    const listPayload = await listResponse.json();
+    expect(Array.isArray(listPayload.items)).toBe(true);
+    expect(listPayload.items.length).toBeGreaterThan(0);
+    expect(
+      (listPayload.items as Array<{ propertyId?: string }>).every(
+        (file) => file.propertyId === propertyA.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("met à jour propertyId/typeDocument/status", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const property = await createProperty(token);
 
     const uploadResponse = await createApp().fetch(
       new Request("http://localhost/files/upload", {
@@ -121,9 +205,12 @@ describe("files endpoints", () => {
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          propertyId: property.id,
+          typeDocument: "PIECE_IDENTITE",
           fileName: "piece-identite.pdf",
           mimeType: "application/pdf",
           size: 999,
+          contentBase64: smallPdfBase64,
         }),
       }),
     );
@@ -153,6 +240,7 @@ describe("files endpoints", () => {
 
   it("déclenche un traitement IA sur un fichier", async () => {
     const token = await loginAndGetAccessToken();
+    const property = await createProperty(token);
 
     const uploadResponse = await createApp().fetch(
       new Request("http://localhost/files/upload", {
@@ -162,9 +250,12 @@ describe("files endpoints", () => {
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          propertyId: property.id,
+          typeDocument: "DPE",
           fileName: "dpe-run-ai.pdf",
           mimeType: "application/pdf",
           size: 512,
+          contentBase64: smallPdfBase64,
         }),
       }),
     );

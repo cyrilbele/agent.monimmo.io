@@ -1,6 +1,12 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/client";
-import { properties, propertyParties, propertyTimelineEvents } from "../db/schema";
+import {
+  properties,
+  propertyParties,
+  propertyTimelineEvents,
+  propertyUserLinks,
+  users,
+} from "../db/schema";
 import { HttpError } from "../http/errors";
 
 type PropertyRow = typeof properties.$inferSelect;
@@ -9,6 +15,18 @@ type ListPropertiesInput = {
   orgId: string;
   limit: number;
   cursor?: string;
+};
+
+type OwnerContactInput = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+};
+
+const generateRandomPassword = (): string => {
+  const randomBytes = crypto.getRandomValues(new Uint8Array(24));
+  return Buffer.from(randomBytes).toString("base64url");
 };
 
 const toPropertyResponse = (row: PropertyRow) => ({
@@ -70,24 +88,78 @@ export const propertiesService = {
     title: string;
     city: string;
     postalCode: string;
-    address?: string;
-    price?: number;
-    status: string;
+    address: string;
+    owner: OwnerContactInput;
   }) {
     const now = new Date();
     const id = crypto.randomUUID();
+    const normalizedOwnerEmail = input.owner.email.trim().toLowerCase();
+    const normalizedOwnerPhone = input.owner.phone.trim();
 
-    await db.insert(properties).values({
-      id,
-      orgId: input.orgId,
-      title: input.title,
-      city: input.city,
-      postalCode: input.postalCode,
-      address: input.address ?? null,
-      price: input.price === undefined ? null : Math.round(input.price),
-      status: input.status,
-      createdAt: now,
-      updatedAt: now,
+    await db.transaction(async (tx) => {
+      const existingOwner = await tx.query.users.findFirst({
+        where: eq(users.email, normalizedOwnerEmail),
+      });
+
+      let ownerUserId: string;
+      if (existingOwner) {
+        if (existingOwner.orgId !== input.orgId) {
+          throw new HttpError(
+            409,
+            "OWNER_EMAIL_ALREADY_USED",
+            "Cet email propriétaire est déjà utilisé par une autre organisation",
+          );
+        }
+
+        ownerUserId = existingOwner.id;
+        await tx
+          .update(users)
+          .set({
+            firstName: input.owner.firstName,
+            lastName: input.owner.lastName,
+            phone: normalizedOwnerPhone,
+            updatedAt: now,
+          })
+          .where(and(eq(users.id, existingOwner.id), eq(users.orgId, input.orgId)));
+      } else {
+        ownerUserId = crypto.randomUUID();
+        const passwordHash = await Bun.password.hash(generateRandomPassword());
+
+        await tx.insert(users).values({
+          id: ownerUserId,
+          orgId: input.orgId,
+          email: normalizedOwnerEmail,
+          firstName: input.owner.firstName,
+          lastName: input.owner.lastName,
+          phone: normalizedOwnerPhone,
+          role: "OWNER",
+          passwordHash,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      await tx.insert(properties).values({
+        id,
+        orgId: input.orgId,
+        title: input.title,
+        city: input.city,
+        postalCode: input.postalCode,
+        address: input.address,
+        price: null,
+        status: "PROSPECTION",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(propertyUserLinks).values({
+        id: crypto.randomUUID(),
+        orgId: input.orgId,
+        propertyId: id,
+        userId: ownerUserId,
+        role: "OWNER",
+        createdAt: now,
+      });
     });
 
     const created = await db.query.properties.findFirst({
@@ -122,7 +194,6 @@ export const propertiesService = {
       postalCode?: string;
       address?: string;
       price?: number;
-      status?: string;
     };
   }) {
     const existing = await db.query.properties.findFirst({
@@ -142,7 +213,6 @@ export const propertiesService = {
         address: input.data.address ?? existing.address,
         price:
           input.data.price === undefined ? existing.price : Math.round(input.data.price),
-        status: input.data.status ?? existing.status,
         updatedAt: new Date(),
       })
       .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));

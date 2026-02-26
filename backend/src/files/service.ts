@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/client";
 import { files, properties } from "../db/schema";
 import { HttpError } from "../http/errors";
@@ -18,6 +18,36 @@ const toFileResponse = (row: FileRow) => ({
   createdAt: row.createdAt.toISOString(),
 });
 
+const parseCursor = (cursor?: string): number | undefined => {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const numericCursor = Number(cursor);
+  if (Number.isNaN(numericCursor) || numericCursor <= 0) {
+    throw new HttpError(400, "INVALID_CURSOR", "Cursor invalide");
+  }
+
+  return numericCursor;
+};
+
+const decodeBase64Content = (contentBase64?: string): Uint8Array | string => {
+  if (!contentBase64) {
+    return "";
+  }
+
+  const cleaned = contentBase64.trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  try {
+    return Uint8Array.from(Buffer.from(cleaned, "base64"));
+  } catch {
+    throw new HttpError(400, "INVALID_FILE_CONTENT", "Contenu du fichier invalide");
+  }
+};
+
 const assertPropertyScope = async (orgId: string, propertyId?: string | null) => {
   if (!propertyId) {
     return;
@@ -33,23 +63,64 @@ const assertPropertyScope = async (orgId: string, propertyId?: string | null) =>
 };
 
 export const filesService = {
+  async list(input: {
+    orgId: string;
+    limit: number;
+    cursor?: string;
+    propertyId?: string;
+  }) {
+    const cursorValue = parseCursor(input.cursor);
+    await assertPropertyScope(input.orgId, input.propertyId);
+
+    const scopeByOrg = eq(files.orgId, input.orgId);
+    const scopeByProperty = input.propertyId
+      ? eq(files.propertyId, input.propertyId)
+      : undefined;
+    const scopeByCursor = cursorValue
+      ? lt(files.createdAt, new Date(cursorValue))
+      : undefined;
+
+    const whereClauses = [scopeByOrg, scopeByProperty, scopeByCursor].filter(
+      (clause): clause is Exclude<typeof clause, undefined> => clause !== undefined,
+    );
+
+    const rows = await db
+      .select()
+      .from(files)
+      .where(and(...whereClauses))
+      .orderBy(desc(files.createdAt))
+      .limit(input.limit + 1);
+
+    const hasMore = rows.length > input.limit;
+    const sliced = hasMore ? rows.slice(0, input.limit) : rows;
+    const lastItem = sliced.at(-1);
+
+    return {
+      items: sliced.map(toFileResponse),
+      nextCursor: hasMore && lastItem ? String(lastItem.createdAt.getTime()) : null,
+    };
+  },
+
   async upload(input: {
     orgId: string;
     propertyId?: string | null;
+    typeDocument?: string | null;
     fileName: string;
     mimeType: string;
     size: number;
+    contentBase64?: string;
   }) {
     await assertPropertyScope(input.orgId, input.propertyId);
 
     const now = new Date();
     const id = crypto.randomUUID();
     const storageKey = `${input.orgId}/${id}/${encodeURIComponent(input.fileName)}`;
+    const fileContent = decodeBase64Content(input.contentBase64);
 
     const storage = getStorageProvider();
     await storage.putObject({
       key: storageKey,
-      data: "",
+      data: fileContent,
       contentType: input.mimeType,
     });
 
@@ -57,7 +128,7 @@ export const filesService = {
       id,
       orgId: input.orgId,
       propertyId: input.propertyId ?? null,
-      typeDocument: null,
+      typeDocument: input.typeDocument ?? null,
       fileName: input.fileName,
       mimeType: input.mimeType,
       size: input.size,

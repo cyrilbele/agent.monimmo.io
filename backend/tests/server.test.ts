@@ -11,6 +11,44 @@ describe("server", () => {
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
+  it("gère le preflight CORS depuis le front local", async () => {
+    const response = await createApp().fetch(
+      new Request("http://localhost/auth/register", {
+        method: "OPTIONS",
+        headers: {
+          origin: "http://localhost:5173",
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:5173",
+    );
+    expect(response.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(response.headers.get("access-control-allow-headers")).toContain(
+      "content-type",
+    );
+  });
+
+  it("ajoute les headers CORS sur une requête standard avec origin", async () => {
+    const response = await createApp().fetch(
+      new Request("http://localhost/health", {
+        method: "GET",
+        headers: {
+          origin: "http://localhost:5173",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:5173",
+    );
+  });
+
   it("retourne un format d'erreur standardisé sur une route inconnue", async () => {
     const response = await createApp().fetch(
       new Request("http://localhost/inconnue", { method: "GET" }),

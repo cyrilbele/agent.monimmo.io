@@ -196,6 +196,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/upload": {
         parameters: {
             query?: never;
@@ -573,7 +589,6 @@ export interface components {
             password: string;
             firstName: string;
             lastName: string;
-            orgId: string;
         };
         ForgotPasswordRequest: {
             /** Format: email */
@@ -585,13 +600,19 @@ export interface components {
         };
         /** @enum {string} */
         PropertyStatus: "PROSPECTION" | "MANDAT_SIGNE" | "EN_DIFFUSION" | "VISITES" | "OFFRES" | "COMPROMIS" | "VENDU" | "ARCHIVE";
+        OwnerContact: {
+            firstName: string;
+            lastName: string;
+            phone: string;
+            /** Format: email */
+            email: string;
+        };
         PropertyCreateRequest: {
             title: string;
             city: string;
             postalCode: string;
-            address?: string;
-            price?: number;
-            status: components["schemas"]["PropertyStatus"];
+            address: string;
+            owner: components["schemas"]["OwnerContact"];
         };
         PropertyPatchRequest: {
             title?: string;
@@ -599,7 +620,6 @@ export interface components {
             postalCode?: string;
             address?: string;
             price?: number;
-            status?: components["schemas"]["PropertyStatus"];
         };
         PropertyResponse: {
             id: string;
@@ -640,10 +660,12 @@ export interface components {
         /** @enum {string} */
         FileStatus: "UPLOADED" | "CLASSIFIED" | "REVIEW_REQUIRED";
         FileUploadRequest: {
-            propertyId?: string | null;
+            propertyId: string;
+            typeDocument: components["schemas"]["TypeDocument"];
             fileName: string;
             mimeType: string;
             size: number;
+            contentBase64?: string;
         };
         FileUpdateRequest: {
             propertyId?: string | null;
@@ -661,6 +683,10 @@ export interface components {
             storageKey: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        FileListResponse: {
+            items: components["schemas"]["FileResponse"][];
+            nextCursor?: string | null;
         };
         FileDownloadUrlResponse: {
             /** Format: uri */
@@ -1155,6 +1181,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PropertyParticipantResponse"];
+                };
+            };
+        };
+    };
+    getFiles: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["LimitParam"];
+                cursor?: components["parameters"]["CursorParam"];
+                propertyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des fichiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileListResponse"];
                 };
             };
         };

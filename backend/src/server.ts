@@ -67,8 +67,76 @@ const getSwaggerHtml = (): string => `<!doctype html>
   </body>
 </html>`;
 
+const DEFAULT_CORS_ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+const getAllowedCorsOrigins = (): Set<string> => {
+  const fromEnv = process.env.CORS_ALLOWED_ORIGINS
+    ?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (fromEnv && fromEnv.length > 0) {
+    return new Set(fromEnv);
+  }
+
+  return new Set(DEFAULT_CORS_ALLOWED_ORIGINS);
+};
+
+const allowedCorsOrigins = getAllowedCorsOrigins();
+
+const buildCorsHeaders = (request: Request): Headers | null => {
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    return null;
+  }
+
+  if (!allowedCorsOrigins.has("*") && !allowedCorsOrigins.has(origin)) {
+    return null;
+  }
+
+  const headers = new Headers();
+  headers.set(
+    "access-control-allow-origin",
+    allowedCorsOrigins.has("*") ? "*" : origin,
+  );
+  headers.set("access-control-allow-methods", "GET,POST,PATCH,OPTIONS");
+  headers.set(
+    "access-control-allow-headers",
+    request.headers.get("access-control-request-headers") ??
+      "authorization,content-type",
+  );
+  headers.set("access-control-max-age", "86400");
+  headers.set("vary", "Origin");
+  return headers;
+};
+
+const withCors = (request: Request, response: Response): Response => {
+  const corsHeaders = buildCorsHeaders(request);
+  if (!corsHeaders) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  for (const [key, value] of corsHeaders.entries()) {
+    headers.set(key, value);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
 export const createApp = (options?: { openapiPath?: string }) => ({
   async fetch(request: Request): Promise<Response> {
+    if (request.method === "OPTIONS") {
+      return withCors(request, new Response(null, { status: 204 }));
+    }
+
     try {
       const url = new URL(request.url);
       const openapiPath = options?.openapiPath ?? "openapi/openapi.yaml";
@@ -138,49 +206,49 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       };
 
       if (request.method === "GET" && url.pathname === "/health") {
-        return json({ status: "ok" }, { status: 200 });
+        return withCors(request, json({ status: "ok" }, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/login") {
         const payload = await parseJson(LoginRequestSchema);
         const response = await authService.login(payload);
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/register") {
         const payload = await parseJson(RegisterRequestSchema);
         const response = await authService.register(payload);
-        return json(response, { status: 201 });
+        return withCors(request, json(response, { status: 201 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/refresh") {
         const payload = await parseJson(RefreshRequestSchema);
         const response = await authService.refresh(payload);
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/logout") {
         const payload = await parseJson(LogoutRequestSchema);
         await authService.logout(payload);
-        return new Response(null, { status: 204 });
+        return withCors(request, new Response(null, { status: 204 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/forgot-password") {
         const payload = await parseJson(ForgotPasswordRequestSchema);
         await authService.forgotPassword(payload);
-        return new Response(null, { status: 202 });
+        return withCors(request, new Response(null, { status: 202 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/reset-password") {
         const payload = await parseJson(ResetPasswordRequestSchema);
         await authService.resetPassword(payload);
-        return new Response(null, { status: 204 });
+        return withCors(request, new Response(null, { status: 204 }));
       }
 
       if (request.method === "GET" && url.pathname === "/me") {
         const accessToken = getBearerToken();
         const response = await authService.me(accessToken);
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "GET" && url.pathname === "/properties") {
@@ -190,7 +258,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           limit: parseLimit(),
           cursor: url.searchParams.get("cursor") ?? undefined,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/properties") {
@@ -200,7 +268,18 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           ...payload,
         });
-        return json(response, { status: 201 });
+        return withCors(request, json(response, { status: 201 }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/files") {
+        const user = await getAuthenticatedUser();
+        const response = await filesService.list({
+          orgId: user.orgId,
+          limit: parseLimit(),
+          cursor: url.searchParams.get("cursor") ?? undefined,
+          propertyId: url.searchParams.get("propertyId") ?? undefined,
+        });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/files/upload") {
@@ -210,7 +289,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           ...payload,
         });
-        return json(response, { status: 201 });
+        return withCors(request, json(response, { status: 201 }));
       }
 
       const fileDownloadUrlMatch = url.pathname.match(/^\/files\/([^/]+)\/download-url$/);
@@ -221,7 +300,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           id: fileId,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const fileRunAiMatch = url.pathname.match(/^\/files\/([^/]+)\/run-ai$/);
@@ -232,7 +311,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           fileId,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       const fileByIdMatch = url.pathname.match(/^\/files\/([^/]+)$/);
@@ -245,7 +324,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             orgId: user.orgId,
             id: fileId,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
 
         if (request.method === "PATCH") {
@@ -255,7 +334,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             id: fileId,
             data: payload,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
       }
 
@@ -277,7 +356,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             : undefined,
         });
 
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const messageRunAiMatch = url.pathname.match(/^\/messages\/([^/]+)\/run-ai$/);
@@ -288,7 +367,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           messageId,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       const messageByIdMatch = url.pathname.match(/^\/messages\/([^/]+)$/);
@@ -301,7 +380,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             orgId: user.orgId,
             id: messageId,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
 
         if (request.method === "PATCH") {
@@ -311,7 +390,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             id: messageId,
             propertyId: payload.propertyId,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
       }
 
@@ -322,7 +401,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           ...payload,
         });
-        return json(response, { status: 201 });
+        return withCors(request, json(response, { status: 201 }));
       }
 
       if (request.method === "GET" && url.pathname === "/vocals") {
@@ -332,7 +411,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           limit: parseLimit(),
           cursor: url.searchParams.get("cursor") ?? undefined,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const vocalTranscribeMatch = url.pathname.match(/^\/vocals\/([^/]+)\/transcribe$/);
@@ -343,7 +422,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           vocalId,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       const vocalInsightsMatch = url.pathname.match(/^\/vocals\/([^/]+)\/extract-insights$/);
@@ -354,7 +433,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           vocalId,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       const vocalByIdMatch = url.pathname.match(/^\/vocals\/([^/]+)$/);
@@ -367,7 +446,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             orgId: user.orgId,
             id: vocalId,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
 
         if (request.method === "PATCH") {
@@ -377,7 +456,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             id: vocalId,
             propertyId: payload.propertyId,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
       }
 
@@ -388,7 +467,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           limit: parseLimit(),
           cursor: url.searchParams.get("cursor") ?? undefined,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const reviewResolveMatch = url.pathname.match(/^\/review-queue\/([^/]+)\/resolve$/);
@@ -403,7 +482,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           propertyId: payload.propertyId,
           note: payload.note,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/integrations/gmail/connect") {
@@ -415,7 +494,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           code: payload.code,
           redirectUri: payload.redirectUri,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/integrations/gmail/sync") {
@@ -426,7 +505,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           provider: "GMAIL",
           cursor: payload.cursor,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       if (request.method === "POST" && url.pathname === "/integrations/google-calendar/connect") {
@@ -438,7 +517,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           code: payload.code,
           redirectUri: payload.redirectUri,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/integrations/google-calendar/sync") {
@@ -449,7 +528,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           provider: "GOOGLE_CALENDAR",
           cursor: payload.cursor,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       if (request.method === "POST" && url.pathname === "/integrations/whatsapp/connect") {
@@ -461,7 +540,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           code: payload.code,
           redirectUri: payload.redirectUri,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       if (request.method === "POST" && url.pathname === "/integrations/whatsapp/sync") {
@@ -472,7 +551,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           provider: "WHATSAPP",
           cursor: payload.cursor,
         });
-        return json(response, { status: 202 });
+        return withCors(request, json(response, { status: 202 }));
       }
 
       const propertyStatusMatch = url.pathname.match(/^\/properties\/([^/]+)\/status$/);
@@ -485,7 +564,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           id: propertyId,
           status: payload.status,
         });
-        return json(response, { status: 200 });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const propertyParticipantsMatch = url.pathname.match(
@@ -501,7 +580,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           contactId: payload.contactId,
           role: payload.role,
         });
-        return json(response, { status: 201 });
+        return withCors(request, json(response, { status: 201 }));
       }
 
       const propertyByIdMatch = url.pathname.match(/^\/properties\/([^/]+)$/);
@@ -514,7 +593,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             orgId: user.orgId,
             id: propertyId,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
 
         if (request.method === "PATCH") {
@@ -524,7 +603,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             id: propertyId,
             data: payload,
           });
-          return json(response, { status: 200 });
+          return withCors(request, json(response, { status: 200 }));
         }
       }
 
@@ -540,27 +619,27 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           );
         }
 
-        return new Response(specFile, {
+        return withCors(request, new Response(specFile, {
           status: 200,
           headers: {
             "content-type": "application/yaml; charset=utf-8",
           },
-        });
+        }));
       }
 
       if (request.method === "GET" && url.pathname === "/docs") {
-        return new Response(getSwaggerHtml(), {
+        return withCors(request, new Response(getSwaggerHtml(), {
           status: 200,
           headers: {
             "content-type": "text/html; charset=utf-8",
           },
-        });
+        }));
       }
 
-      return error(404, "NOT_FOUND", "Route introuvable");
+      return withCors(request, error(404, "NOT_FOUND", "Route introuvable"));
     } catch (caughtError) {
       const { status, payload } = toApiError(caughtError);
-      return json(payload, { status });
+      return withCors(request, json(payload, { status }));
     }
   },
 });

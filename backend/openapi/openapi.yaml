@@ -276,6 +276,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyParticipantResponse"
+  /files:
+    get:
+      tags: [Files]
+      operationId: getFiles
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+        - in: query
+          name: propertyId
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liste des fichiers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
   /files/upload:
     post:
       tags: [Files]
@@ -809,7 +830,7 @@ components:
           type: string
     RegisterRequest:
       type: object
-      required: [email, password, firstName, lastName, orgId]
+      required: [email, password, firstName, lastName]
       properties:
         email:
           type: string
@@ -820,8 +841,6 @@ components:
         firstName:
           type: string
         lastName:
-          type: string
-        orgId:
           type: string
     ForgotPasswordRequest:
       type: object
@@ -850,22 +869,40 @@ components:
         - COMPROMIS
         - VENDU
         - ARCHIVE
+    OwnerContact:
+      type: object
+      required: [firstName, lastName, phone, email]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
     PropertyCreateRequest:
       type: object
-      required: [title, city, postalCode, status]
+      required: [title, city, postalCode, address, owner]
       properties:
         title:
           type: string
+          minLength: 1
         city:
           type: string
+          minLength: 1
         postalCode:
           type: string
+          minLength: 1
         address:
           type: string
-        price:
-          type: number
-        status:
-          $ref: "#/components/schemas/PropertyStatus"
+          minLength: 1
+        owner:
+          $ref: "#/components/schemas/OwnerContact"
     PropertyPatchRequest:
       type: object
       properties:
@@ -879,8 +916,6 @@ components:
           type: string
         price:
           type: number
-        status:
-          $ref: "#/components/schemas/PropertyStatus"
     PropertyResponse:
       type: object
       required: [id, title, city, postalCode, status, orgId, createdAt, updatedAt]
@@ -1002,17 +1037,20 @@ components:
       enum: [UPLOADED, CLASSIFIED, REVIEW_REQUIRED]
     FileUploadRequest:
       type: object
-      required: [fileName, mimeType, size]
+      required: [propertyId, typeDocument, fileName, mimeType, size]
       properties:
         propertyId:
           type: string
-          nullable: true
+        typeDocument:
+          $ref: "#/components/schemas/TypeDocument"
         fileName:
           type: string
         mimeType:
           type: string
         size:
           type: integer
+        contentBase64:
+          type: string
     FileUpdateRequest:
       type: object
       properties:
@@ -1047,6 +1085,17 @@ components:
         createdAt:
           type: string
           format: date-time
+    FileListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileResponse"
+        nextCursor:
+          type: string
+          nullable: true
     FileDownloadUrlResponse:
       type: object
       required: [url, expiresAt]

@@ -88,15 +88,16 @@
 
 ## L) Pages Auth
 
-- [ ] L1 Page **Login**
-- [ ] L2 Page **Création de compte**
-- [ ] L3 Page **Mot de passe perdu** (+ reset)
+- [x] L1 Page **Login** (commit: local)
+- [x] L2 Page **Création de compte** (commit: local)
+- [x] L3 Page **Mot de passe perdu** (+ reset) (commit: local)
 
 ## M) Pages Métier
 
-- [ ] M1 Page **Liste des biens en Kanban** (1 colonne par statut)
-- [ ] M2 Page **Détail d’un bien** (timeline + documents + participants)
-- [ ] M3 Page **Inbox** (emails + WhatsApp, filtres, rattachement)
+- [x] M1 Page **Liste des biens en Kanban** (1 colonne par statut) (commit: local)
+- [x] M2 Page **création de bien** (commit: local)
+- [x] M3 Page **Détail d’un bien** (timeline + documents + participants) (commit: local)
+- [x] M4 Page **Configuration** (connecter gmail, google calendar, whats app) (commit: local)
 
 ## N) Tests Front
 

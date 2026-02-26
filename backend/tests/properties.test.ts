@@ -8,6 +8,8 @@ import {
   properties,
   propertyParties,
   propertyTimelineEvents,
+  propertyUserLinks,
+  users,
 } from "../src/db/schema";
 import { createApp } from "../src/server";
 
@@ -27,14 +29,22 @@ const loginAndGetAccessToken = async (): Promise<string> => {
   return payload.accessToken as string;
 };
 
+const ownerPayload = () => ({
+  firstName: "Lucie",
+  lastName: "Moreau",
+  phone: "0611223344",
+  email: `owner.${crypto.randomUUID()}@monimmo.fr`,
+});
+
 describe("properties endpoints", () => {
   beforeAll(async () => {
     runMigrations();
     await runSeed();
   });
 
-  it("crée un bien", async () => {
+  it("crée un bien avec propriétaire et force le statut PROSPECTION", async () => {
     const token = await loginAndGetAccessToken();
+    const owner = ownerPayload();
     const response = await createApp().fetch(
       new Request("http://localhost/properties", {
         method: "POST",
@@ -47,8 +57,7 @@ describe("properties endpoints", () => {
           city: "Bordeaux",
           postalCode: "33000",
           address: "10 rue du Port",
-          price: 420000,
-          status: "PROSPECTION",
+          owner,
         }),
       }),
     );
@@ -57,6 +66,20 @@ describe("properties endpoints", () => {
     const payload = await response.json();
     expect(payload.title).toBe("Maison de ville");
     expect(payload.orgId).toBe("org_demo");
+    expect(payload.status).toBe("PROSPECTION");
+
+    const ownerUser = await db.query.users.findFirst({
+      where: eq(users.email, owner.email.toLowerCase()),
+    });
+    expect(ownerUser?.phone).toBe(owner.phone);
+
+    const ownerLink = await db.query.propertyUserLinks.findFirst({
+      where: and(
+        eq(propertyUserLinks.propertyId, payload.id),
+        eq(propertyUserLinks.userId, ownerUser?.id ?? ""),
+      ),
+    });
+    expect(ownerLink?.role).toBe("OWNER");
   });
 
   it("liste les biens avec pagination cursor", async () => {
@@ -73,7 +96,8 @@ describe("properties endpoints", () => {
           title: `Bien A ${crypto.randomUUID()}`,
           city: "Lyon",
           postalCode: "69001",
-          status: "PROSPECTION",
+          address: "1 quai Jules Courmont",
+          owner: ownerPayload(),
         }),
       }),
     );
@@ -90,7 +114,8 @@ describe("properties endpoints", () => {
           title: `Bien B ${crypto.randomUUID()}`,
           city: "Lyon",
           postalCode: "69002",
-          status: "PROSPECTION",
+          address: "12 rue de Brest",
+          owner: ownerPayload(),
         }),
       }),
     );
@@ -107,7 +132,8 @@ describe("properties endpoints", () => {
           title: `Bien C ${crypto.randomUUID()}`,
           city: "Lyon",
           postalCode: "69003",
-          status: "PROSPECTION",
+          address: "3 rue Paul Bert",
+          owner: ownerPayload(),
         }),
       }),
     );
@@ -151,7 +177,8 @@ describe("properties endpoints", () => {
           title: "Bien à modifier",
           city: "Nantes",
           postalCode: "44000",
-          status: "PROSPECTION",
+          address: "9 allée Flesselles",
+          owner: ownerPayload(),
         }),
       }),
     );
@@ -175,6 +202,7 @@ describe("properties endpoints", () => {
         body: JSON.stringify({
           title: "Bien modifié",
           city: "Rennes",
+          address: "11 rue Le Bastard",
         }),
       }),
     );
@@ -198,7 +226,8 @@ describe("properties endpoints", () => {
           title: "Bien statut",
           city: "Lille",
           postalCode: "59000",
-          status: "PROSPECTION",
+          address: "4 rue Faidherbe",
+          owner: ownerPayload(),
         }),
       }),
     );
@@ -263,7 +292,8 @@ describe("properties endpoints", () => {
           title: "Bien participant",
           city: "Nice",
           postalCode: "06000",
-          status: "PROSPECTION",
+          address: "18 avenue Jean Médecin",
+          owner: ownerPayload(),
         }),
       }),
     );

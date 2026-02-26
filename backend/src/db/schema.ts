@@ -19,6 +19,7 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
+  phone: text("phone"),
   role: text("role").notNull(),
   passwordHash: text("password_hash").notNull(),
   ...timestampColumns,
@@ -50,6 +51,30 @@ export const propertyTimelineEvents = sqliteTable("property_timeline_events", {
   payload: text("payload").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+export const propertyUserLinks = sqliteTable(
+  "property_user_links",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    propertyId: text("property_id")
+      .notNull()
+      .references(() => properties.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    propertyUserUnique: uniqueIndex("property_user_links_property_user_unique").on(
+      table.propertyId,
+      table.userId,
+    ),
+  }),
+);
 
 export const propertyParties = sqliteTable("property_parties", {
   id: text("id").primaryKey(),

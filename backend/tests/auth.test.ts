@@ -158,7 +158,6 @@ describe("auth endpoints", () => {
           password,
           firstName: "Nina",
           lastName: "Durand",
-          orgId: "org_register_test",
         }),
       }),
     );
@@ -166,7 +165,13 @@ describe("auth endpoints", () => {
     expect(response.status).toBe(201);
     const payload = await response.json();
     expect(payload.user.email).toBe(email);
+    expect(payload.user.orgId).toMatch(/^org_[\w-]{36}$/);
     expect(typeof payload.accessToken).toBe("string");
+
+    const createdOrg = await db.query.organizations.findFirst({
+      where: eq(organizations.id, payload.user.orgId),
+    });
+    expect(createdOrg?.id).toBe(payload.user.orgId);
   });
 
   it("gère forgot-password + reset-password", async () => {
