@@ -1,0 +1,1259 @@
+openapi: 3.0.3
+info:
+  title: Monimmo Assistant API
+  version: 0.1.0
+  description: API REST spec-first pour assistant IA agent immobilier.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Health
+  - name: Auth
+  - name: Properties
+  - name: Files
+  - name: Messages
+  - name: Vocals
+  - name: ReviewQueue
+  - name: Integrations
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service en ligne.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: postAuthLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authentification réussie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Identifiants invalides.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: postAuthRefresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Tokens régénérés.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+        "401":
+          description: Refresh token invalide.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: postAuthLogout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "204":
+          description: Déconnecté.
+  /me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Utilisateur courant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: postAuthRegister
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Compte créé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Données invalides.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: postAuthForgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "202":
+          description: Demande acceptée.
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: postAuthResetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "204":
+          description: Mot de passe modifié.
+        "400":
+          description: Token invalide.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /properties:
+    get:
+      tags: [Properties]
+      operationId: getProperties
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Liste des biens.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyListResponse"
+    post:
+      tags: [Properties]
+      operationId: postProperties
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyCreateRequest"
+      responses:
+        "201":
+          description: Bien créé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyResponse"
+  /properties/{id}:
+    get:
+      tags: [Properties]
+      operationId: getPropertyById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail du bien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyResponse"
+        "404":
+          description: Bien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Properties]
+      operationId: patchPropertyById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyPatchRequest"
+      responses:
+        "200":
+          description: Bien mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyResponse"
+  /properties/{id}/status:
+    patch:
+      tags: [Properties]
+      operationId: patchPropertyStatusById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyStatusUpdateRequest"
+      responses:
+        "200":
+          description: Statut du bien mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyResponse"
+  /properties/{id}/participants:
+    post:
+      tags: [Properties]
+      operationId: postPropertyParticipants
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyParticipantCreateRequest"
+      responses:
+        "201":
+          description: Participant ajouté.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyParticipantResponse"
+  /files/upload:
+    post:
+      tags: [Files]
+      operationId: postFilesUpload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileUploadRequest"
+      responses:
+        "201":
+          description: Métadonnées fichier créées.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+  /files/{id}:
+    get:
+      tags: [Files]
+      operationId: getFileById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail du fichier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+    patch:
+      tags: [Files]
+      operationId: patchFileById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileUpdateRequest"
+      responses:
+        "200":
+          description: Fichier mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+  /files/{id}/download-url:
+    get:
+      tags: [Files]
+      operationId: getFileDownloadUrlById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: URL de téléchargement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileDownloadUrlResponse"
+  /files/{id}/run-ai:
+    post:
+      tags: [Files]
+      operationId: postFileRunAi
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "202":
+          description: Job IA planifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAIResponse"
+  /messages:
+    get:
+      tags: [Messages]
+      operationId: getMessages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+        - name: channel
+          in: query
+          schema:
+            $ref: "#/components/schemas/MessageChannel"
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+        - name: aiStatus
+          in: query
+          schema:
+            $ref: "#/components/schemas/MessageAIStatus"
+      responses:
+        "200":
+          description: Liste des messages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListResponse"
+  /messages/{id}:
+    get:
+      tags: [Messages]
+      operationId: getMessageById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    patch:
+      tags: [Messages]
+      operationId: patchMessageById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageUpdateRequest"
+      responses:
+        "200":
+          description: Message rattaché.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+  /messages/{id}/run-ai:
+    post:
+      tags: [Messages]
+      operationId: postMessageRunAi
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "202":
+          description: Job IA planifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAIResponse"
+  /vocals/upload:
+    post:
+      tags: [Vocals]
+      operationId: postVocalsUpload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocalUploadRequest"
+      responses:
+        "201":
+          description: Vocal créé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocalResponse"
+  /vocals:
+    get:
+      tags: [Vocals]
+      operationId: getVocals
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Liste des vocaux.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocalListResponse"
+  /vocals/{id}:
+    get:
+      tags: [Vocals]
+      operationId: getVocalById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail vocal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocalResponse"
+    patch:
+      tags: [Vocals]
+      operationId: patchVocalById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocalUpdateRequest"
+      responses:
+        "200":
+          description: Vocal mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocalResponse"
+  /vocals/{id}/transcribe:
+    post:
+      tags: [Vocals]
+      operationId: postVocalTranscribeById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "202":
+          description: Job de transcription planifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAIResponse"
+  /vocals/{id}/extract-insights:
+    post:
+      tags: [Vocals]
+      operationId: postVocalExtractInsightsById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "202":
+          description: Job d'extraction planifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAIResponse"
+  /review-queue:
+    get:
+      tags: [ReviewQueue]
+      operationId: getReviewQueue
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Items à traiter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewQueueListResponse"
+  /review-queue/{id}/resolve:
+    post:
+      tags: [ReviewQueue]
+      operationId: postReviewQueueResolveById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewQueueResolveRequest"
+      responses:
+        "200":
+          description: Item résolu.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewQueueItemResponse"
+  /integrations/gmail/connect:
+    post:
+      tags: [Integrations]
+      operationId: postIntegrationsGmailConnect
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConnectRequest"
+      responses:
+        "200":
+          description: Connexion Gmail initiée/confirmée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationResponse"
+  /integrations/gmail/sync:
+    post:
+      tags: [Integrations]
+      operationId: postIntegrationsGmailSync
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationSyncRequest"
+      responses:
+        "202":
+          description: Synchronisation Gmail démarrée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationResponse"
+  /integrations/google-calendar/connect:
+    post:
+      tags: [Integrations]
+      operationId: postIntegrationsGoogleCalendarConnect
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConnectRequest"
+      responses:
+        "200":
+          description: Connexion Calendar initiée/confirmée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationResponse"
+  /integrations/google-calendar/sync:
+    post:
+      tags: [Integrations]
+      operationId: postIntegrationsGoogleCalendarSync
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationSyncRequest"
+      responses:
+        "202":
+          description: Synchronisation Calendar démarrée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationResponse"
+  /integrations/whatsapp/connect:
+    post:
+      tags: [Integrations]
+      operationId: postIntegrationsWhatsappConnect
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConnectRequest"
+      responses:
+        "200":
+          description: Connexion WhatsApp initiée/confirmée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationResponse"
+  /integrations/whatsapp/sync:
+    post:
+      tags: [Integrations]
+      operationId: postIntegrationsWhatsappSync
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationSyncRequest"
+      responses:
+        "202":
+          description: Synchronisation WhatsApp démarrée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationResponse"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          nullable: true
+    UserResponse:
+      type: object
+      required: [id, email, firstName, lastName, orgId, role, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        orgId:
+          type: string
+        role:
+          type: string
+          enum: [AGENT, MANAGER, ADMIN]
+        createdAt:
+          type: string
+          format: date-time
+    MeResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/UserResponse"
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    LoginResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          example: 900
+        user:
+          $ref: "#/components/schemas/UserResponse"
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    RefreshResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName, orgId]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        firstName:
+          type: string
+        lastName:
+          type: string
+        orgId:
+          type: string
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+    PropertyStatus:
+      type: string
+      enum:
+        - PROSPECTION
+        - MANDAT_SIGNE
+        - EN_DIFFUSION
+        - VISITES
+        - OFFRES
+        - COMPROMIS
+        - VENDU
+        - ARCHIVE
+    PropertyCreateRequest:
+      type: object
+      required: [title, city, postalCode, status]
+      properties:
+        title:
+          type: string
+        city:
+          type: string
+        postalCode:
+          type: string
+        address:
+          type: string
+        price:
+          type: number
+        status:
+          $ref: "#/components/schemas/PropertyStatus"
+    PropertyPatchRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        city:
+          type: string
+        postalCode:
+          type: string
+        address:
+          type: string
+        price:
+          type: number
+        status:
+          $ref: "#/components/schemas/PropertyStatus"
+    PropertyResponse:
+      type: object
+      required: [id, title, city, postalCode, status, orgId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        city:
+          type: string
+        postalCode:
+          type: string
+        address:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        status:
+          $ref: "#/components/schemas/PropertyStatus"
+        orgId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PropertyListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyResponse"
+        nextCursor:
+          type: string
+          nullable: true
+    PropertyStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/PropertyStatus"
+    PropertyParticipantCreateRequest:
+      type: object
+      required: [contactId, role]
+      properties:
+        contactId:
+          type: string
+        role:
+          type: string
+          enum: [VENDEUR, ACHETEUR, LOCATAIRE, NOTAIRE, ARTISAN, AUTRE]
+    PropertyParticipantResponse:
+      type: object
+      required: [id, propertyId, contactId, role, createdAt]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+        contactId:
+          type: string
+        role:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    TypeDocument:
+      type: string
+      enum:
+        - PIECE_IDENTITE
+        - LIVRET_FAMILLE
+        - CONTRAT_MARIAGE_PACS
+        - JUGEMENT_DIVORCE
+        - TITRE_PROPRIETE
+        - ATTESTATION_NOTARIALE
+        - TAXE_FONCIERE
+        - REFERENCE_CADASTRALE
+        - MANDAT_VENTE_SIGNE
+        - BON_VISITE
+        - OFFRE_ACHAT_SIGNEE
+        - DPE
+        - AMIANTE
+        - PLOMB
+        - ELECTRICITE
+        - GAZ
+        - TERMITES
+        - ERP_ETAT_RISQUES
+        - ASSAINISSEMENT
+        - LOI_CARREZ
+        - REGLEMENT_COPROPRIETE
+        - ETAT_DESCRIPTIF_DIVISION
+        - PV_AG_3_DERNIERES_ANNEES
+        - MONTANT_CHARGES
+        - CARNET_ENTRETIEN
+        - FICHE_SYNTHETIQUE
+        - PRE_ETAT_DATE
+        - ETAT_DATE
+        - PHOTOS_HD
+        - VIDEO_VISITE
+        - PLAN_BIEN
+        - ANNONCE_IMMOBILIERE
+        - AFFICHE_VITRINE
+        - REPORTING_VENDEUR
+        - SIMULATION_FINANCEMENT
+        - ATTESTATION_CAPACITE_EMPRUNT
+        - ACCORD_PRINCIPE_BANCAIRE
+        - COMPROMIS_OU_PROMESSE
+        - ANNEXES_COMPROMIS
+        - PREUVE_SEQUESTRE
+        - COURRIER_RETRACTATION
+        - LEVEE_CONDITIONS_SUSPENSIVES
+        - ACTE_AUTHENTIQUE
+        - DECOMPTE_NOTAIRE
+    FileStatus:
+      type: string
+      enum: [UPLOADED, CLASSIFIED, REVIEW_REQUIRED]
+    FileUploadRequest:
+      type: object
+      required: [fileName, mimeType, size]
+      properties:
+        propertyId:
+          type: string
+          nullable: true
+        fileName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+    FileUpdateRequest:
+      type: object
+      properties:
+        propertyId:
+          type: string
+          nullable: true
+        typeDocument:
+          $ref: "#/components/schemas/TypeDocument"
+        status:
+          $ref: "#/components/schemas/FileStatus"
+    FileResponse:
+      type: object
+      required: [id, fileName, mimeType, size, status, storageKey, createdAt]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+          nullable: true
+        typeDocument:
+          $ref: "#/components/schemas/TypeDocument"
+        fileName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+        status:
+          $ref: "#/components/schemas/FileStatus"
+        storageKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    FileDownloadUrlResponse:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+    MessageChannel:
+      type: string
+      enum: [GMAIL, WHATSAPP, TELEGRAM]
+    MessageAIStatus:
+      type: string
+      enum: [PENDING, PROCESSED, REVIEW_REQUIRED]
+    MessageResponse:
+      type: object
+      required: [id, channel, body, aiStatus, receivedAt]
+      properties:
+        id:
+          type: string
+        channel:
+          $ref: "#/components/schemas/MessageChannel"
+        propertyId:
+          type: string
+          nullable: true
+        subject:
+          type: string
+          nullable: true
+        body:
+          type: string
+        fileIds:
+          type: array
+          items:
+            type: string
+        aiStatus:
+          $ref: "#/components/schemas/MessageAIStatus"
+        receivedAt:
+          type: string
+          format: date-time
+    MessageListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageResponse"
+        nextCursor:
+          type: string
+          nullable: true
+    MessageUpdateRequest:
+      type: object
+      required: [propertyId]
+      properties:
+        propertyId:
+          type: string
+    VocalStatus:
+      type: string
+      enum: [UPLOADED, TRANSCRIBED, INSIGHTS_READY, REVIEW_REQUIRED]
+    VocalUploadRequest:
+      type: object
+      required: [fileName, mimeType, size]
+      properties:
+        propertyId:
+          type: string
+          nullable: true
+        fileName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+    VocalUpdateRequest:
+      type: object
+      required: [propertyId]
+      properties:
+        propertyId:
+          type: string
+    VocalResponse:
+      type: object
+      required: [id, fileId, status, createdAt]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+          nullable: true
+        fileId:
+          type: string
+        status:
+          $ref: "#/components/schemas/VocalStatus"
+        transcript:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        insights:
+          type: object
+          nullable: true
+          additionalProperties: true
+        confidence:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    VocalListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VocalResponse"
+        nextCursor:
+          type: string
+          nullable: true
+    RunAIResponse:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED]
+    ReviewQueueItemResponse:
+      type: object
+      required: [id, itemType, itemId, reason, status, createdAt]
+      properties:
+        id:
+          type: string
+        itemType:
+          type: string
+          enum: [MESSAGE, FILE, VOCAL]
+        itemId:
+          type: string
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, RESOLVED]
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ReviewQueueListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewQueueItemResponse"
+        nextCursor:
+          type: string
+          nullable: true
+    ReviewQueueResolveRequest:
+      type: object
+      required: [resolution]
+      properties:
+        resolution:
+          type: string
+        propertyId:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+    IntegrationConnectRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        redirectUri:
+          type: string
+          format: uri
+    IntegrationSyncRequest:
+      type: object
+      properties:
+        cursor:
+          type: string
+    IntegrationResponse:
+      type: object
+      required: [provider, status]
+      properties:
+        provider:
+          type: string
+          enum: [GMAIL, GOOGLE_CALENDAR, WHATSAPP]
+        status:
+          type: string
+          enum: [CONNECTED, SYNC_QUEUED]
+        connectedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true

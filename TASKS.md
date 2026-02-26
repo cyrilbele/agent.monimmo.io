@@ -7,11 +7,11 @@
 
 - [x] A1 Créer monorepo avec `/backend /front /ios /marketing-site` (commit: bf6a6ef)
 - [x] A2 GitHub Actions : build + tests + coverage (backend+front) + seuil 80% bloquant (commit: b7a5df7)
-- [x] A3 Docker compose dev : Redis + (optionnel) services dev
+- [x] A3 Docker compose dev : Redis + (optionnel) services dev (commit: 6cdf9d3)
 
 ## B) OpenAPI spec-first + DTO convention
 
-- [ ] B1 Créer `/backend/openapi/openapi.yaml` (schemas + endpoints)
+- [x] B1 Créer `/backend/openapi/openapi.yaml` (schemas + endpoints)
 - [ ] B2 Mettre en place génération types TS depuis OpenAPI (`/src/dto/generated`)
 - [ ] B3 Mettre en place Zod schemas (`/src/dto/zod`) + mapping clair (1 DTO = 1 schema)
 - [ ] B4 Exposer doc OpenAPI (route `/openapi.yaml` + éventuellement swagger UI)
