@@ -1,0 +1,9 @@
+{
+  "name": "@monimmo/marketing-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "mkdir -p dist && cp index.html styles.css script.js dist/"
+  }
+}
+
