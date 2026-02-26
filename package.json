@@ -1,0 +1,15 @@
+{
+  "name": "agent-monimmo-io",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "front",
+    "marketing-site"
+  ],
+  "scripts": {
+    "dev:backend": "bun run --cwd backend src/index.ts",
+    "test:backend": "bun run --cwd backend test",
+    "check": "bun run test:backend"
+  }
+}
+
