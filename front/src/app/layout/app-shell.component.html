@@ -1,0 +1,68 @@
+<div class="flex min-h-screen bg-slate-100 text-slate-900">
+  <aside class="hidden w-72 shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
+    <div class="border-b border-slate-200 px-6 py-6">
+      <p class="text-3xl font-serif leading-none">monimmo.io</p>
+      <p class="mt-1 text-sm text-slate-500">OutilsPro</p>
+    </div>
+
+    <nav class="flex-1 px-3 py-4" aria-label="Navigation principale">
+      <div class="space-y-1">
+        @for (item of primaryNav; track item.label) {
+          <a
+            [routerLink]="item.route"
+            routerLinkActive="bg-blue-100 text-blue-700"
+            ariaCurrentWhenActive="page"
+            class="flex items-center rounded-xl px-3 py-2.5 text-base font-medium text-slate-600 transition hover:bg-slate-100"
+          >
+            {{ item.label }}
+          </a>
+        }
+      </div>
+
+      <div class="mt-8 border-t border-slate-200 pt-6">
+        <p class="px-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Intelligence IA</p>
+
+        <div class="mt-3 space-y-1">
+          @for (item of secondaryNav; track item.label) {
+            <a
+              [routerLink]="item.route"
+              routerLinkActive="bg-blue-100 text-blue-700"
+              ariaCurrentWhenActive="page"
+              class="flex items-center rounded-xl px-3 py-2.5 text-base font-medium text-slate-600 transition hover:bg-slate-100"
+            >
+              {{ item.label }}
+            </a>
+          }
+        </div>
+      </div>
+    </nav>
+
+    <div class="border-t border-slate-200 p-4">
+      <p class="text-sm font-semibold text-slate-800">{{ authService.userEmail() || "agent connecté" }}</p>
+      <button
+        type="button"
+        class="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+        [disabled]="loggingOut()"
+        (click)="logout()"
+        [attr.aria-busy]="loggingOut() ? 'true' : 'false'"
+      >
+        {{ loggingOut() ? "Déconnexion..." : "Se déconnecter" }}
+      </button>
+    </div>
+  </aside>
+
+  <section class="flex min-w-0 flex-1 flex-col">
+    <a
+      href="#main-content"
+      class="sr-only rounded-lg bg-white px-3 py-2 font-semibold text-slate-900 focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
+    >
+      Aller au contenu principal
+    </a>
+
+    <main id="main-content" tabindex="-1" class="min-h-0 flex-1 overflow-auto">
+      <div [class]="contentWrapperClass()">
+        <router-outlet></router-outlet>
+      </div>
+    </main>
+  </section>
+</div>

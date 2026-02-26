@@ -1,0 +1,1 @@
+ALTER TABLE `properties` ADD `details` text DEFAULT '{}' NOT NULL;

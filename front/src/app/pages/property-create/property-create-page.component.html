@@ -1,0 +1,166 @@
+<section class="panel mx-auto w-full max-w-4xl p-6 sm:p-8" aria-labelledby="property-create-title">
+  <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Nouveau dossier</p>
+  <h2 id="property-create-title" class="mt-2 font-serif text-3xl text-slate-900">Creer un bien</h2>
+  <p class="mt-3 text-sm text-slate-600">
+    Saisissez les informations du bien puis associez un proprietaire client existant ou creez-en un nouveau.
+  </p>
+
+  <form
+    class="mt-6 space-y-4"
+    [formGroup]="form"
+    (ngSubmit)="submit()"
+    novalidate
+    [attr.aria-describedby]="feedback() ? 'property-create-feedback' : null"
+  >
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="sm:col-span-2">
+        <label class="field-label" for="property-title">Titre du bien</label>
+        <input id="property-title" class="field-input" type="text" formControlName="title" required />
+      </div>
+
+      <div>
+        <label class="field-label" for="property-city">Ville</label>
+        <input id="property-city" class="field-input" type="text" formControlName="city" required />
+      </div>
+
+      <div>
+        <label class="field-label" for="property-postal">Code postal</label>
+        <input id="property-postal" class="field-input" type="text" formControlName="postalCode" required />
+      </div>
+
+      <div class="sm:col-span-2">
+        <label class="field-label" for="property-address">Adresse</label>
+        <input id="property-address" class="field-input" type="text" formControlName="address" required />
+      </div>
+    </div>
+
+    <div class="mt-4 border-t border-slate-200 pt-4">
+      <h3 class="font-serif text-2xl text-slate-900">Proprietaire</h3>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-xl px-3 py-2 text-sm font-semibold"
+          [class.bg-blue-600]="ownerMode() === 'existing'"
+          [class.text-white]="ownerMode() === 'existing'"
+          [class.bg-slate-100]="ownerMode() !== 'existing'"
+          [class.text-slate-700]="ownerMode() !== 'existing'"
+          [attr.aria-pressed]="ownerMode() === 'existing' ? 'true' : 'false'"
+          (click)="setOwnerMode('existing')"
+        >
+          Choisir un client existant
+        </button>
+        <button
+          type="button"
+          class="rounded-xl px-3 py-2 text-sm font-semibold"
+          [class.bg-blue-600]="ownerMode() === 'new'"
+          [class.text-white]="ownerMode() === 'new'"
+          [class.bg-slate-100]="ownerMode() !== 'new'"
+          [class.text-slate-700]="ownerMode() !== 'new'"
+          [attr.aria-pressed]="ownerMode() === 'new' ? 'true' : 'false'"
+          (click)="setOwnerMode('new')"
+        >
+          Creer un nouveau proprietaire
+        </button>
+      </div>
+
+      @if (ownerMode() === 'existing') {
+        <div class="mt-3 space-y-2">
+          <label class="field-label" [for]="ownerAutocompleteId">Client proprietaire</label>
+          <div
+            #ownerLookupContainer
+            class="relative"
+            role="combobox"
+            aria-haspopup="listbox"
+            [attr.aria-expanded]="ownerSuggestionsOpen() ? 'true' : 'false'"
+            [attr.aria-owns]="ownerAutocompleteListId"
+            [attr.aria-controls]="ownerAutocompleteListId"
+            (focusout)="onOwnerLookupContainerFocusOut($event, ownerLookupContainer)"
+          >
+            <input
+              [id]="ownerAutocompleteId"
+              class="field-input pr-11"
+              type="text"
+              formControlName="ownerLookup"
+              placeholder="Nom ou email d'un client"
+              autocomplete="off"
+              [attr.aria-autocomplete]="'list'"
+              [attr.aria-controls]="ownerAutocompleteListId"
+              (focus)="onOwnerLookupFocus()"
+              (input)="onOwnerLookupInput($event)"
+            />
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-100"
+              aria-label="Afficher les clients"
+              (click)="toggleOwnerSuggestions()"
+            >
+              ▾
+            </button>
+
+            @if (ownerSuggestionsOpen()) {
+              <ul
+                [id]="ownerAutocompleteListId"
+                class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+                role="listbox"
+                tabindex="-1"
+              >
+                @for (client of filteredOwnerClients(); track client.id) {
+                  <li role="option" [attr.aria-selected]="form.controls.ownerUserId.value === client.id ? 'true' : 'false'">
+                    <button
+                      type="button"
+                      class="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                      (mousedown)="onOwnerSuggestionMouseDown($event)"
+                      (click)="selectOwnerClient(client)"
+                    >
+                      {{ ownerOptionLabel(client) }}
+                    </button>
+                  </li>
+                } @empty {
+                  <li class="px-3 py-2 text-sm text-slate-500">Aucun client trouve.</li>
+                }
+              </ul>
+            }
+          </div>
+          @if (clientsLoading()) {
+            <p class="text-xs text-slate-500">Chargement des clients...</p>
+          }
+        </div>
+      } @else {
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="field-label" for="owner-first-name">Prenom</label>
+            <input id="owner-first-name" class="field-input" type="text" formControlName="ownerFirstName" />
+          </div>
+
+          <div>
+            <label class="field-label" for="owner-last-name">Nom</label>
+            <input id="owner-last-name" class="field-input" type="text" formControlName="ownerLastName" />
+          </div>
+
+          <div>
+            <label class="field-label" for="owner-phone">Telephone</label>
+            <input id="owner-phone" class="field-input" type="text" formControlName="ownerPhone" />
+          </div>
+
+          <div>
+            <label class="field-label" for="owner-email">Email</label>
+            <input id="owner-email" class="field-input" type="email" formControlName="ownerEmail" />
+          </div>
+        </div>
+      }
+    </div>
+
+    @if (feedback()) {
+      <p id="property-create-feedback" role="status" aria-live="polite" class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700">
+        {{ feedback() }}
+      </p>
+    }
+
+    <div class="flex flex-wrap gap-3 pt-2">
+      <button class="btn" type="submit" [disabled]="pending()" [attr.aria-busy]="pending() ? 'true' : 'false'">
+        {{ submitLabel() }}
+      </button>
+    </div>
+  </form>
+</section>

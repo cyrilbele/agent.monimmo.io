@@ -1,0 +1,83 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  --font-serif: "Fraunces", "Times New Roman", serif;
+
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1e40af;
+  --color-brand-800: #1e3a8a;
+}
+
+:root {
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    color: #0f172a;
+    background: #f1f5f9;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  .field-label {
+    @apply mb-1 block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-600;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 transition;
+    @apply focus:border-brand-500 focus:outline-none focus:ring-3 focus:ring-brand-200/60;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center rounded-xl border border-transparent bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition;
+    @apply hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-70;
+  }
+
+  .btn-ghost {
+    @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-100;
+  }
+
+  .kanban-horizontal-scroll {
+    overflow-x: scroll;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .kanban-horizontal-scroll::-webkit-scrollbar {
+    height: 12px;
+  }
+
+  .kanban-horizontal-scroll::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 999px;
+  }
+
+  .kanban-horizontal-scroll::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 999px;
+  }
+}

@@ -1,0 +1,85 @@
+import { inject, Injectable } from "@angular/core";
+
+import type {
+  PropertyCreateRequest,
+  PropertyListResponse,
+  PropertyParticipantCreateRequest,
+  PropertyParticipantResponse,
+  PropertyPatchRequest,
+  PropertyProspectCreateRequest,
+  PropertyProspectListResponse,
+  PropertyProspectResponse,
+  PropertyResponse,
+  PropertyStatus,
+} from "../core/api.models";
+import { ApiClientService } from "../core/api-client.service";
+
+@Injectable({ providedIn: "root" })
+export class PropertyService {
+  private readonly api = inject(ApiClientService);
+
+  list(limit = 100): Promise<PropertyListResponse> {
+    return this.api.request<PropertyListResponse>("GET", "/properties", {
+      params: { limit },
+    });
+  }
+
+  getById(id: string): Promise<PropertyResponse> {
+    return this.api.request<PropertyResponse>("GET", `/properties/${encodeURIComponent(id)}`);
+  }
+
+  create(payload: PropertyCreateRequest): Promise<PropertyResponse> {
+    return this.api.request<PropertyResponse>("POST", "/properties", {
+      body: payload,
+    });
+  }
+
+  patch(id: string, payload: PropertyPatchRequest): Promise<PropertyResponse> {
+    return this.api.request<PropertyResponse>("PATCH", `/properties/${encodeURIComponent(id)}`, {
+      body: payload,
+    });
+  }
+
+  updateStatus(id: string, status: PropertyStatus): Promise<PropertyResponse> {
+    return this.api.request<PropertyResponse>(
+      "PATCH",
+      `/properties/${encodeURIComponent(id)}/status`,
+      {
+        body: { status },
+      },
+    );
+  }
+
+  addParticipant(
+    propertyId: string,
+    payload: PropertyParticipantCreateRequest,
+  ): Promise<PropertyParticipantResponse> {
+    return this.api.request<PropertyParticipantResponse>(
+      "POST",
+      `/properties/${encodeURIComponent(propertyId)}/participants`,
+      {
+        body: payload,
+      },
+    );
+  }
+
+  listProspects(propertyId: string): Promise<PropertyProspectListResponse> {
+    return this.api.request<PropertyProspectListResponse>(
+      "GET",
+      `/properties/${encodeURIComponent(propertyId)}/prospects`,
+    );
+  }
+
+  addProspect(
+    propertyId: string,
+    payload: PropertyProspectCreateRequest,
+  ): Promise<PropertyProspectResponse> {
+    return this.api.request<PropertyProspectResponse>(
+      "POST",
+      `/properties/${encodeURIComponent(propertyId)}/prospects`,
+      {
+        body: payload,
+      },
+    );
+  }
+}

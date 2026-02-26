@@ -1,0 +1,97 @@
+<section class="mx-auto flex min-h-screen w-full max-w-4xl items-center px-4 py-8 sm:px-6">
+  <article class="panel w-full p-8" aria-labelledby="register-title">
+    <p class="text-xs font-semibold uppercase tracking-[0.22em] text-brand-700">Nouveau compte</p>
+    <h1 id="register-title" class="mt-2 font-serif text-4xl text-slate-900">Créer votre espace agence</h1>
+    <p class="mt-3 text-sm text-slate-600">
+      Déployez le cockpit de gestion messages, documents et relances pour vos biens.
+    </p>
+
+    <form
+      class="mt-6 space-y-4"
+      [formGroup]="form"
+      (ngSubmit)="submit()"
+      novalidate
+      [attr.aria-describedby]="feedback() ? 'register-feedback' : null"
+    >
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="field-label" for="register-first-name">Prénom</label>
+          <input
+            id="register-first-name"
+            class="field-input"
+            type="text"
+            formControlName="firstName"
+            required
+            [attr.aria-invalid]="form.controls.firstName.invalid && form.controls.firstName.touched ? 'true' : 'false'"
+          />
+        </div>
+        <div>
+          <label class="field-label" for="register-last-name">Nom</label>
+          <input
+            id="register-last-name"
+            class="field-input"
+            type="text"
+            formControlName="lastName"
+            required
+            [attr.aria-invalid]="form.controls.lastName.invalid && form.controls.lastName.touched ? 'true' : 'false'"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label class="field-label" for="register-email">Email</label>
+        <input
+          id="register-email"
+          class="field-input"
+          type="email"
+          formControlName="email"
+          autocomplete="email"
+          required
+          [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched ? 'true' : 'false'"
+        />
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="field-label" for="register-password">Mot de passe</label>
+          <input
+            id="register-password"
+            class="field-input"
+            type="password"
+            formControlName="password"
+            autocomplete="new-password"
+            required
+            [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched ? 'true' : 'false'"
+          />
+        </div>
+        <div>
+          <label class="field-label" for="register-confirm-password">Confirmer</label>
+          <input
+            id="register-confirm-password"
+            class="field-input"
+            type="password"
+            formControlName="confirmPassword"
+            autocomplete="new-password"
+            required
+            [attr.aria-invalid]="form.controls.confirmPassword.invalid && form.controls.confirmPassword.touched ? 'true' : 'false'"
+          />
+        </div>
+      </div>
+
+      @if (feedback()) {
+        <p id="register-feedback" role="status" aria-live="polite" class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700">
+          {{ feedback() }}
+        </p>
+      }
+
+      <button class="btn w-full" type="submit" [disabled]="pending()" [attr.aria-busy]="pending() ? 'true' : 'false'">
+        {{ submitLabel() }}
+      </button>
+    </form>
+
+    <p class="mt-5 text-sm text-slate-700">
+      Déjà inscrit ?
+      <a routerLink="/login" class="font-semibold text-brand-700 hover:text-brand-800">Se connecter</a>
+    </p>
+  </article>
+</section>

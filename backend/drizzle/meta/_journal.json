@@ -50,6 +50,27 @@
       "when": 1772107284223,
       "tag": "0006_eager_whistler",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1772117000000,
+      "tag": "0007_sweet_spiral",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1772119800000,
+      "tag": "0008_quick_madame_web",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1772120400000,
+      "tag": "0009_late_clear_accounts",
+      "breakpoints": true
     }
   ]
 }

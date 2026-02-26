@@ -328,6 +328,122 @@ describe("properties endpoints", () => {
     expect(dbParticipant).not.toBeNull();
   });
 
+  it("cree un bien avec un proprietaire client existant", async () => {
+    const token = await loginAndGetAccessToken();
+    const clientEmail = `client.owner.${crypto.randomUUID()}@monimmo.fr`;
+
+    const createClientResponse = await createApp().fetch(
+      new Request("http://localhost/users", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: "Nora",
+          lastName: "Client",
+          email: clientEmail,
+          phone: "0601020304",
+          accountType: "CLIENT",
+        }),
+      }),
+    );
+    expect(createClientResponse.status).toBe(201);
+    const clientPayload = await createClientResponse.json();
+
+    const createPropertyResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien owner existant",
+          city: "Toulouse",
+          postalCode: "31000",
+          address: "12 allee Jean Jaures",
+          ownerUserId: clientPayload.id,
+        }),
+      }),
+    );
+
+    expect(createPropertyResponse.status).toBe(201);
+    const propertyPayload = await createPropertyResponse.json();
+
+    const ownerLink = await db.query.propertyUserLinks.findFirst({
+      where: and(
+        eq(propertyUserLinks.propertyId, propertyPayload.id),
+        eq(propertyUserLinks.userId, clientPayload.id),
+      ),
+    });
+    expect(ownerLink?.role).toBe("OWNER");
+  });
+
+  it("ajoute et liste les prospects d'un bien", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const createPropertyResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien prospects",
+          city: "Marseille",
+          postalCode: "13001",
+          address: "8 rue de la Republique",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(createPropertyResponse.status).toBe(201);
+    const propertyPayload = await createPropertyResponse.json();
+
+    const addProspectResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${propertyPayload.id}/prospects`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          newClient: {
+            firstName: "Paul",
+            lastName: "Prospect",
+            phone: "0605040302",
+            email: `prospect.${crypto.randomUUID()}@monimmo.fr`,
+          },
+        }),
+      }),
+    );
+
+    expect(addProspectResponse.status).toBe(201);
+    const addedProspect = await addProspectResponse.json();
+    expect(addedProspect.relationRole).toBe("PROSPECT");
+
+    const listProspectsResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${propertyPayload.id}/prospects`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+
+    expect(listProspectsResponse.status).toBe(200);
+    const listPayload = await listProspectsResponse.json();
+    expect(Array.isArray(listPayload.items)).toBe(true);
+    expect(
+      listPayload.items.some(
+        (item: { userId: string; relationRole: string }) =>
+          item.userId === addedProspect.userId && item.relationRole === "PROSPECT",
+      ),
+    ).toBe(true);
+  });
+
   it("retourne 404 sur un bien inexistant", async () => {
     const token = await loginAndGetAccessToken();
     const response = await createApp().fetch(

@@ -8,6 +8,7 @@ servers:
 tags:
   - name: Health
   - name: Auth
+  - name: Users
   - name: Properties
   - name: Files
   - name: Messages
@@ -100,6 +101,91 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
         "401":
           description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /users:
+    get:
+      tags: [Users]
+      operationId: getUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: accountType
+          required: false
+          schema:
+            $ref: "#/components/schemas/AccountType"
+      responses:
+        "200":
+          description: Liste des utilisateurs du compte.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserListResponse"
+    post:
+      tags: [Users]
+      operationId: postUsers
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "201":
+          description: Utilisateur créé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserDetailResponse"
+  /users/{id}:
+    get:
+      tags: [Users]
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail utilisateur.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserDetailResponse"
+    patch:
+      tags: [Users]
+      operationId: patchUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPatchRequest"
+      responses:
+        "200":
+          description: Utilisateur mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserDetailResponse"
+        "404":
+          description: Utilisateur introuvable.
           content:
             application/json:
               schema:
@@ -276,6 +362,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyParticipantResponse"
+  /properties/{id}/prospects:
+    get:
+      tags: [Properties]
+      operationId: getPropertyProspects
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Liste des prospects du bien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyProspectListResponse"
+    post:
+      tags: [Properties]
+      operationId: postPropertyProspects
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyProspectCreateRequest"
+      responses:
+        "201":
+          description: Prospect ajouté au bien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyProspectResponse"
   /files:
     get:
       tags: [Files]
@@ -777,6 +898,145 @@ components:
         createdAt:
           type: string
           format: date-time
+    AccountType:
+      type: string
+      enum: [AGENT, CLIENT, NOTAIRE]
+    AccountUserResponse:
+      type: object
+      required:
+        [id, email, firstName, lastName, orgId, accountType, role, phone, address, postalCode, city, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        firstName:
+          type: string
+        lastName:
+          type: string
+        orgId:
+          type: string
+        accountType:
+          $ref: "#/components/schemas/AccountType"
+        role:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        postalCode:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AccountUserLinkedPropertyResponse:
+      type: object
+      required: [propertyId, title, city, postalCode, status, relationRole, source]
+      properties:
+        propertyId:
+          type: string
+        title:
+          type: string
+        city:
+          type: string
+        postalCode:
+          type: string
+        status:
+          type: string
+        relationRole:
+          type: string
+        source:
+          type: string
+          enum: [USER_LINK, PARTY_LINK]
+    AccountUserDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/AccountUserResponse"
+        - type: object
+          required: [linkedProperties]
+          properties:
+            linkedProperties:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccountUserLinkedPropertyResponse"
+    AccountUserListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountUserDetailResponse"
+        nextCursor:
+          type: string
+          nullable: true
+    UserCreateRequest:
+      type: object
+      anyOf:
+        - required: [email]
+        - required: [phone]
+      properties:
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        postalCode:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        accountType:
+          $ref: "#/components/schemas/AccountType"
+    UserPatchRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        postalCode:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        accountType:
+          $ref: "#/components/schemas/AccountType"
     MeResponse:
       type: object
       required: [user]
@@ -885,12 +1145,24 @@ components:
         email:
           type: string
           format: email
+        address:
+          type: string
+          nullable: true
+        postalCode:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
     PropertyDetails:
       type: object
       additionalProperties: true
     PropertyCreateRequest:
       type: object
-      required: [title, city, postalCode, address, owner]
+      required: [title, city, postalCode, address]
+      anyOf:
+        - required: [ownerUserId]
+        - required: [owner]
       properties:
         title:
           type: string
@@ -904,6 +1176,8 @@ components:
         address:
           type: string
           minLength: 1
+        ownerUserId:
+          type: string
         owner:
           $ref: "#/components/schemas/OwnerContact"
         details:
@@ -994,6 +1268,60 @@ components:
         createdAt:
           type: string
           format: date-time
+    PropertyProspectCreateRequest:
+      type: object
+      anyOf:
+        - required: [userId]
+        - required: [newClient]
+      properties:
+        userId:
+          type: string
+        newClient:
+          $ref: "#/components/schemas/OwnerContact"
+    PropertyProspectResponse:
+      type: object
+      required:
+        [id, propertyId, userId, firstName, lastName, email, phone, address, postalCode, city, relationRole, createdAt]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+        userId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        postalCode:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        relationRole:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    PropertyProspectListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyProspectResponse"
     TypeDocument:
       type: string
       enum:

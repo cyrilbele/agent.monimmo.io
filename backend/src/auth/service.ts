@@ -9,9 +9,21 @@ import { refreshTokenStore } from "./refresh-token-store";
 
 type UserRow = typeof users.$inferSelect;
 
+const getUserEmailForAuth = (user: UserRow): string => {
+  if (!user.email) {
+    throw new HttpError(
+      409,
+      "USER_EMAIL_REQUIRED",
+      "Cet utilisateur ne peut pas se connecter sans email",
+    );
+  }
+
+  return user.email;
+};
+
 const toUserResponse = (user: UserRow) => ({
   id: user.id,
-  email: user.email,
+  email: getUserEmailForAuth(user),
   firstName: user.firstName,
   lastName: user.lastName,
   orgId: user.orgId,
@@ -36,11 +48,13 @@ const loadUserById = async (id: string, expectedOrgId?: string): Promise<UserRow
 };
 
 const issueAuthTokens = async (user: UserRow) => {
+  const email = getUserEmailForAuth(user);
+
   const tokenPair = await issueTokenPair({
     sub: user.id,
     orgId: user.orgId,
     role: user.role,
-    email: user.email,
+    email,
   });
 
   refreshTokenStore.save(tokenPair.refreshJti, user.id, tokenPair.refreshExpiresAt);
@@ -107,6 +121,7 @@ export const authService = {
       email: input.email,
       firstName: input.firstName,
       lastName: input.lastName,
+      accountType: "AGENT",
       role: "AGENT",
       passwordHash,
       createdAt: now,
@@ -157,6 +172,10 @@ export const authService = {
     });
 
     if (!user) {
+      return;
+    }
+
+    if (!user.email) {
       return;
     }
 

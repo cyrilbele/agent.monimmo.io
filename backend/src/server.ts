@@ -12,11 +12,14 @@ import {
   PropertyCreateRequestSchema,
   PropertyPatchRequestSchema,
   PropertyParticipantCreateRequestSchema,
+  PropertyProspectCreateRequestSchema,
   PropertyStatusUpdateRequestSchema,
   ReviewQueueResolveRequestSchema,
   RegisterRequestSchema,
   RefreshRequestSchema,
   ResetPasswordRequestSchema,
+  UserCreateRequestSchema,
+  UserPatchRequestSchema,
   VocalUpdateRequestSchema,
   VocalUploadRequestSchema,
 } from "./dto/zod";
@@ -32,6 +35,7 @@ import {
   enqueueVocalTranscriptionJob,
 } from "./queues";
 import { reviewQueueService } from "./review-queue/service";
+import { usersService } from "./users/service";
 import { vocalsService } from "./vocals/service";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
@@ -249,6 +253,45 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         const accessToken = getBearerToken();
         const response = await authService.me(accessToken);
         return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (url.pathname === "/users") {
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const accountTypeParam = url.searchParams.get("accountType");
+          const allowedAccountTypes = ["AGENT", "CLIENT", "NOTAIRE"] as const;
+          const accountType =
+            accountTypeParam && allowedAccountTypes.includes(accountTypeParam as (typeof allowedAccountTypes)[number])
+              ? (accountTypeParam as (typeof allowedAccountTypes)[number])
+              : undefined;
+
+          if (accountTypeParam && !accountType) {
+            throw new HttpError(
+              400,
+              "INVALID_ACCOUNT_TYPE",
+              "Le type de compte est invalide",
+            );
+          }
+
+          const response = await usersService.list({
+            orgId: user.orgId,
+            limit: parseLimit(),
+            cursor: url.searchParams.get("cursor") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined,
+            accountType,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "POST") {
+          const payload = await parseJson(UserCreateRequestSchema);
+          const response = await usersService.create({
+            orgId: user.orgId,
+            data: payload,
+          });
+          return withCors(request, json(response, { status: 201 }));
+        }
       }
 
       if (request.method === "GET" && url.pathname === "/properties") {
@@ -583,6 +626,31 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return withCors(request, json(response, { status: 201 }));
       }
 
+      const propertyProspectsMatch = url.pathname.match(/^\/properties\/([^/]+)\/prospects$/);
+      if (propertyProspectsMatch) {
+        const propertyId = decodeURIComponent(propertyProspectsMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await propertiesService.listProspects({
+            orgId: user.orgId,
+            propertyId,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "POST") {
+          const payload = await parseJson(PropertyProspectCreateRequestSchema);
+          const response = await propertiesService.addProspect({
+            orgId: user.orgId,
+            propertyId,
+            userId: payload.userId,
+            newClient: payload.newClient,
+          });
+          return withCors(request, json(response, { status: 201 }));
+        }
+      }
+
       const propertyByIdMatch = url.pathname.match(/^\/properties\/([^/]+)$/);
       if (propertyByIdMatch) {
         const propertyId = decodeURIComponent(propertyByIdMatch[1]);
@@ -601,6 +669,30 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           const response = await propertiesService.patchById({
             orgId: user.orgId,
             id: propertyId,
+            data: payload,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
+      }
+
+      const userByIdMatch = url.pathname.match(/^\/users\/([^/]+)$/);
+      if (userByIdMatch) {
+        const userId = decodeURIComponent(userByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await usersService.getById({
+            orgId: user.orgId,
+            id: userId,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(UserPatchRequestSchema);
+          const response = await usersService.patchById({
+            orgId: user.orgId,
+            id: userId,
             data: payload,
           });
           return withCors(request, json(response, { status: 200 }));

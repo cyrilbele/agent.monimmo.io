@@ -1,0 +1,302 @@
+export interface ErrorResponse {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface UserResponse {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  orgId: string;
+  role: "AGENT" | "MANAGER" | "ADMIN";
+  createdAt: string;
+}
+
+export type AccountType = "AGENT" | "CLIENT" | "NOTAIRE";
+
+export interface AccountUserResponse {
+  id: string;
+  email: string | null;
+  firstName: string;
+  lastName: string;
+  orgId: string;
+  accountType: AccountType;
+  role: string;
+  phone: string | null;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  linkedProperties: AccountUserLinkedPropertyResponse[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountUserListResponse {
+  items: AccountUserResponse[];
+  nextCursor?: string | null;
+}
+
+export interface AccountUserLinkedPropertyResponse {
+  propertyId: string;
+  title: string;
+  city: string;
+  postalCode: string;
+  status: string;
+  relationRole: string;
+  source: "USER_LINK" | "PARTY_LINK";
+}
+
+export interface AccountUserDetailResponse extends AccountUserResponse {
+  linkedProperties: AccountUserLinkedPropertyResponse[];
+}
+
+export interface AccountUserPatchRequest {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  accountType?: AccountType;
+}
+
+export interface AccountUserCreateRequest {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  accountType?: AccountType;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: UserResponse;
+}
+
+export interface PropertyOwner {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+}
+
+export type PropertyStatus =
+  | "PROSPECTION"
+  | "MANDAT_SIGNE"
+  | "EN_DIFFUSION"
+  | "VISITES"
+  | "OFFRES"
+  | "COMPROMIS"
+  | "VENDU"
+  | "ARCHIVE";
+
+export interface PropertyResponse {
+  id: string;
+  title: string;
+  city: string;
+  postalCode: string;
+  address?: string | null;
+  price?: number | null;
+  details: Record<string, unknown>;
+  status: PropertyStatus;
+  orgId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PropertyListResponse {
+  items: PropertyResponse[];
+  nextCursor?: string | null;
+}
+
+export interface PropertyCreateRequest {
+  title: string;
+  city: string;
+  postalCode: string;
+  address: string;
+  ownerUserId?: string;
+  owner?: PropertyOwner;
+  details?: Record<string, unknown>;
+}
+
+export interface PropertyPatchRequest {
+  title?: string;
+  city?: string;
+  postalCode?: string;
+  address?: string;
+  price?: number;
+  details?: Record<string, unknown>;
+}
+
+export interface PropertyStatusUpdateRequest {
+  status: PropertyStatus;
+}
+
+export type ParticipantRole =
+  | "VENDEUR"
+  | "ACHETEUR"
+  | "LOCATAIRE"
+  | "NOTAIRE"
+  | "ARTISAN"
+  | "AUTRE";
+
+export interface PropertyParticipantCreateRequest {
+  contactId: string;
+  role: ParticipantRole;
+}
+
+export interface PropertyParticipantResponse {
+  id: string;
+  propertyId: string;
+  contactId: string;
+  role: ParticipantRole;
+  createdAt: string;
+}
+
+export interface PropertyProspectResponse {
+  id: string;
+  propertyId: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  relationRole: string;
+  createdAt: string;
+}
+
+export interface PropertyProspectListResponse {
+  items: PropertyProspectResponse[];
+}
+
+export interface PropertyProspectCreateRequest {
+  userId?: string;
+  newClient?: PropertyOwner;
+}
+
+export type TypeDocument =
+  | "PIECE_IDENTITE"
+  | "LIVRET_FAMILLE"
+  | "CONTRAT_MARIAGE_PACS"
+  | "JUGEMENT_DIVORCE"
+  | "TITRE_PROPRIETE"
+  | "ATTESTATION_NOTARIALE"
+  | "TAXE_FONCIERE"
+  | "REFERENCE_CADASTRALE"
+  | "MANDAT_VENTE_SIGNE"
+  | "BON_VISITE"
+  | "OFFRE_ACHAT_SIGNEE"
+  | "DPE"
+  | "AMIANTE"
+  | "PLOMB"
+  | "ELECTRICITE"
+  | "GAZ"
+  | "TERMITES"
+  | "ERP_ETAT_RISQUES"
+  | "ASSAINISSEMENT"
+  | "LOI_CARREZ"
+  | "REGLEMENT_COPROPRIETE"
+  | "ETAT_DESCRIPTIF_DIVISION"
+  | "PV_AG_3_DERNIERES_ANNEES"
+  | "MONTANT_CHARGES"
+  | "CARNET_ENTRETIEN"
+  | "FICHE_SYNTHETIQUE"
+  | "PRE_ETAT_DATE"
+  | "ETAT_DATE"
+  | "PHOTOS_HD"
+  | "VIDEO_VISITE"
+  | "PLAN_BIEN"
+  | "ANNONCE_IMMOBILIERE"
+  | "AFFICHE_VITRINE"
+  | "REPORTING_VENDEUR"
+  | "SIMULATION_FINANCEMENT"
+  | "ATTESTATION_CAPACITE_EMPRUNT"
+  | "ACCORD_PRINCIPE_BANCAIRE"
+  | "COMPROMIS_OU_PROMESSE"
+  | "ANNEXES_COMPROMIS"
+  | "PREUVE_SEQUESTRE"
+  | "COURRIER_RETRACTATION"
+  | "LEVEE_CONDITIONS_SUSPENSIVES"
+  | "ACTE_AUTHENTIQUE"
+  | "DECOMPTE_NOTAIRE";
+
+export type FileStatus = "UPLOADED" | "CLASSIFIED" | "REVIEW_REQUIRED";
+
+export interface FileResponse {
+  id: string;
+  propertyId?: string | null;
+  typeDocument?: TypeDocument;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  status: FileStatus;
+  storageKey: string;
+  createdAt: string;
+}
+
+export interface FileListResponse {
+  items: FileResponse[];
+  nextCursor?: string | null;
+}
+
+export interface FileUploadRequest {
+  propertyId: string;
+  typeDocument: TypeDocument;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  contentBase64?: string;
+}
+
+export type MessageChannel = "GMAIL" | "WHATSAPP" | "TELEGRAM";
+export type MessageAIStatus = "PENDING" | "PROCESSED" | "REVIEW_REQUIRED";
+
+export interface MessageResponse {
+  id: string;
+  channel: MessageChannel;
+  propertyId?: string | null;
+  subject?: string | null;
+  body: string;
+  fileIds?: string[];
+  aiStatus: MessageAIStatus;
+  receivedAt: string;
+}
+
+export interface MessageListResponse {
+  items: MessageResponse[];
+  nextCursor?: string | null;
+}
+
+export type IntegrationProvider = "GMAIL" | "GOOGLE_CALENDAR" | "WHATSAPP";
+export type IntegrationStatus = "CONNECTED" | "SYNC_QUEUED";
+export type IntegrationPath = "gmail" | "google-calendar" | "whatsapp";
+
+export interface IntegrationResponse {
+  provider: IntegrationProvider;
+  status: IntegrationStatus;
+  connectedAt?: string | null;
+  lastSyncedAt?: string | null;
+}
+
+export interface IntegrationConnectRequest {
+  code?: string;
+  redirectUri?: string;
+}
+
+export interface IntegrationSyncRequest {
+  cursor?: string;
+}

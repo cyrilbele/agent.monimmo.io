@@ -84,6 +84,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUsers"];
+        put?: never;
+        post: operations["postUsers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUserById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchUserById"];
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -190,6 +222,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postPropertyParticipants"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/properties/{id}/prospects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPropertyProspects"];
+        put?: never;
+        post: operations["postPropertyProspects"];
         delete?: never;
         options?: never;
         head?: never;
@@ -557,6 +605,65 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @enum {string} */
+        AccountType: "AGENT" | "CLIENT" | "NOTAIRE";
+        AccountUserResponse: {
+            id: string;
+            /** Format: email */
+            email: string | null;
+            firstName: string;
+            lastName: string;
+            orgId: string;
+            accountType: components["schemas"]["AccountType"];
+            role: string;
+            phone: string | null;
+            address: string | null;
+            postalCode: string | null;
+            city: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AccountUserLinkedPropertyResponse: {
+            propertyId: string;
+            title: string;
+            city: string;
+            postalCode: string;
+            status: string;
+            relationRole: string;
+            /** @enum {string} */
+            source: "USER_LINK" | "PARTY_LINK";
+        };
+        AccountUserDetailResponse: components["schemas"]["AccountUserResponse"] & {
+            linkedProperties: components["schemas"]["AccountUserLinkedPropertyResponse"][];
+        };
+        AccountUserListResponse: {
+            items: components["schemas"]["AccountUserDetailResponse"][];
+            nextCursor?: string | null;
+        };
+        UserCreateRequest: {
+            firstName?: string | null;
+            lastName?: string | null;
+            /** Format: email */
+            email?: string | null;
+            phone?: string | null;
+            address?: string | null;
+            postalCode?: string | null;
+            city?: string | null;
+            accountType?: components["schemas"]["AccountType"];
+        } | unknown | unknown;
+        UserPatchRequest: {
+            firstName?: string | null;
+            lastName?: string | null;
+            /** Format: email */
+            email?: string | null;
+            phone?: string | null;
+            address?: string | null;
+            postalCode?: string | null;
+            city?: string | null;
+            accountType?: components["schemas"]["AccountType"];
+        };
         MeResponse: {
             user: components["schemas"]["UserResponse"];
         };
@@ -606,6 +713,9 @@ export interface components {
             phone: string;
             /** Format: email */
             email: string;
+            address?: string | null;
+            postalCode?: string | null;
+            city?: string | null;
         };
         PropertyDetails: {
             [key: string]: unknown;
@@ -615,9 +725,10 @@ export interface components {
             city: string;
             postalCode: string;
             address: string;
-            owner: components["schemas"]["OwnerContact"];
+            ownerUserId?: string;
+            owner?: components["schemas"]["OwnerContact"];
             details?: components["schemas"]["PropertyDetails"];
-        };
+        } | unknown | unknown;
         PropertyPatchRequest: {
             title?: string;
             city?: string;
@@ -660,6 +771,29 @@ export interface components {
             role: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        PropertyProspectCreateRequest: {
+            userId?: string;
+            newClient?: components["schemas"]["OwnerContact"];
+        } | unknown | unknown;
+        PropertyProspectResponse: {
+            id: string;
+            propertyId: string;
+            userId: string;
+            firstName: string;
+            lastName: string;
+            /** Format: email */
+            email: string | null;
+            phone: string | null;
+            address: string | null;
+            postalCode: string | null;
+            city: string | null;
+            relationRole: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PropertyProspectListResponse: {
+            items: components["schemas"]["PropertyProspectResponse"][];
         };
         /** @enum {string} */
         TypeDocument: "PIECE_IDENTITE" | "LIVRET_FAMILLE" | "CONTRAT_MARIAGE_PACS" | "JUGEMENT_DIVORCE" | "TITRE_PROPRIETE" | "ATTESTATION_NOTARIALE" | "TAXE_FONCIERE" | "REFERENCE_CADASTRALE" | "MANDAT_VENTE_SIGNE" | "BON_VISITE" | "OFFRE_ACHAT_SIGNEE" | "DPE" | "AMIANTE" | "PLOMB" | "ELECTRICITE" | "GAZ" | "TERMITES" | "ERP_ETAT_RISQUES" | "ASSAINISSEMENT" | "LOI_CARREZ" | "REGLEMENT_COPROPRIETE" | "ETAT_DESCRIPTIF_DIVISION" | "PV_AG_3_DERNIERES_ANNEES" | "MONTANT_CHARGES" | "CARNET_ENTRETIEN" | "FICHE_SYNTHETIQUE" | "PRE_ETAT_DATE" | "ETAT_DATE" | "PHOTOS_HD" | "VIDEO_VISITE" | "PLAN_BIEN" | "ANNONCE_IMMOBILIERE" | "AFFICHE_VITRINE" | "REPORTING_VENDEUR" | "SIMULATION_FINANCEMENT" | "ATTESTATION_CAPACITE_EMPRUNT" | "ACCORD_PRINCIPE_BANCAIRE" | "COMPROMIS_OU_PROMESSE" | "ANNEXES_COMPROMIS" | "PREUVE_SEQUESTRE" | "COURRIER_RETRACTATION" | "LEVEE_CONDITIONS_SUSPENSIVES" | "ACTE_AUTHENTIQUE" | "DECOMPTE_NOTAIRE";
@@ -949,6 +1083,112 @@ export interface operations {
             };
         };
     };
+    getUsers: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["LimitParam"];
+                cursor?: components["parameters"]["CursorParam"];
+                q?: string;
+                accountType?: components["schemas"]["AccountType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des utilisateurs du compte. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountUserListResponse"];
+                };
+            };
+        };
+    };
+    postUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Utilisateur créé. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountUserDetailResponse"];
+                };
+            };
+        };
+    };
+    getUserById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Détail utilisateur. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountUserDetailResponse"];
+                };
+            };
+        };
+    };
+    patchUserById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Utilisateur mis à jour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountUserDetailResponse"];
+                };
+            };
+            /** @description Utilisateur introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     postAuthRegister: {
         parameters: {
             query?: never;
@@ -1187,6 +1427,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PropertyParticipantResponse"];
+                };
+            };
+        };
+    };
+    getPropertyProspects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des prospects du bien. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyProspectListResponse"];
+                };
+            };
+        };
+    };
+    postPropertyProspects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PropertyProspectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Prospect ajouté au bien. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyProspectResponse"];
                 };
             };
         };

@@ -1,0 +1,68 @@
+<section class="mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-8 sm:px-6">
+  <div class="grid w-full gap-6 lg:grid-cols-[1.05fr_1fr]">
+    <article class="panel relative overflow-hidden p-8" aria-labelledby="login-hero-title">
+      <div class="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-brand-200/40 blur-3xl"></div>
+      <p class="text-xs font-semibold uppercase tracking-[0.22em] text-brand-700">Portail agent</p>
+      <h1 id="login-hero-title" class="mt-2 font-serif text-4xl font-semibold text-slate-900 sm:text-5xl">
+        Reprenez votre pipeline vente.
+      </h1>
+      <p class="mt-5 max-w-xl text-sm leading-relaxed text-slate-600">
+        Centralisez messages, documents et relances dans un seul poste de pilotage immobilier.
+      </p>
+    </article>
+
+    <article class="panel p-8" aria-labelledby="login-title">
+      <h2 id="login-title" class="font-serif text-3xl text-slate-900">Connexion</h2>
+      <p class="mt-2 text-sm text-slate-600">Accédez à votre espace Monimmo.</p>
+
+      <form
+        class="mt-6 space-y-4"
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+        novalidate
+        [attr.aria-describedby]="feedback() ? 'login-feedback' : null"
+      >
+        <label class="field-label" for="login-email">Email professionnel</label>
+        <input
+          id="login-email"
+          class="field-input"
+          type="email"
+          formControlName="email"
+          autocomplete="email"
+          required
+          [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched ? 'true' : 'false'"
+        />
+
+        <label class="field-label" for="login-password">Mot de passe</label>
+        <input
+          id="login-password"
+          class="field-input"
+          type="password"
+          formControlName="password"
+          autocomplete="current-password"
+          required
+          [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched ? 'true' : 'false'"
+        />
+
+        @if (feedback()) {
+          <p id="login-feedback" role="status" aria-live="polite" [class]="feedbackClasses()">
+            {{ feedback() }}
+          </p>
+        }
+
+        <button class="btn w-full" type="submit" [disabled]="pending()" [attr.aria-busy]="pending() ? 'true' : 'false'">
+          {{ submitLabel() }}
+        </button>
+      </form>
+
+      <div class="mt-5 flex flex-wrap gap-4 text-sm text-slate-700">
+        <a routerLink="/mot-de-passe" class="font-semibold text-brand-700 hover:text-brand-800">
+          Mot de passe oublié
+        </a>
+        <a routerLink="/inscription" class="font-semibold text-brand-700 hover:text-brand-800">
+          Créer un compte
+        </a>
+      </div>
+    </article>
+  </div>
+</section>

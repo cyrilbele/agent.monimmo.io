@@ -16,10 +16,14 @@ export const users = sqliteTable("users", {
   orgId: text("org_id")
     .notNull()
     .references(() => organizations.id),
-  email: text("email").notNull().unique(),
+  email: text("email").unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   phone: text("phone"),
+  address: text("address"),
+  postalCode: text("postal_code"),
+  city: text("city"),
+  accountType: text("account_type").notNull().default("CLIENT"),
   role: text("role").notNull(),
   passwordHash: text("password_hash").notNull(),
   ...timestampColumns,

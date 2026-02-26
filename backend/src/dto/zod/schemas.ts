@@ -11,6 +11,7 @@ export const ErrorResponseSchema = z.object({
 });
 
 export const UserRoleSchema = z.enum(["AGENT", "MANAGER", "ADMIN"]);
+export const AccountTypeSchema = z.enum(["AGENT", "CLIENT", "NOTAIRE"]);
 
 export const UserResponseSchema = z.object({
   id: z.string(),
@@ -20,6 +21,76 @@ export const UserResponseSchema = z.object({
   orgId: z.string(),
   role: UserRoleSchema,
   createdAt: z.iso.datetime(),
+});
+
+export const AccountUserResponseSchema = z.object({
+  id: z.string(),
+  email: z.email().nullable(),
+  firstName: z.string(),
+  lastName: z.string(),
+  orgId: z.string(),
+  accountType: AccountTypeSchema,
+  role: z.string(),
+  phone: z.string().nullable(),
+  address: z.string().nullable(),
+  postalCode: z.string().nullable(),
+  city: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const AccountUserLinkedPropertyResponseSchema = z.object({
+  propertyId: z.string(),
+  title: z.string(),
+  city: z.string(),
+  postalCode: z.string(),
+  status: z.string(),
+  relationRole: z.string(),
+  source: z.enum(["USER_LINK", "PARTY_LINK"]),
+});
+
+export const AccountUserDetailResponseSchema = AccountUserResponseSchema.extend({
+  linkedProperties: z.array(AccountUserLinkedPropertyResponseSchema),
+});
+
+export const AccountUserListResponseSchema = z.object({
+  items: z.array(AccountUserDetailResponseSchema),
+  nextCursor: z.string().nullable().optional(),
+});
+
+export const UserCreateRequestSchema = z
+  .object({
+    firstName: z.string().nullable().optional(),
+    lastName: z.string().nullable().optional(),
+    email: z.email().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    address: z.string().nullable().optional(),
+    postalCode: z.string().nullable().optional(),
+    city: z.string().nullable().optional(),
+    accountType: AccountTypeSchema.default("CLIENT"),
+  })
+  .superRefine((value, context) => {
+    const email = value.email?.trim() ?? "";
+    const phone = value.phone?.trim() ?? "";
+
+    if (!email && !phone) {
+      context.addIssue({
+        code: "custom",
+        message: "email ou phone est obligatoire",
+        path: ["email"],
+      });
+    }
+  });
+
+export const UserPatchRequestSchema = z.object({
+  firstName: z.string().nullable().optional(),
+  lastName: z.string().nullable().optional(),
+  email: z.email().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  postalCode: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  accountType: AccountTypeSchema.optional(),
 });
 
 export const MeResponseSchema = z.object({
@@ -84,18 +155,32 @@ export const OwnerContactSchema = z.object({
   lastName: z.string().min(1),
   phone: z.string().min(1),
   email: z.email(),
+  address: z.string().nullable().optional(),
+  postalCode: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
 });
 
 export const PropertyDetailsSchema = z.record(z.string(), z.unknown());
 
-export const PropertyCreateRequestSchema = z.object({
-  title: z.string().min(1),
-  city: z.string().min(1),
-  postalCode: z.string().min(1),
-  address: z.string().min(1),
-  owner: OwnerContactSchema,
-  details: PropertyDetailsSchema.optional(),
-});
+export const PropertyCreateRequestSchema = z
+  .object({
+    title: z.string().min(1),
+    city: z.string().min(1),
+    postalCode: z.string().min(1),
+    address: z.string().min(1),
+    ownerUserId: z.string().optional(),
+    owner: OwnerContactSchema.optional(),
+    details: PropertyDetailsSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.ownerUserId && !value.owner) {
+      context.addIssue({
+        code: "custom",
+        message: "ownerUserId ou owner est obligatoire",
+        path: ["ownerUserId"],
+      });
+    }
+  });
 
 export const PropertyPatchRequestSchema = z.object({
   title: z.string().optional(),
@@ -132,6 +217,40 @@ export const PropertyStatusUpdateRequestSchema = z.object({
 export const PropertyParticipantCreateRequestSchema = z.object({
   contactId: z.string(),
   role: z.enum(["VENDEUR", "ACHETEUR", "LOCATAIRE", "NOTAIRE", "ARTISAN", "AUTRE"]),
+});
+
+export const PropertyProspectCreateRequestSchema = z
+  .object({
+    userId: z.string().optional(),
+    newClient: OwnerContactSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.userId && !value.newClient) {
+      context.addIssue({
+        code: "custom",
+        message: "userId ou newClient est obligatoire",
+        path: ["userId"],
+      });
+    }
+  });
+
+export const PropertyProspectResponseSchema = z.object({
+  id: z.string(),
+  propertyId: z.string(),
+  userId: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+  email: z.email().nullable(),
+  phone: z.string().nullable(),
+  address: z.string().nullable(),
+  postalCode: z.string().nullable(),
+  city: z.string().nullable(),
+  relationRole: z.string(),
+  createdAt: z.iso.datetime(),
+});
+
+export const PropertyProspectListResponseSchema = z.object({
+  items: z.array(PropertyProspectResponseSchema),
 });
 
 export const PropertyParticipantResponseSchema = z.object({
@@ -333,7 +452,14 @@ export const IntegrationResponseSchema = z.object({
 export const DtoSchemaMap = {
   HealthResponse: HealthResponseSchema,
   ErrorResponse: ErrorResponseSchema,
+  AccountType: AccountTypeSchema,
   UserResponse: UserResponseSchema,
+  AccountUserResponse: AccountUserResponseSchema,
+  AccountUserListResponse: AccountUserListResponseSchema,
+  AccountUserLinkedPropertyResponse: AccountUserLinkedPropertyResponseSchema,
+  AccountUserDetailResponse: AccountUserDetailResponseSchema,
+  UserCreateRequest: UserCreateRequestSchema,
+  UserPatchRequest: UserPatchRequestSchema,
   MeResponse: MeResponseSchema,
   LoginRequest: LoginRequestSchema,
   LoginResponse: LoginResponseSchema,
@@ -353,6 +479,9 @@ export const DtoSchemaMap = {
   PropertyStatusUpdateRequest: PropertyStatusUpdateRequestSchema,
   PropertyParticipantCreateRequest: PropertyParticipantCreateRequestSchema,
   PropertyParticipantResponse: PropertyParticipantResponseSchema,
+  PropertyProspectCreateRequest: PropertyProspectCreateRequestSchema,
+  PropertyProspectResponse: PropertyProspectResponseSchema,
+  PropertyProspectListResponse: PropertyProspectListResponseSchema,
   TypeDocument: TypeDocumentSchema,
   FileStatus: FileStatusSchema,
   FileUploadRequest: FileUploadRequestSchema,

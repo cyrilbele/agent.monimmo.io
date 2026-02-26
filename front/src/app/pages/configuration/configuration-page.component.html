@@ -1,0 +1,94 @@
+<section class="space-y-4" aria-labelledby="integration-title">
+  <header class="panel p-6">
+    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Connecteurs</p>
+    <h2 id="integration-title" class="mt-2 font-serif text-3xl text-slate-900">Configuration des intégrations</h2>
+    <p class="mt-2 text-sm text-slate-600">
+      Branchez vos canaux externes puis déclenchez des synchronisations incrémentales.
+    </p>
+  </header>
+
+  <div class="grid gap-4 xl:grid-cols-3">
+    @for (provider of providers; track provider.key) {
+      <article class="panel space-y-4 p-5" [attr.aria-labelledby]="provider.key + '-title'">
+        <header>
+          <h3 [id]="provider.key + '-title'" class="font-serif text-2xl text-slate-900">{{ provider.title }}</h3>
+          <p class="mt-1 text-sm text-slate-600">{{ provider.description }}</p>
+        </header>
+
+        <form
+          class="space-y-3 border-t border-slate-200 pt-3"
+          [formGroup]="connectForms[provider.key]"
+          (ngSubmit)="connect(provider.key)"
+          novalidate
+          [attr.aria-describedby]="feedback()[provider.key] ? feedbackId(provider.key) : null"
+        >
+          <h4 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Connexion</h4>
+
+          <div>
+            <label class="field-label" [for]="provider.key + '-code'">Code OAuth</label>
+            <input
+              class="field-input"
+              type="text"
+              [id]="provider.key + '-code'"
+              formControlName="code"
+            />
+          </div>
+
+          <div>
+            <label class="field-label" [for]="provider.key + '-redirect'">Redirect URI</label>
+            <input
+              class="field-input"
+              type="text"
+              [id]="provider.key + '-redirect'"
+              formControlName="redirectUri"
+            />
+          </div>
+
+          <button
+            class="btn w-full"
+            type="submit"
+            [disabled]="connectPending()[provider.key]"
+            [attr.aria-busy]="connectPending()[provider.key] ? 'true' : 'false'"
+          >
+            {{ connectPending()[provider.key] ? "Connexion..." : "Connecter" }}
+          </button>
+        </form>
+
+        <form
+          class="space-y-3 border-t border-slate-200 pt-3"
+          [formGroup]="syncForms[provider.key]"
+          (ngSubmit)="sync(provider.key)"
+          novalidate
+          [attr.aria-describedby]="feedback()[provider.key] ? feedbackId(provider.key) : null"
+        >
+          <h4 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Synchronisation</h4>
+
+          <div>
+            <label class="field-label" [for]="provider.key + '-cursor'">Cursor (optionnel)</label>
+            <input
+              class="field-input"
+              type="text"
+              [id]="provider.key + '-cursor'"
+              formControlName="cursor"
+            />
+          </div>
+
+          <button
+            class="btn btn-ghost w-full"
+            type="submit"
+            [disabled]="syncPending()[provider.key]"
+            [attr.aria-busy]="syncPending()[provider.key] ? 'true' : 'false'"
+          >
+            {{ syncPending()[provider.key] ? "Synchronisation..." : "Lancer la sync" }}
+          </button>
+        </form>
+
+        @if (feedback()[provider.key]) {
+          <p [id]="feedbackId(provider.key)" role="status" aria-live="polite" [class]="feedbackClasses()[provider.key]">
+            {{ feedback()[provider.key] }}
+          </p>
+        }
+      </article>
+    }
+  </div>
+</section>
