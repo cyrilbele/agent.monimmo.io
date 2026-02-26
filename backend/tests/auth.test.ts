@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
+import { passwordResetStore } from "../src/auth/password-reset-store";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
 import { createApp } from "../src/server";
@@ -140,5 +141,70 @@ describe("auth endpoints", () => {
       message: "Refresh token invalide",
     });
   });
-});
 
+  it("crée un compte avec /auth/register", async () => {
+    const email = `nouvel.agent.${crypto.randomUUID()}@monimmo.fr`;
+    const password = "MonimmoPwd123!";
+
+    const response = await createApp().fetch(
+      new Request("http://localhost/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          firstName: "Nina",
+          lastName: "Durand",
+          orgId: "org_register_test",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const payload = await response.json();
+    expect(payload.user.email).toBe(email);
+    expect(typeof payload.accessToken).toBe("string");
+  });
+
+  it("gère forgot-password + reset-password", async () => {
+    const forgotResponse = await createApp().fetch(
+      new Request("http://localhost/auth/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: DEMO_AUTH_EMAIL }),
+      }),
+    );
+
+    expect(forgotResponse.status).toBe(202);
+    const token = passwordResetStore.peekTokenForEmail(DEMO_AUTH_EMAIL);
+    expect(typeof token).toBe("string");
+
+    const newPassword = "NouveauPass123!";
+    const resetResponse = await createApp().fetch(
+      new Request("http://localhost/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token,
+          newPassword,
+        }),
+      }),
+    );
+
+    expect(resetResponse.status).toBe(204);
+
+    const loginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_AUTH_EMAIL,
+          password: newPassword,
+        }),
+      }),
+    );
+
+    expect(loginResponse.status).toBe(200);
+
+  });
+});

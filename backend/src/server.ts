@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { authService } from "./auth/service";
 import {
+  ForgotPasswordRequestSchema,
   LoginRequestSchema,
   LogoutRequestSchema,
+  RegisterRequestSchema,
   RefreshRequestSchema,
+  ResetPasswordRequestSchema,
 } from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
 
@@ -82,6 +85,12 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return json(response, { status: 200 });
       }
 
+      if (request.method === "POST" && url.pathname === "/auth/register") {
+        const payload = await parseJson(RegisterRequestSchema);
+        const response = await authService.register(payload);
+        return json(response, { status: 201 });
+      }
+
       if (request.method === "POST" && url.pathname === "/auth/refresh") {
         const payload = await parseJson(RefreshRequestSchema);
         const response = await authService.refresh(payload);
@@ -91,6 +100,18 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       if (request.method === "POST" && url.pathname === "/auth/logout") {
         const payload = await parseJson(LogoutRequestSchema);
         await authService.logout(payload);
+        return new Response(null, { status: 204 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/forgot-password") {
+        const payload = await parseJson(ForgotPasswordRequestSchema);
+        await authService.forgotPassword(payload);
+        return new Response(null, { status: 202 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/reset-password") {
+        const payload = await parseJson(ResetPasswordRequestSchema);
+        await authService.resetPassword(payload);
         return new Response(null, { status: 204 });
       }
 

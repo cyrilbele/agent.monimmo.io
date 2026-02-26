@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { users } from "../db/schema";
+import { organizations, users } from "../db/schema";
 import { HttpError } from "../http/errors";
+import { passwordResetStore } from "./password-reset-store";
 import { issueTokenPair, verifyAccessToken, verifyRefreshToken } from "./jwt";
 import { refreshTokenStore } from "./refresh-token-store";
 
@@ -29,6 +30,23 @@ const loadUserById = async (id: string): Promise<UserRow> => {
   return user;
 };
 
+const issueAuthTokens = async (user: UserRow) => {
+  const tokenPair = await issueTokenPair({
+    sub: user.id,
+    orgId: user.orgId,
+    role: user.role,
+    email: user.email,
+  });
+
+  refreshTokenStore.save(tokenPair.refreshJti, user.id, tokenPair.refreshExpiresAt);
+
+  return {
+    accessToken: tokenPair.accessToken,
+    refreshToken: tokenPair.refreshToken,
+    expiresIn: tokenPair.expiresIn,
+  };
+};
+
 export const authService = {
   async login(input: { email: string; password: string }) {
     const user = await db.query.users.findFirst({
@@ -44,20 +62,64 @@ export const authService = {
       throw new HttpError(401, "INVALID_CREDENTIALS", "Identifiants invalides");
     }
 
-    const tokenPair = await issueTokenPair({
-      sub: user.id,
-      orgId: user.orgId,
-      role: user.role,
-      email: user.email,
-    });
-
-    refreshTokenStore.save(tokenPair.refreshJti, user.id, tokenPair.refreshExpiresAt);
+    const tokenPair = await issueAuthTokens(user);
 
     return {
-      accessToken: tokenPair.accessToken,
-      refreshToken: tokenPair.refreshToken,
-      expiresIn: tokenPair.expiresIn,
+      ...tokenPair,
       user: toUserResponse(user),
+    };
+  },
+
+  async register(input: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    orgId: string;
+  }) {
+    const existingUser = await db.query.users.findFirst({
+      where: eq(users.email, input.email),
+    });
+
+    if (existingUser) {
+      throw new HttpError(409, "EMAIL_ALREADY_USED", "Cet email est déjà utilisé");
+    }
+
+    const now = new Date();
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, input.orgId),
+    });
+
+    if (!org) {
+      await db.insert(organizations).values({
+        id: input.orgId,
+        name: `Organisation ${input.orgId}`,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const userId = crypto.randomUUID();
+    const passwordHash = await Bun.password.hash(input.password);
+
+    await db.insert(users).values({
+      id: userId,
+      orgId: input.orgId,
+      email: input.email,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      role: "AGENT",
+      passwordHash,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const createdUser = await loadUserById(userId);
+    const tokenPair = await issueAuthTokens(createdUser);
+
+    return {
+      ...tokenPair,
+      user: toUserResponse(createdUser),
     };
   },
 
@@ -72,19 +134,10 @@ export const authService = {
     refreshTokenStore.revoke(jti);
     const user = await loadUserById(payload.sub);
 
-    const tokenPair = await issueTokenPair({
-      sub: user.id,
-      orgId: user.orgId,
-      role: user.role,
-      email: user.email,
-    });
-
-    refreshTokenStore.save(tokenPair.refreshJti, user.id, tokenPair.refreshExpiresAt);
+    const tokenPair = await issueAuthTokens(user);
 
     return {
-      accessToken: tokenPair.accessToken,
-      refreshToken: tokenPair.refreshToken,
-      expiresIn: tokenPair.expiresIn,
+      ...tokenPair,
     };
   },
 
@@ -98,6 +151,39 @@ export const authService = {
     refreshTokenStore.revoke(payload.jti);
   },
 
+  async forgotPassword(input: { email: string }) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, input.email),
+    });
+
+    if (!user) {
+      return;
+    }
+
+    const ttlMs = 30 * 60 * 1000;
+    const token = passwordResetStore.create(user.email, user.id, ttlMs);
+
+    console.info(`Reset token généré pour ${user.email}: ${token}`);
+  },
+
+  async resetPassword(input: { token: string; newPassword: string }) {
+    const userId = passwordResetStore.consume(input.token);
+
+    if (!userId) {
+      throw new HttpError(400, "INVALID_RESET_TOKEN", "Token de réinitialisation invalide");
+    }
+
+    const passwordHash = await Bun.password.hash(input.newPassword);
+
+    await db
+      .update(users)
+      .set({
+        passwordHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+  },
+
   async me(accessToken: string) {
     const payload = await verifyAccessToken(accessToken);
     const user = await loadUserById(payload.sub);
@@ -107,4 +193,3 @@ export const authService = {
     };
   },
 };
-
