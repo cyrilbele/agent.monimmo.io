@@ -24,9 +24,28 @@ type OwnerContactInput = {
   email: string;
 };
 
+type PropertyDetailsInput = Record<string, unknown>;
+
 const generateRandomPassword = (): string => {
   const randomBytes = crypto.getRandomValues(new Uint8Array(24));
   return Buffer.from(randomBytes).toString("base64url");
+};
+
+const parseDetails = (raw: string | null): Record<string, unknown> => {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 };
 
 const toPropertyResponse = (row: PropertyRow) => ({
@@ -36,6 +55,7 @@ const toPropertyResponse = (row: PropertyRow) => ({
   postalCode: row.postalCode,
   address: row.address,
   price: row.price,
+  details: parseDetails(row.details),
   status: row.status,
   orgId: row.orgId,
   createdAt: row.createdAt.toISOString(),
@@ -90,6 +110,7 @@ export const propertiesService = {
     postalCode: string;
     address: string;
     owner: OwnerContactInput;
+    details?: PropertyDetailsInput;
   }) {
     const now = new Date();
     const id = crypto.randomUUID();
@@ -147,6 +168,7 @@ export const propertiesService = {
         postalCode: input.postalCode,
         address: input.address,
         price: null,
+        details: JSON.stringify(input.details ?? {}),
         status: "PROSPECTION",
         createdAt: now,
         updatedAt: now,
@@ -194,6 +216,7 @@ export const propertiesService = {
       postalCode?: string;
       address?: string;
       price?: number;
+      details?: PropertyDetailsInput;
     };
   }) {
     const existing = await db.query.properties.findFirst({
@@ -204,6 +227,14 @@ export const propertiesService = {
       throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
     }
 
+    const mergedDetails =
+      input.data.details === undefined
+        ? parseDetails(existing.details)
+        : {
+            ...parseDetails(existing.details),
+            ...input.data.details,
+          };
+
     await db
       .update(properties)
       .set({
@@ -213,6 +244,7 @@ export const propertiesService = {
         address: input.data.address ?? existing.address,
         price:
           input.data.price === undefined ? existing.price : Math.round(input.data.price),
+        details: JSON.stringify(mergedDetails),
         updatedAt: new Date(),
       })
       .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));

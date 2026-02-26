@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "bun run scripts/dev-stack.mjs",
     "dev:backend": "bun run --cwd backend src/index.ts",
-    "dev:front:build": "bun build front/src/main.ts --outdir front/dist --target browser --watch",
-    "dev:front:serve": "bun run --cwd front src/dev-server.ts",
+    "dev:front:build": "bun run --cwd front watch",
+    "dev:front:serve": "bun run --cwd front start",
     "dev:infra:up": "docker compose up -d redis redisinsight",
     "dev:infra:down": "docker compose down",
     "test:backend": "bun run --cwd backend test",

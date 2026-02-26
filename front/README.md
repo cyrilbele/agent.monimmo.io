@@ -1,29 +1,31 @@
-# Front
+# Front (Angular 21 + Tailwind)
 
-Pages Auth livrées pour les tâches :
-
-- `L1` Login
-- `L2` Création de compte
-- `L3` Mot de passe perdu + reset
+Le front est désormais une application Angular 21 (standalone components) avec styling Tailwind CSS.
 
 ## Lancer en local
+
+```bash
+cd front
+bun install
+bun run start
+```
+
+Application servie sur `http://localhost:5173`.
+
+## Build
 
 ```bash
 cd front
 bun run build
 ```
 
-Puis ouvrir `front/index.html`.
-
-## Dev server front
-
-Depuis la racine du repo:
+## Tests
 
 ```bash
-bun run dev
+cd front
+bun run test
+bun run test:coverage
 ```
-
-Le front est servi sur `http://localhost:5173` (modifiable via `FRONT_PORT`).
 
 ## Routes (hash)
 

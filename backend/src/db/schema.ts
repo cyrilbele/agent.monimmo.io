@@ -35,6 +35,7 @@ export const properties = sqliteTable("properties", {
   postalCode: text("postal_code").notNull(),
   address: text("address"),
   price: integer("price"),
+  details: text("details").notNull().default("{}"),
   status: text("status").notNull(),
   ...timestampColumns,
 });

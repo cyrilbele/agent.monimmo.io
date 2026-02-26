@@ -86,12 +86,15 @@ export const OwnerContactSchema = z.object({
   email: z.email(),
 });
 
+export const PropertyDetailsSchema = z.record(z.string(), z.unknown());
+
 export const PropertyCreateRequestSchema = z.object({
   title: z.string().min(1),
   city: z.string().min(1),
   postalCode: z.string().min(1),
   address: z.string().min(1),
   owner: OwnerContactSchema,
+  details: PropertyDetailsSchema.optional(),
 });
 
 export const PropertyPatchRequestSchema = z.object({
@@ -100,6 +103,7 @@ export const PropertyPatchRequestSchema = z.object({
   postalCode: z.string().optional(),
   address: z.string().optional(),
   price: z.number().optional(),
+  details: PropertyDetailsSchema.optional(),
 });
 
 export const PropertyResponseSchema = z.object({
@@ -109,6 +113,7 @@ export const PropertyResponseSchema = z.object({
   postalCode: z.string(),
   address: z.string().nullable(),
   price: z.number().nullable(),
+  details: PropertyDetailsSchema,
   status: PropertyStatusSchema,
   orgId: z.string(),
   createdAt: z.iso.datetime(),
@@ -340,6 +345,7 @@ export const DtoSchemaMap = {
   ResetPasswordRequest: ResetPasswordRequestSchema,
   PropertyStatus: PropertyStatusSchema,
   OwnerContact: OwnerContactSchema,
+  PropertyDetails: PropertyDetailsSchema,
   PropertyCreateRequest: PropertyCreateRequestSchema,
   PropertyPatchRequest: PropertyPatchRequestSchema,
   PropertyResponse: PropertyResponseSchema,

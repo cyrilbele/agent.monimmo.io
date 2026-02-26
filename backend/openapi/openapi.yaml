@@ -885,6 +885,9 @@ components:
         email:
           type: string
           format: email
+    PropertyDetails:
+      type: object
+      additionalProperties: true
     PropertyCreateRequest:
       type: object
       required: [title, city, postalCode, address, owner]
@@ -903,6 +906,8 @@ components:
           minLength: 1
         owner:
           $ref: "#/components/schemas/OwnerContact"
+        details:
+          $ref: "#/components/schemas/PropertyDetails"
     PropertyPatchRequest:
       type: object
       properties:
@@ -916,9 +921,11 @@ components:
           type: string
         price:
           type: number
+        details:
+          $ref: "#/components/schemas/PropertyDetails"
     PropertyResponse:
       type: object
-      required: [id, title, city, postalCode, status, orgId, createdAt, updatedAt]
+      required: [id, title, city, postalCode, status, orgId, details, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -934,6 +941,8 @@ components:
         price:
           type: number
           nullable: true
+        details:
+          $ref: "#/components/schemas/PropertyDetails"
         status:
           $ref: "#/components/schemas/PropertyStatus"
         orgId:

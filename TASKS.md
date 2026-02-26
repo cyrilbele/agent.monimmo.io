@@ -101,5 +101,5 @@
 
 ## N) Tests Front
 
-- [ ] N1 Unit tests (Jest) + coverage ≥ 80% (bloquant en CI)
+- [x] N1 Unit tests + coverage ≥ 80% (bloquant en CI) (commit: local)
 - [ ] N2 E2E Playwright : parcours login → kanban → ouvrir bien → inbox

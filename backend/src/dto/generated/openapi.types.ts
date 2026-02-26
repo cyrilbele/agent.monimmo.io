@@ -607,12 +607,16 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        PropertyDetails: {
+            [key: string]: unknown;
+        };
         PropertyCreateRequest: {
             title: string;
             city: string;
             postalCode: string;
             address: string;
             owner: components["schemas"]["OwnerContact"];
+            details?: components["schemas"]["PropertyDetails"];
         };
         PropertyPatchRequest: {
             title?: string;
@@ -620,6 +624,7 @@ export interface components {
             postalCode?: string;
             address?: string;
             price?: number;
+            details?: components["schemas"]["PropertyDetails"];
         };
         PropertyResponse: {
             id: string;
@@ -628,6 +633,7 @@ export interface components {
             postalCode: string;
             address?: string | null;
             price?: number | null;
+            details: components["schemas"]["PropertyDetails"];
             status: components["schemas"]["PropertyStatus"];
             orgId: string;
             /** Format: date-time */
