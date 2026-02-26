@@ -22,5 +22,24 @@ describe("server", () => {
       message: "Route introuvable",
     });
   });
-});
 
+  it("expose la spec OpenAPI sur /openapi.yaml", async () => {
+    const response = await createApp().fetch(
+      new Request("http://localhost/openapi.yaml", { method: "GET" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/yaml");
+    expect(await response.text()).toContain("openapi: 3.0.3");
+  });
+
+  it("expose une page swagger ui sur /docs", async () => {
+    const response = await createApp().fetch(
+      new Request("http://localhost/docs", { method: "GET" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain("SwaggerUIBundle");
+  });
+});
