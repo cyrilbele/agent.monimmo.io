@@ -63,3 +63,19 @@ export const propertyParties = sqliteTable("property_parties", {
   role: text("role").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+export const files = sqliteTable("files", {
+  id: text("id").primaryKey(),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  propertyId: text("property_id").references(() => properties.id),
+  typeDocument: text("type_document"),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  status: text("status").notNull(),
+  storageKey: text("storage_key").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});

@@ -37,13 +37,13 @@
 - [x] E1 CRUD `properties` + pagination cursor (commit: 1310f93)
 - [x] E2 `PATCH /properties/:id/status` + timeline event auto (commit: 10bbf15)
 - [x] E3 Participants PropertyParty + endpoints (commit: 691ab57)
-- [x] E4 Tests unitaires services biens + couverture
+- [x] E4 Tests unitaires services biens + couverture (commit: e172e6d)
 
 ## F) Fichiers & classification
 
-- [ ] F1 `POST /files/upload` + DB File (avec typeDocument)
-- [ ] F2 `GET /files/:id/download-url` (local ou S3)
-- [ ] F3 `PATCH /files/:id` (propertyId/typeDocument/status)
+- [x] F1 `POST /files/upload` + DB File (avec typeDocument)
+- [x] F2 `GET /files/:id/download-url` (local ou S3)
+- [x] F3 `PATCH /files/:id` (propertyId/typeDocument/status)
 - [ ] F4 Types documents en français (enum `typeDocument`) + tests
 
 ## G) Queue Redis (BullMQ)

@@ -8,3 +8,4 @@ coverage
 .env.*
 !.env.example
 backend/data/*.db
+backend/data/storage/

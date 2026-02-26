@@ -2,6 +2,8 @@ import { z } from "zod";
 import { authService } from "./auth/service";
 import {
   ForgotPasswordRequestSchema,
+  FileUpdateRequestSchema,
+  FileUploadRequestSchema,
   LoginRequestSchema,
   LogoutRequestSchema,
   PropertyCreateRequestSchema,
@@ -13,6 +15,7 @@ import {
   ResetPasswordRequestSchema,
 } from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
+import { filesService } from "./files/service";
 import { propertiesService } from "./properties/service";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
@@ -164,6 +167,51 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           ...payload,
         });
         return json(response, { status: 201 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/files/upload") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseJson(FileUploadRequestSchema);
+        const response = await filesService.upload({
+          orgId: user.orgId,
+          ...payload,
+        });
+        return json(response, { status: 201 });
+      }
+
+      const fileDownloadUrlMatch = url.pathname.match(/^\/files\/([^/]+)\/download-url$/);
+      if (fileDownloadUrlMatch && request.method === "GET") {
+        const fileId = decodeURIComponent(fileDownloadUrlMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await filesService.getDownloadUrl({
+          orgId: user.orgId,
+          id: fileId,
+        });
+        return json(response, { status: 200 });
+      }
+
+      const fileByIdMatch = url.pathname.match(/^\/files\/([^/]+)$/);
+      if (fileByIdMatch) {
+        const fileId = decodeURIComponent(fileByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await filesService.getById({
+            orgId: user.orgId,
+            id: fileId,
+          });
+          return json(response, { status: 200 });
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(FileUpdateRequestSchema);
+          const response = await filesService.patchById({
+            orgId: user.orgId,
+            id: fileId,
+            data: payload,
+          });
+          return json(response, { status: 200 });
+        }
       }
 
       const propertyStatusMatch = url.pathname.match(/^\/properties\/([^/]+)\/status$/);
