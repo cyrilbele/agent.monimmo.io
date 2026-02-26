@@ -4,11 +4,14 @@ import {
   ForgotPasswordRequestSchema,
   LoginRequestSchema,
   LogoutRequestSchema,
+  PropertyCreateRequestSchema,
+  PropertyPatchRequestSchema,
   RegisterRequestSchema,
   RefreshRequestSchema,
   ResetPasswordRequestSchema,
 } from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
+import { propertiesService } from "./properties/service";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(data), {
@@ -75,6 +78,26 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return authHeader.slice("Bearer ".length).trim();
       };
 
+      const getAuthenticatedUser = async () => {
+        const accessToken = getBearerToken();
+        const me = await authService.me(accessToken);
+        return me.user;
+      };
+
+      const parseLimit = (): number => {
+        const raw = url.searchParams.get("limit");
+        if (!raw) {
+          return 20;
+        }
+
+        const limit = Number(raw);
+        if (Number.isNaN(limit) || limit < 1 || limit > 100) {
+          throw new HttpError(400, "INVALID_LIMIT", "Le paramètre limit est invalide");
+        }
+
+        return limit;
+      };
+
       if (request.method === "GET" && url.pathname === "/health") {
         return json({ status: "ok" }, { status: 200 });
       }
@@ -119,6 +142,50 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         const accessToken = getBearerToken();
         const response = await authService.me(accessToken);
         return json(response, { status: 200 });
+      }
+
+      if (request.method === "GET" && url.pathname === "/properties") {
+        const user = await getAuthenticatedUser();
+        const response = await propertiesService.list({
+          orgId: user.orgId,
+          limit: parseLimit(),
+          cursor: url.searchParams.get("cursor") ?? undefined,
+        });
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/properties") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseJson(PropertyCreateRequestSchema);
+        const response = await propertiesService.create({
+          orgId: user.orgId,
+          ...payload,
+        });
+        return json(response, { status: 201 });
+      }
+
+      const propertyByIdMatch = url.pathname.match(/^\/properties\/([^/]+)$/);
+      if (propertyByIdMatch) {
+        const propertyId = decodeURIComponent(propertyByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await propertiesService.getById({
+            orgId: user.orgId,
+            id: propertyId,
+          });
+          return json(response, { status: 200 });
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(PropertyPatchRequestSchema);
+          const response = await propertiesService.patchById({
+            orgId: user.orgId,
+            id: propertyId,
+            data: payload,
+          });
+          return json(response, { status: 200 });
+        }
       }
 
       if (request.method === "GET" && url.pathname === "/openapi.yaml") {

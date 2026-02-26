@@ -30,11 +30,11 @@
 - [x] D1 Implémenter `StorageProvider` + `LocalStorageProvider` (commit: 7c483c0)
 - [x] D2 Implémenter `S3StorageProvider` (AWS S3 + URLs signées) (commit: bb462e3)
 - [x] D3 Switch provider via env (dev=local, prod=s3) (commit: 3848128)
-- [x] D4 Tests unitaires provider local + mocks S3
+- [x] D4 Tests unitaires provider local + mocks S3 (commit: 275d2c7)
 
 ## E) Biens (kanban-ready)
 
-- [ ] E1 CRUD `properties` + pagination cursor
+- [x] E1 CRUD `properties` + pagination cursor
 - [ ] E2 `PATCH /properties/:id/status` + timeline event auto
 - [ ] E3 Participants PropertyParty + endpoints
 - [ ] E4 Tests unitaires services biens + couverture
