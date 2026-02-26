@@ -13,9 +13,10 @@
     "test:backend": "bun run --cwd backend test",
     "build:backend": "bun run --cwd backend build",
     "build:front": "bun run --cwd front build",
+    "check:dto:backend": "bun run --cwd backend check:dto",
     "test:coverage:backend": "bun run --cwd backend test:coverage",
     "test:coverage:front": "bun run --cwd front test:coverage",
     "check": "bun run test:backend",
-    "ci": "bun run build:backend && bun run build:front && bun run test:coverage:backend && bun run test:coverage:front"
+    "ci": "bun run check:dto:backend && bun run build:backend && bun run build:front && bun run test:coverage:backend && bun run test:coverage:front"
   }
 }

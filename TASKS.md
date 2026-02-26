@@ -11,8 +11,8 @@
 
 ## B) OpenAPI spec-first + DTO convention
 
-- [x] B1 Créer `/backend/openapi/openapi.yaml` (schemas + endpoints)
-- [ ] B2 Mettre en place génération types TS depuis OpenAPI (`/src/dto/generated`)
+- [x] B1 Créer `/backend/openapi/openapi.yaml` (schemas + endpoints) (commit: 8560312)
+- [x] B2 Mettre en place génération types TS depuis OpenAPI (`/src/dto/generated`)
 - [ ] B3 Mettre en place Zod schemas (`/src/dto/zod`) + mapping clair (1 DTO = 1 schema)
 - [ ] B4 Exposer doc OpenAPI (route `/openapi.yaml` + éventuellement swagger UI)
 

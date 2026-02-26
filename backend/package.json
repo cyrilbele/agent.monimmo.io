@@ -6,12 +6,15 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
+    "generate:dto": "bunx openapi-typescript openapi/openapi.yaml -o src/dto/generated/openapi.types.ts",
+    "check:dto": "bun run generate:dto && git diff --exit-code -- src/dto/generated/openapi.types.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir coverage && bun ../scripts/check-lcov-threshold.mjs coverage/lcov.info 80 backend",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {},
   "devDependencies": {
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.2"
   }
 }
