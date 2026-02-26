@@ -42,4 +42,19 @@ describe("server", () => {
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(await response.text()).toContain("SwaggerUIBundle");
   });
+
+  it("retourne une erreur normalisée si la spec OpenAPI manque", async () => {
+    const response = await createApp({
+      openapiPath: "openapi/introuvable.yaml",
+    }).fetch(new Request("http://localhost/openapi.yaml", { method: "GET" }));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      code: "OPENAPI_NOT_FOUND",
+      message: "Spec OpenAPI introuvable",
+      details: {
+        openapiPath: "openapi/introuvable.yaml",
+      },
+    });
+  });
 });

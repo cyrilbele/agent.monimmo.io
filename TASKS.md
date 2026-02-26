@@ -14,12 +14,12 @@
 - [x] B1 Créer `/backend/openapi/openapi.yaml` (schemas + endpoints) (commit: 8560312)
 - [x] B2 Mettre en place génération types TS depuis OpenAPI (`/src/dto/generated`) (commit: 49d89bb)
 - [x] B3 Mettre en place Zod schemas (`/src/dto/zod`) + mapping clair (1 DTO = 1 schema) (commit: e806a56)
-- [x] B4 Exposer doc OpenAPI (route `/openapi.yaml` + éventuellement swagger UI)
+- [x] B4 Exposer doc OpenAPI (route `/openapi.yaml` + éventuellement swagger UI) (commit: 26c4d0c)
 
 ## C) Backend fondations (Bun vanilla)
 
 - [x] C1 Serveur Bun + `GET /health` (commit: bf6a6ef)
-- [ ] C2 Gestion erreurs normalisées `{code,message,details?}`
+- [x] C2 Gestion erreurs normalisées `{code,message,details?}`
 - [ ] C3 Drizzle + SQLite + migrations + seed minimal
 - [ ] C4 Auth JWT access+refresh : login/refresh/logout + `GET /me`
 - [ ] C5 Auth utilisateur : `POST /auth/register`, `POST /auth/forgot-password`, `POST /auth/reset-password`
