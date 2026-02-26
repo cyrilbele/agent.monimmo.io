@@ -9,7 +9,11 @@
   "scripts": {
     "dev:backend": "bun run --cwd backend src/index.ts",
     "test:backend": "bun run --cwd backend test",
-    "check": "bun run test:backend"
+    "build:backend": "bun run --cwd backend build",
+    "build:front": "bun run --cwd front build",
+    "test:coverage:backend": "bun run --cwd backend test:coverage",
+    "test:coverage:front": "bun run --cwd front test:coverage",
+    "check": "bun run test:backend",
+    "ci": "bun run build:backend && bun run build:front && bun run test:coverage:backend && bun run test:coverage:front"
   }
 }
-

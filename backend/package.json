@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
     "test": "bun test",
+    "test:coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir coverage && bun ../scripts/check-lcov-threshold.mjs coverage/lcov.info 80 backend",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {},
@@ -13,4 +15,3 @@
     "typescript": "^5.9.2"
   }
 }
-

@@ -1,0 +1,16 @@
+{
+  "name": "@monimmo/front",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/main.ts --outdir dist --target browser",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir coverage && bun ../scripts/check-lcov-threshold.mjs coverage/lcov.info 80 front",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
+

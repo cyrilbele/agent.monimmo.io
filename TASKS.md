@@ -5,8 +5,8 @@
 
 ## A) Monorepo & CI
 
-- [x] A1 Créer monorepo avec `/backend /front /ios /marketing-site` (commit: N/A - repo sans commit initial)
-- [ ] A2 GitHub Actions : build + tests + coverage (backend+front) + seuil 80% bloquant
+- [x] A1 Créer monorepo avec `/backend /front /ios /marketing-site` (commit: bf6a6ef)
+- [x] A2 GitHub Actions : build + tests + coverage (backend+front) + seuil 80% bloquant
 - [ ] A3 Docker compose dev : Redis + (optionnel) services dev
 
 ## B) OpenAPI spec-first + DTO convention
@@ -18,7 +18,7 @@
 
 ## C) Backend fondations (Bun vanilla)
 
-- [x] C1 Serveur Bun + `GET /health` (commit: N/A - repo sans commit initial)
+- [x] C1 Serveur Bun + `GET /health` (commit: bf6a6ef)
 - [ ] C2 Gestion erreurs normalisées `{code,message,details?}`
 - [ ] C3 Drizzle + SQLite + migrations + seed minimal
 - [ ] C4 Auth JWT access+refresh : login/refresh/logout + `GET /me`
