@@ -23,11 +23,11 @@
 - [x] C3 Drizzle + SQLite + migrations + seed minimal (commit: 2f84d4c)
 - [x] C4 Auth JWT access+refresh : login/refresh/logout + `GET /me` (commit: 4a4fb3a)
 - [x] C5 Auth utilisateur : `POST /auth/register`, `POST /auth/forgot-password`, `POST /auth/reset-password` (commit: 1d1e706)
-- [x] C6 RBAC + scoping `orgId` partout (tests obligatoires)
+- [x] C6 RBAC + scoping `orgId` partout (tests obligatoires) (commit: a860c8c)
 
 ## D) Stockage fichiers (abstraction)
 
-- [ ] D1 Implémenter `StorageProvider` + `LocalStorageProvider`
+- [x] D1 Implémenter `StorageProvider` + `LocalStorageProvider`
 - [ ] D2 Implémenter `S3StorageProvider` (AWS S3 + URLs signées)
 - [ ] D3 Switch provider via env (dev=local, prod=s3)
 - [ ] D4 Tests unitaires provider local + mocks S3
