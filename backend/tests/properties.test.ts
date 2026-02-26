@@ -1,7 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
+import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
+import { properties, propertyTimelineEvents } from "../src/db/schema";
 import { createApp } from "../src/server";
 
 const loginAndGetAccessToken = async (): Promise<string> => {
@@ -178,6 +181,60 @@ describe("properties endpoints", () => {
     expect(patched.city).toBe("Rennes");
   });
 
+  it("met à jour le statut et crée un événement timeline", async () => {
+    const token = await loginAndGetAccessToken();
+    const createResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien statut",
+          city: "Lille",
+          postalCode: "59000",
+          status: "PROSPECTION",
+        }),
+      }),
+    );
+    const created = await createResponse.json();
+
+    const statusResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${created.id}/status`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          status: "MANDAT_SIGNE",
+        }),
+      }),
+    );
+
+    expect(statusResponse.status).toBe(200);
+    const statusPayload = await statusResponse.json();
+    expect(statusPayload.status).toBe("MANDAT_SIGNE");
+
+    const dbProperty = await db.query.properties.findFirst({
+      where: eq(properties.id, created.id),
+    });
+    expect(dbProperty?.status).toBe("MANDAT_SIGNE");
+
+    const timelineEvent = await db.query.propertyTimelineEvents.findFirst({
+      where: and(
+        eq(propertyTimelineEvents.propertyId, created.id),
+        eq(propertyTimelineEvents.eventType, "PROPERTY_STATUS_CHANGED"),
+      ),
+      orderBy: (fields, operators) => [operators.desc(fields.createdAt)],
+    });
+
+    expect(timelineEvent).not.toBeNull();
+    expect(timelineEvent?.payload).toContain("\"from\":\"PROSPECTION\"");
+    expect(timelineEvent?.payload).toContain("\"to\":\"MANDAT_SIGNE\"");
+  });
+
   it("retourne 401 sans token", async () => {
     const response = await createApp().fetch(
       new Request("http://localhost/properties", {
@@ -204,4 +261,3 @@ describe("properties endpoints", () => {
     });
   });
 });
-

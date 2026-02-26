@@ -6,6 +6,7 @@ import {
   LogoutRequestSchema,
   PropertyCreateRequestSchema,
   PropertyPatchRequestSchema,
+  PropertyStatusUpdateRequestSchema,
   RegisterRequestSchema,
   RefreshRequestSchema,
   ResetPasswordRequestSchema,
@@ -162,6 +163,19 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           ...payload,
         });
         return json(response, { status: 201 });
+      }
+
+      const propertyStatusMatch = url.pathname.match(/^\/properties\/([^/]+)\/status$/);
+      if (propertyStatusMatch && request.method === "PATCH") {
+        const propertyId = decodeURIComponent(propertyStatusMatch[1]);
+        const user = await getAuthenticatedUser();
+        const payload = await parseJson(PropertyStatusUpdateRequestSchema);
+        const response = await propertiesService.updateStatus({
+          orgId: user.orgId,
+          id: propertyId,
+          status: payload.status,
+        });
+        return json(response, { status: 200 });
       }
 
       const propertyByIdMatch = url.pathname.match(/^\/properties\/([^/]+)$/);

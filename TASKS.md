@@ -34,8 +34,8 @@
 
 ## E) Biens (kanban-ready)
 
-- [x] E1 CRUD `properties` + pagination cursor
-- [ ] E2 `PATCH /properties/:id/status` + timeline event auto
+- [x] E1 CRUD `properties` + pagination cursor (commit: 1310f93)
+- [x] E2 `PATCH /properties/:id/status` + timeline event auto
 - [ ] E3 Participants PropertyParty + endpoints
 - [ ] E4 Tests unitaires services biens + couverture
 

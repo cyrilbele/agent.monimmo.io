@@ -38,3 +38,15 @@ export const properties = sqliteTable("properties", {
   ...timestampColumns,
 });
 
+export const propertyTimelineEvents = sqliteTable("property_timeline_events", {
+  id: text("id").primaryKey(),
+  propertyId: text("property_id")
+    .notNull()
+    .references(() => properties.id),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  eventType: text("event_type").notNull(),
+  payload: text("payload").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});

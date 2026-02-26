@@ -1,6 +1,6 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/client";
-import { properties } from "../db/schema";
+import { properties, propertyTimelineEvents } from "../db/schema";
 import { HttpError } from "../http/errors";
 
 type PropertyRow = typeof properties.$inferSelect;
@@ -146,6 +146,51 @@ export const propertiesService = {
         updatedAt: new Date(),
       })
       .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));
+
+    const updated = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!updated) {
+      throw new HttpError(500, "PROPERTY_PATCH_FAILED", "Mise à jour impossible");
+    }
+
+    return toPropertyResponse(updated);
+  },
+
+  async updateStatus(input: {
+    orgId: string;
+    id: string;
+    status: string;
+  }) {
+    const existing = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const now = new Date();
+    await db
+      .update(properties)
+      .set({
+        status: input.status,
+        updatedAt: now,
+      })
+      .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));
+
+    await db.insert(propertyTimelineEvents).values({
+      id: crypto.randomUUID(),
+      propertyId: existing.id,
+      orgId: input.orgId,
+      eventType: "PROPERTY_STATUS_CHANGED",
+      payload: JSON.stringify({
+        from: existing.status,
+        to: input.status,
+      }),
+      createdAt: now,
+    });
 
     const updated = await db.query.properties.findFirst({
       where: and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)),
