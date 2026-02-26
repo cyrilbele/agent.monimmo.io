@@ -41,10 +41,10 @@
 
 ## F) Fichiers & classification
 
-- [x] F1 `POST /files/upload` + DB File (avec typeDocument)
-- [x] F2 `GET /files/:id/download-url` (local ou S3)
-- [x] F3 `PATCH /files/:id` (propertyId/typeDocument/status)
-- [ ] F4 Types documents en français (enum `typeDocument`) + tests
+- [x] F1 `POST /files/upload` + DB File (avec typeDocument) (commit: de08277)
+- [x] F2 `GET /files/:id/download-url` (local ou S3) (commit: de08277)
+- [x] F3 `PATCH /files/:id` (propertyId/typeDocument/status) (commit: de08277)
+- [x] F4 Types documents en français (enum `typeDocument`) + tests
 
 ## G) Queue Redis (BullMQ)
 
