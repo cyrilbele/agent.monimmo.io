@@ -18,6 +18,8 @@ type S3StorageProviderOptions = {
   forcePathStyle?: boolean;
   accessKeyId?: string;
   secretAccessKey?: string;
+  client?: Pick<S3Client, "send">;
+  signUrl?: typeof getSignedUrl;
 };
 
 const toUint8Array = (data: StoragePutObjectInput["data"]): Uint8Array => {
@@ -33,23 +35,27 @@ const toUint8Array = (data: StoragePutObjectInput["data"]): Uint8Array => {
 };
 
 export class S3StorageProvider implements StorageProvider {
-  private readonly client: S3Client;
+  private readonly client: Pick<S3Client, "send">;
   private readonly bucket: string;
+  private readonly signUrl: typeof getSignedUrl;
 
   constructor(options: S3StorageProviderOptions) {
     this.bucket = options.bucket;
-    this.client = new S3Client({
-      region: options.region,
-      endpoint: options.endpoint,
-      forcePathStyle: options.forcePathStyle,
-      credentials:
-        options.accessKeyId && options.secretAccessKey
-          ? {
-              accessKeyId: options.accessKeyId,
-              secretAccessKey: options.secretAccessKey,
-            }
-          : undefined,
-    });
+    this.signUrl = options.signUrl ?? getSignedUrl;
+    this.client =
+      options.client ??
+      new S3Client({
+        region: options.region,
+        endpoint: options.endpoint,
+        forcePathStyle: options.forcePathStyle,
+        credentials:
+          options.accessKeyId && options.secretAccessKey
+            ? {
+                accessKeyId: options.accessKeyId,
+                secretAccessKey: options.secretAccessKey,
+              }
+            : undefined,
+      });
   }
 
   async putObject(input: StoragePutObjectInput): Promise<StorageObjectMetadata> {
@@ -77,7 +83,7 @@ export class S3StorageProvider implements StorageProvider {
       Key: key,
     });
 
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    return this.signUrl(this.client as S3Client, command, { expiresIn: expiresInSeconds });
   }
 
   async deleteObject(key: string): Promise<void> {
@@ -89,4 +95,3 @@ export class S3StorageProvider implements StorageProvider {
     );
   }
 }
-
