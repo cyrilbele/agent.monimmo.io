@@ -50,7 +50,7 @@ const expectedTypes = [
 
 describe("TypeDocumentSchema", () => {
   it("couvre tous les types de documents français attendus", () => {
-    expect(TypeDocumentSchema.options).toEqual(expectedTypes);
+    expect([...TypeDocumentSchema.options]).toEqual([...expectedTypes]);
   });
 
   it("rejette une valeur inconnue", () => {
@@ -58,4 +58,3 @@ describe("TypeDocumentSchema", () => {
     expect(parsed.success).toBe(false);
   });
 });
-

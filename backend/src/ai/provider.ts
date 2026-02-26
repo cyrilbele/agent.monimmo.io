@@ -1,0 +1,63 @@
+export type PropertyCandidate = {
+  id: string;
+  title: string;
+  city: string;
+  postalCode: string;
+  address?: string | null;
+};
+
+export type MatchMessageToPropertyInput = {
+  subject?: string | null;
+  body: string;
+  properties: PropertyCandidate[];
+};
+
+export type MatchMessageToPropertyResult = {
+  propertyId: string | null;
+  confidence: number;
+  ambiguousPropertyIds: string[];
+  reasoning: string;
+};
+
+export type ClassifyFileInput = {
+  fileName: string;
+  mimeType: string;
+};
+
+export type ClassifyFileResult = {
+  typeDocument: string | null;
+  confidence: number;
+  reasoning: string;
+};
+
+export type TranscribeVocalInput = {
+  fileName: string;
+  mimeType: string;
+};
+
+export type TranscribeVocalResult = {
+  transcript: string;
+  summary: string;
+  confidence: number;
+};
+
+export type ExtractVocalInsightsInput = {
+  transcript: string;
+  summary?: string | null;
+};
+
+export type ExtractVocalInsightsResult = {
+  insights: Record<string, unknown>;
+  confidence: number;
+};
+
+export interface AIProvider {
+  matchMessageToProperty(
+    input: MatchMessageToPropertyInput,
+  ): Promise<MatchMessageToPropertyResult>;
+  classifyFile(input: ClassifyFileInput): Promise<ClassifyFileResult>;
+  transcribeVocal(input: TranscribeVocalInput): Promise<TranscribeVocalResult>;
+  extractVocalInsights(
+    input: ExtractVocalInsightsInput,
+  ): Promise<ExtractVocalInsightsResult>;
+}

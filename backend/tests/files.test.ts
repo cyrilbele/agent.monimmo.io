@@ -150,5 +150,36 @@ describe("files endpoints", () => {
     expect(patched.typeDocument).toBe("PIECE_IDENTITE");
     expect(patched.status).toBe("CLASSIFIED");
   });
-});
 
+  it("déclenche un traitement IA sur un fichier", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const uploadResponse = await createApp().fetch(
+      new Request("http://localhost/files/upload", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fileName: "dpe-run-ai.pdf",
+          mimeType: "application/pdf",
+          size: 512,
+        }),
+      }),
+    );
+    const uploaded = await uploadResponse.json();
+
+    const runAiResponse = await createApp().fetch(
+      new Request(`http://localhost/files/${uploaded.id}/run-ai`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+
+    expect(runAiResponse.status).toBe(202);
+    const queued = await runAiResponse.json();
+    expect(queued.status).toBe("QUEUED");
+    expect(typeof queued.jobId).toBe("string");
+  });
+});

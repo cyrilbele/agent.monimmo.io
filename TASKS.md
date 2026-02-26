@@ -48,39 +48,39 @@
 
 ## G) Queue Redis (BullMQ)
 
-- [ ] G1 Setup BullMQ (queues, workers, retry/backoff)
-- [ ] G2 Logs jobs start/end/fail + métriques simples (compteurs)
+- [x] G1 Setup BullMQ (queues, workers, retry/backoff)
+- [x] G2 Logs jobs start/end/fail + métriques simples (compteurs)
 
 ## H) Inbox Messages (Gmail + WhatsApp)
 
-- [ ] H1 `GET /messages` + filtres (canal, bien, statut IA)
-- [ ] H2 Rattachement manuel message→bien (`PATCH /messages/:id`)
-- [ ] H3 Lien attachments (fileIds)
+- [x] H1 `GET /messages` + filtres (canal, bien, statut IA)
+- [x] H2 Rattachement manuel message→bien (`PATCH /messages/:id`)
+- [x] H3 Lien attachments (fileIds)
 
 ## I) IA (mockable) + boîte de traitement
 
-- [ ] I1 Définir interface `AIProvider` + `MockAIProvider`
-- [ ] I2 Job `aiProcessMessage` (matching bien + règles review queue)
-- [ ] I3 Job `aiProcessFile` (classification typeDocument + review queue)
-- [ ] I4 ReviewQueue : `GET /review-queue` + `POST /review-queue/:id/resolve`
-- [ ] I5 Tests règles review queue + matching + classification
+- [x] I1 Définir interface `AIProvider` + `MockAIProvider`
+- [x] I2 Job `aiProcessMessage` (matching bien + règles review queue)
+- [x] I3 Job `aiProcessFile` (classification typeDocument + review queue)
+- [x] I4 ReviewQueue : `GET /review-queue` + `POST /review-queue/:id/resolve`
+- [x] I5 Tests règles review queue + matching + classification
 
 ## J) Vocaux : transcription + insights
 
-- [ ] J1 `POST /vocals/upload` (audio -> Storage + DB Vocal)
-- [ ] J2 Job `aiTranscribeVocal` (transcript + summary)
-- [ ] J3 Job `aiExtractInsights` (insights JSON)
-- [ ] J4 Endpoints `POST /vocals/:id/transcribe` + `/vocals/:id/extract-insights`
-- [ ] J5 ReviewQueue sur vocaux (transcript vide / faible confiance / bien ambigu)
-- [ ] J6 Tests parsing insights + règles
+- [x] J1 `POST /vocals/upload` (audio -> Storage + DB Vocal)
+- [x] J2 Job `aiTranscribeVocal` (transcript + summary)
+- [x] J3 Job `aiExtractInsights` (insights JSON)
+- [x] J4 Endpoints `POST /vocals/:id/transcribe` + `/vocals/:id/extract-insights`
+- [x] J5 ReviewQueue sur vocaux (transcript vide / faible confiance / bien ambigu)
+- [x] J6 Tests parsing insights + règles
 
 ## K) Intégrations
 
-- [ ] K1 Gmail OAuth connect + tokens chiffrés
-- [ ] K2 Gmail sync incrémental + idempotence + import attachments → Files
-- [ ] K3 Calendar OAuth connect + sync incrémental événements
-- [ ] K4 WhatsApp : définir provider + ingestion messages + médias
-- [ ] K5 Enqueue IA après ingestion (messages/fichiers)
+- [x] K1 Gmail OAuth connect + tokens chiffrés
+- [x] K2 Gmail sync incrémental + idempotence + import attachments → Files
+- [x] K3 Calendar OAuth connect + sync incrémental événements
+- [x] K4 WhatsApp : définir provider + ingestion messages + médias
+- [x] K5 Enqueue IA après ingestion (messages/fichiers)
 
 ---
 

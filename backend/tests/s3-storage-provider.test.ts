@@ -47,7 +47,7 @@ describe("S3StorageProvider", () => {
       },
       signUrl: async (_client, command, options) => {
         expect(command).toBeInstanceOf(GetObjectCommand);
-        expect((command as GetObjectCommand).input).toEqual({
+        expect((command as unknown as GetObjectCommand).input).toEqual({
           Bucket: "bucket-test",
           Key: "docs/mandat.pdf",
         });
@@ -83,4 +83,3 @@ describe("S3StorageProvider", () => {
     });
   });
 });
-

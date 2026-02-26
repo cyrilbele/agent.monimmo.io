@@ -4,19 +4,35 @@ import {
   ForgotPasswordRequestSchema,
   FileUpdateRequestSchema,
   FileUploadRequestSchema,
+  IntegrationConnectRequestSchema,
+  IntegrationSyncRequestSchema,
   LoginRequestSchema,
   LogoutRequestSchema,
+  MessageUpdateRequestSchema,
   PropertyCreateRequestSchema,
   PropertyPatchRequestSchema,
   PropertyParticipantCreateRequestSchema,
   PropertyStatusUpdateRequestSchema,
+  ReviewQueueResolveRequestSchema,
   RegisterRequestSchema,
   RefreshRequestSchema,
   ResetPasswordRequestSchema,
+  VocalUpdateRequestSchema,
+  VocalUploadRequestSchema,
 } from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
 import { filesService } from "./files/service";
+import { integrationsService } from "./integrations/service";
+import { messagesService } from "./messages/service";
 import { propertiesService } from "./properties/service";
+import {
+  enqueueFileAiJob,
+  enqueueMessageAiJob,
+  enqueueVocalInsightsJob,
+  enqueueVocalTranscriptionJob,
+} from "./queues";
+import { reviewQueueService } from "./review-queue/service";
+import { vocalsService } from "./vocals/service";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(data), {
@@ -72,6 +88,24 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         }
 
         return parsed.data;
+      };
+
+      const parseOptionalJson = async <T extends z.ZodTypeAny>(
+        schema: T,
+      ): Promise<z.infer<T>> => {
+        const contentLength = request.headers.get("content-length");
+        const contentType = request.headers.get("content-type");
+
+        if (!contentLength || contentLength === "0" || !contentType?.includes("application/json")) {
+          const parsedEmpty = schema.safeParse({});
+          if (parsedEmpty.success) {
+            return parsedEmpty.data;
+          }
+
+          throw new HttpError(400, "VALIDATION_ERROR", "Payload invalide", parsedEmpty.error.flatten());
+        }
+
+        return parseJson(schema);
       };
 
       const getBearerToken = (): string => {
@@ -190,6 +224,17 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return json(response, { status: 200 });
       }
 
+      const fileRunAiMatch = url.pathname.match(/^\/files\/([^/]+)\/run-ai$/);
+      if (fileRunAiMatch && request.method === "POST") {
+        const fileId = decodeURIComponent(fileRunAiMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await enqueueFileAiJob({
+          orgId: user.orgId,
+          fileId,
+        });
+        return json(response, { status: 202 });
+      }
+
       const fileByIdMatch = url.pathname.match(/^\/files\/([^/]+)$/);
       if (fileByIdMatch) {
         const fileId = decodeURIComponent(fileByIdMatch[1]);
@@ -212,6 +257,222 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           });
           return json(response, { status: 200 });
         }
+      }
+
+      if (request.method === "GET" && url.pathname === "/messages") {
+        const user = await getAuthenticatedUser();
+        const channelParam = url.searchParams.get("channel");
+        const aiStatusParam = url.searchParams.get("aiStatus");
+
+        const response = await messagesService.list({
+          orgId: user.orgId,
+          limit: parseLimit(),
+          cursor: url.searchParams.get("cursor") ?? undefined,
+          channel: channelParam
+            ? (channelParam as "GMAIL" | "WHATSAPP" | "TELEGRAM")
+            : undefined,
+          propertyId: url.searchParams.get("propertyId") ?? undefined,
+          aiStatus: aiStatusParam
+            ? (aiStatusParam as "PENDING" | "PROCESSED" | "REVIEW_REQUIRED")
+            : undefined,
+        });
+
+        return json(response, { status: 200 });
+      }
+
+      const messageRunAiMatch = url.pathname.match(/^\/messages\/([^/]+)\/run-ai$/);
+      if (messageRunAiMatch && request.method === "POST") {
+        const messageId = decodeURIComponent(messageRunAiMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await enqueueMessageAiJob({
+          orgId: user.orgId,
+          messageId,
+        });
+        return json(response, { status: 202 });
+      }
+
+      const messageByIdMatch = url.pathname.match(/^\/messages\/([^/]+)$/);
+      if (messageByIdMatch) {
+        const messageId = decodeURIComponent(messageByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await messagesService.getById({
+            orgId: user.orgId,
+            id: messageId,
+          });
+          return json(response, { status: 200 });
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(MessageUpdateRequestSchema);
+          const response = await messagesService.patchById({
+            orgId: user.orgId,
+            id: messageId,
+            propertyId: payload.propertyId,
+          });
+          return json(response, { status: 200 });
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/vocals/upload") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseJson(VocalUploadRequestSchema);
+        const response = await vocalsService.upload({
+          orgId: user.orgId,
+          ...payload,
+        });
+        return json(response, { status: 201 });
+      }
+
+      if (request.method === "GET" && url.pathname === "/vocals") {
+        const user = await getAuthenticatedUser();
+        const response = await vocalsService.list({
+          orgId: user.orgId,
+          limit: parseLimit(),
+          cursor: url.searchParams.get("cursor") ?? undefined,
+        });
+        return json(response, { status: 200 });
+      }
+
+      const vocalTranscribeMatch = url.pathname.match(/^\/vocals\/([^/]+)\/transcribe$/);
+      if (vocalTranscribeMatch && request.method === "POST") {
+        const vocalId = decodeURIComponent(vocalTranscribeMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await enqueueVocalTranscriptionJob({
+          orgId: user.orgId,
+          vocalId,
+        });
+        return json(response, { status: 202 });
+      }
+
+      const vocalInsightsMatch = url.pathname.match(/^\/vocals\/([^/]+)\/extract-insights$/);
+      if (vocalInsightsMatch && request.method === "POST") {
+        const vocalId = decodeURIComponent(vocalInsightsMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await enqueueVocalInsightsJob({
+          orgId: user.orgId,
+          vocalId,
+        });
+        return json(response, { status: 202 });
+      }
+
+      const vocalByIdMatch = url.pathname.match(/^\/vocals\/([^/]+)$/);
+      if (vocalByIdMatch) {
+        const vocalId = decodeURIComponent(vocalByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await vocalsService.getById({
+            orgId: user.orgId,
+            id: vocalId,
+          });
+          return json(response, { status: 200 });
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(VocalUpdateRequestSchema);
+          const response = await vocalsService.patchById({
+            orgId: user.orgId,
+            id: vocalId,
+            propertyId: payload.propertyId,
+          });
+          return json(response, { status: 200 });
+        }
+      }
+
+      if (request.method === "GET" && url.pathname === "/review-queue") {
+        const user = await getAuthenticatedUser();
+        const response = await reviewQueueService.list({
+          orgId: user.orgId,
+          limit: parseLimit(),
+          cursor: url.searchParams.get("cursor") ?? undefined,
+        });
+        return json(response, { status: 200 });
+      }
+
+      const reviewResolveMatch = url.pathname.match(/^\/review-queue\/([^/]+)\/resolve$/);
+      if (reviewResolveMatch && request.method === "POST") {
+        const reviewId = decodeURIComponent(reviewResolveMatch[1]);
+        const user = await getAuthenticatedUser();
+        const payload = await parseJson(ReviewQueueResolveRequestSchema);
+        const response = await reviewQueueService.resolve({
+          orgId: user.orgId,
+          id: reviewId,
+          resolution: payload.resolution,
+          propertyId: payload.propertyId,
+          note: payload.note,
+        });
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/integrations/gmail/connect") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(IntegrationConnectRequestSchema);
+        const response = await integrationsService.connect({
+          orgId: user.orgId,
+          provider: "GMAIL",
+          code: payload.code,
+          redirectUri: payload.redirectUri,
+        });
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/integrations/gmail/sync") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(IntegrationSyncRequestSchema);
+        const response = await integrationsService.sync({
+          orgId: user.orgId,
+          provider: "GMAIL",
+          cursor: payload.cursor,
+        });
+        return json(response, { status: 202 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/integrations/google-calendar/connect") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(IntegrationConnectRequestSchema);
+        const response = await integrationsService.connect({
+          orgId: user.orgId,
+          provider: "GOOGLE_CALENDAR",
+          code: payload.code,
+          redirectUri: payload.redirectUri,
+        });
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/integrations/google-calendar/sync") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(IntegrationSyncRequestSchema);
+        const response = await integrationsService.sync({
+          orgId: user.orgId,
+          provider: "GOOGLE_CALENDAR",
+          cursor: payload.cursor,
+        });
+        return json(response, { status: 202 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/integrations/whatsapp/connect") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(IntegrationConnectRequestSchema);
+        const response = await integrationsService.connect({
+          orgId: user.orgId,
+          provider: "WHATSAPP",
+          code: payload.code,
+          redirectUri: payload.redirectUri,
+        });
+        return json(response, { status: 200 });
+      }
+
+      if (request.method === "POST" && url.pathname === "/integrations/whatsapp/sync") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(IntegrationSyncRequestSchema);
+        const response = await integrationsService.sync({
+          orgId: user.orgId,
+          provider: "WHATSAPP",
+          cursor: payload.cursor,
+        });
+        return json(response, { status: 202 });
       }
 
       const propertyStatusMatch = url.pathname.match(/^\/properties\/([^/]+)\/status$/);
