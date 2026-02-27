@@ -1,13 +1,16 @@
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "../db/client";
 import {
   properties,
   propertyParties,
   propertyTimelineEvents,
   propertyUserLinks,
+  propertyVisits,
   users,
 } from "../db/schema";
 import { HttpError } from "../http/errors";
+import { findCoordinatesForAddress, type PropertyCoordinates } from "./geocoding";
+import { getPropertyRisks, type PropertyRisksResponse } from "./georisques";
 
 type PropertyRow = typeof properties.$inferSelect;
 
@@ -30,6 +33,9 @@ type OwnerContactInput = {
 type ProspectContactInput = OwnerContactInput;
 
 type PropertyDetailsInput = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const generateRandomPassword = (): string => {
   const randomBytes = crypto.getRandomValues(new Uint8Array(24));
@@ -77,6 +83,64 @@ const parseDetails = (raw: string | null): Record<string, unknown> => {
   }
 };
 
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const numeric = Number(trimmed.replace(",", "."));
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  return null;
+};
+
+const getLocationDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const rawLocation = details.location;
+  if (!isRecord(rawLocation)) {
+    return {};
+  }
+
+  return rawLocation;
+};
+
+const applyCoordinatesToDetails = (
+  details: PropertyDetailsInput,
+  coordinates: PropertyCoordinates | null,
+): PropertyDetailsInput => {
+  const location = getLocationDetails(details);
+
+  return {
+    ...details,
+    location: {
+      ...location,
+      gpsLat: coordinates?.latitude ?? null,
+      gpsLng: coordinates?.longitude ?? null,
+    },
+  };
+};
+
+const withGeocodedCoordinates = async (input: {
+  details: PropertyDetailsInput;
+  address: string;
+  postalCode: string;
+  city: string;
+}): Promise<PropertyDetailsInput> => {
+  const coordinates = await findCoordinatesForAddress({
+    address: input.address,
+    postalCode: input.postalCode,
+    city: input.city,
+  });
+
+  return applyCoordinatesToDetails(input.details, coordinates);
+};
+
 const toPropertyResponse = (row: PropertyRow) => ({
   id: row.id,
   title: row.title,
@@ -102,6 +166,19 @@ const parseCursor = (cursor?: string): number | undefined => {
   }
 
   return numericCursor;
+};
+
+const parseIsoDateTime = (
+  rawValue: string,
+  errorCode: string,
+  errorMessage: string,
+): Date => {
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new HttpError(400, errorCode, errorMessage);
+  }
+
+  return parsed;
 };
 
 export const propertiesService = {
@@ -152,6 +229,13 @@ export const propertiesService = {
         "Un proprietaire existant ou un nouveau proprietaire est requis",
       );
     }
+
+    const detailsWithCoordinates = await withGeocodedCoordinates({
+      details: input.details ?? {},
+      address: input.address,
+      postalCode: input.postalCode,
+      city: input.city,
+    });
 
     await db.transaction(async (tx) => {
       let ownerUserId: string;
@@ -244,7 +328,7 @@ export const propertiesService = {
         postalCode: input.postalCode,
         address: input.address,
         price: null,
-        details: JSON.stringify(input.details ?? {}),
+        details: JSON.stringify(detailsWithCoordinates),
         status: "PROSPECTION",
         createdAt: now,
         updatedAt: now,
@@ -311,6 +395,23 @@ export const propertiesService = {
             ...input.data.details,
           };
 
+    const nextAddress = input.data.address ?? existing.address ?? "";
+    const nextPostalCode = input.data.postalCode ?? existing.postalCode;
+    const nextCity = input.data.city ?? existing.city;
+    const shouldRefreshCoordinates =
+      (input.data.address !== undefined && input.data.address !== existing.address) ||
+      (input.data.postalCode !== undefined && input.data.postalCode !== existing.postalCode) ||
+      (input.data.city !== undefined && input.data.city !== existing.city);
+
+    const detailsWithCoordinates = shouldRefreshCoordinates
+      ? await withGeocodedCoordinates({
+          details: mergedDetails,
+          address: nextAddress,
+          postalCode: nextPostalCode,
+          city: nextCity,
+        })
+      : mergedDetails;
+
     await db
       .update(properties)
       .set({
@@ -320,7 +421,7 @@ export const propertiesService = {
         address: input.data.address ?? existing.address,
         price:
           input.data.price === undefined ? existing.price : Math.round(input.data.price),
-        details: JSON.stringify(mergedDetails),
+        details: JSON.stringify(detailsWithCoordinates),
         updatedAt: new Date(),
       })
       .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));
@@ -605,6 +706,268 @@ export const propertiesService = {
     };
   },
 
+  async listVisits(input: {
+    orgId: string;
+    propertyId: string;
+  }) {
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!property) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const rows = await db
+      .select({
+        id: propertyVisits.id,
+        propertyId: propertyVisits.propertyId,
+        propertyTitle: properties.title,
+        prospectUserId: propertyVisits.prospectUserId,
+        prospectFirstName: users.firstName,
+        prospectLastName: users.lastName,
+        prospectEmail: users.email,
+        prospectPhone: users.phone,
+        startsAt: propertyVisits.startsAt,
+        endsAt: propertyVisits.endsAt,
+        createdAt: propertyVisits.createdAt,
+        updatedAt: propertyVisits.updatedAt,
+      })
+      .from(propertyVisits)
+      .innerJoin(
+        properties,
+        and(
+          eq(propertyVisits.propertyId, properties.id),
+          eq(properties.orgId, input.orgId),
+        ),
+      )
+      .innerJoin(
+        users,
+        and(
+          eq(propertyVisits.prospectUserId, users.id),
+          eq(users.orgId, input.orgId),
+        ),
+      )
+      .where(
+        and(
+          eq(propertyVisits.orgId, input.orgId),
+          eq(propertyVisits.propertyId, input.propertyId),
+        ),
+      )
+      .orderBy(desc(propertyVisits.startsAt));
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        propertyId: row.propertyId,
+        propertyTitle: row.propertyTitle,
+        prospectUserId: row.prospectUserId,
+        prospectFirstName: row.prospectFirstName,
+        prospectLastName: row.prospectLastName,
+        prospectEmail: row.prospectEmail,
+        prospectPhone: row.prospectPhone,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+    };
+  },
+
+  async addVisit(input: {
+    orgId: string;
+    propertyId: string;
+    prospectUserId: string;
+    startsAt: string;
+    endsAt: string;
+  }) {
+    const startsAt = parseIsoDateTime(
+      input.startsAt,
+      "INVALID_VISIT_START",
+      "La date de debut de visite est invalide",
+    );
+    const endsAt = parseIsoDateTime(
+      input.endsAt,
+      "INVALID_VISIT_END",
+      "La date de fin de visite est invalide",
+    );
+
+    if (endsAt.getTime() <= startsAt.getTime()) {
+      throw new HttpError(
+        400,
+        "INVALID_VISIT_TIME_RANGE",
+        "L'heure de fin doit etre apres l'heure de debut",
+      );
+    }
+
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!property) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const prospect = await db.query.users.findFirst({
+      where: and(eq(users.id, input.prospectUserId), eq(users.orgId, input.orgId)),
+    });
+
+    if (!prospect) {
+      throw new HttpError(404, "USER_NOT_FOUND", "Prospect introuvable");
+    }
+
+    if (prospect.accountType !== "CLIENT") {
+      throw new HttpError(
+        400,
+        "PROSPECT_MUST_BE_CLIENT",
+        "Le prospect doit etre un utilisateur de type client",
+      );
+    }
+
+    const existingLink = await db.query.propertyUserLinks.findFirst({
+      where: and(
+        eq(propertyUserLinks.orgId, input.orgId),
+        eq(propertyUserLinks.propertyId, input.propertyId),
+        eq(propertyUserLinks.userId, input.prospectUserId),
+      ),
+    });
+
+    if (existingLink?.role === "OWNER") {
+      throw new HttpError(
+        400,
+        "PROSPECT_ALREADY_OWNER",
+        "Ce client est deja proprietaire de ce bien",
+      );
+    }
+
+    const now = new Date();
+
+    if (!existingLink) {
+      await db.insert(propertyUserLinks).values({
+        id: crypto.randomUUID(),
+        orgId: input.orgId,
+        propertyId: input.propertyId,
+        userId: input.prospectUserId,
+        role: "PROSPECT",
+        createdAt: now,
+      });
+    } else if (existingLink.role !== "PROSPECT" && existingLink.role !== "ACHETEUR") {
+      await db
+        .update(propertyUserLinks)
+        .set({ role: "PROSPECT" })
+        .where(eq(propertyUserLinks.id, existingLink.id));
+    }
+
+    const visitId = crypto.randomUUID();
+
+    await db.insert(propertyVisits).values({
+      id: visitId,
+      orgId: input.orgId,
+      propertyId: input.propertyId,
+      prospectUserId: input.prospectUserId,
+      startsAt,
+      endsAt,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(propertyTimelineEvents).values({
+      id: crypto.randomUUID(),
+      propertyId: input.propertyId,
+      orgId: input.orgId,
+      eventType: "VISIT_SCHEDULED",
+      payload: JSON.stringify({
+        visitId,
+        prospectUserId: input.prospectUserId,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+      }),
+      createdAt: now,
+    });
+
+    return {
+      id: visitId,
+      propertyId: input.propertyId,
+      propertyTitle: property.title,
+      prospectUserId: prospect.id,
+      prospectFirstName: prospect.firstName,
+      prospectLastName: prospect.lastName,
+      prospectEmail: prospect.email,
+      prospectPhone: prospect.phone,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+  },
+
+  async listCalendarVisits(input: {
+    orgId: string;
+    from?: string;
+    to?: string;
+  }) {
+    const fromDate = input.from
+      ? parseIsoDateTime(input.from, "INVALID_CALENDAR_FROM", "La borne de debut est invalide")
+      : null;
+    const toDate = input.to
+      ? parseIsoDateTime(input.to, "INVALID_CALENDAR_TO", "La borne de fin est invalide")
+      : null;
+
+    const filters = [eq(propertyVisits.orgId, input.orgId)];
+
+    if (fromDate) {
+      filters.push(gt(propertyVisits.endsAt, fromDate));
+    }
+
+    if (toDate) {
+      filters.push(lt(propertyVisits.startsAt, toDate));
+    }
+
+    const rows = await db
+      .select({
+        id: propertyVisits.id,
+        propertyId: propertyVisits.propertyId,
+        propertyTitle: properties.title,
+        prospectUserId: propertyVisits.prospectUserId,
+        prospectFirstName: users.firstName,
+        prospectLastName: users.lastName,
+        prospectEmail: users.email,
+        prospectPhone: users.phone,
+        startsAt: propertyVisits.startsAt,
+        endsAt: propertyVisits.endsAt,
+        createdAt: propertyVisits.createdAt,
+        updatedAt: propertyVisits.updatedAt,
+      })
+      .from(propertyVisits)
+      .innerJoin(
+        properties,
+        and(eq(propertyVisits.propertyId, properties.id), eq(properties.orgId, input.orgId)),
+      )
+      .innerJoin(
+        users,
+        and(eq(propertyVisits.prospectUserId, users.id), eq(users.orgId, input.orgId)),
+      )
+      .where(and(...filters))
+      .orderBy(propertyVisits.startsAt);
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        propertyId: row.propertyId,
+        propertyTitle: row.propertyTitle,
+        prospectUserId: row.prospectUserId,
+        prospectFirstName: row.prospectFirstName,
+        prospectLastName: row.prospectLastName,
+        prospectEmail: row.prospectEmail,
+        prospectPhone: row.prospectPhone,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+    };
+  },
+
   async addParticipant(input: {
     orgId: string;
     propertyId: string;
@@ -638,5 +1001,36 @@ export const propertiesService = {
       role: input.role,
       createdAt: createdAt.toISOString(),
     };
+  },
+
+  async getRisks(input: { orgId: string; propertyId: string }): Promise<PropertyRisksResponse> {
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!property) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const details = parseDetails(property.details);
+    const locationDetails = (() => {
+      const raw = details.location;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {} as Record<string, unknown>;
+      }
+
+      return raw as Record<string, unknown>;
+    })();
+
+    return getPropertyRisks({
+      propertyId: property.id,
+      location: {
+        address: property.address,
+        postalCode: property.postalCode,
+        city: property.city,
+        latitude: toFiniteNumber(locationDetails.gpsLat),
+        longitude: toFiniteNumber(locationDetails.gpsLng),
+      },
+    });
   },
 };

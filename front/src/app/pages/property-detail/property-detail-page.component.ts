@@ -23,8 +23,10 @@ import type {
   MessageResponse,
   PropertyPatchRequest,
   PropertyProspectResponse,
+  PropertyRiskResponse,
   PropertyResponse,
   PropertyStatus,
+  PropertyVisitResponse,
   TypeDocument,
 } from "../../core/api.models";
 import {
@@ -44,8 +46,15 @@ import { PropertyService } from "../../services/property.service";
 import { UserService } from "../../services/user.service";
 import { VocalService } from "../../services/vocal.service";
 
-type MainTabId = "property" | "documents" | "prospects" | "messages";
+type MainTabId =
+  | "property"
+  | "documents"
+  | "prospects"
+  | "visits"
+  | "messages"
+  | "risks";
 type ProspectMode = "existing" | "new";
+type VisitProspectMode = "existing" | "new";
 type CategoryControls = Record<string, FormControl<string>>;
 type CategoryForm = FormGroup<CategoryControls>;
 type CategoryForms = Record<PropertyDetailsCategoryId, CategoryForm>;
@@ -75,6 +84,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly messages = signal<MessageResponse[]>([]);
   readonly files = signal<FileResponse[]>([]);
   readonly prospects = signal<PropertyProspectResponse[]>([]);
+  readonly visits = signal<PropertyVisitResponse[]>([]);
+  readonly risks = signal<PropertyRiskResponse | null>(null);
+  readonly risksLoading = signal(false);
+  readonly risksError = signal<string | null>(null);
   readonly clients = signal<AccountUserResponse[]>([]);
 
   readonly activeMainTab = signal<MainTabId>("property");
@@ -92,6 +105,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly statusPending = signal(false);
   readonly prospectPending = signal(false);
   readonly uploadPending = signal(false);
+  readonly visitPending = signal(false);
 
   readonly uploadModalOpen = signal(false);
   readonly selectedFile = signal<File | null>(null);
@@ -102,8 +116,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly recordedVocal = signal<Blob | null>(null);
   readonly prospectModalOpen = signal(false);
   readonly prospectMode = signal<ProspectMode>("existing");
+  readonly visitModalOpen = signal(false);
+  readonly visitProspectMode = signal<VisitProspectMode>("existing");
+  readonly visitFeedback = signal<string | null>(null);
   readonly clientsLoading = signal(false);
   readonly prospectSuggestionsOpen = signal(false);
+  readonly visitSuggestionsOpen = signal(false);
 
   readonly statusLabels = STATUS_LABELS;
 
@@ -125,6 +143,20 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   readonly uploadForm = this.formBuilder.nonNullable.group({
     typeDocument: [DEFAULT_TYPE_DOCUMENT, [Validators.required]],
+  });
+
+  readonly visitForm = this.formBuilder.nonNullable.group({
+    existingLookup: [""],
+    userId: [""],
+    startsAt: [""],
+    endsAt: [""],
+    firstName: [""],
+    lastName: [""],
+    phone: [""],
+    email: [""],
+    address: [""],
+    postalCode: [""],
+    city: [""],
   });
 
   readonly activePropertyCategoryDefinition = computed<PropertyDetailsCategoryDefinition>(() => {
@@ -214,6 +246,35 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       })
       .slice(0, 8);
   });
+  readonly visitAutocompleteId = `visit-autocomplete-${this.propertyId || "property"}`;
+  readonly visitAutocompleteListId = `visit-autocomplete-list-${this.propertyId || "property"}`;
+  readonly filteredVisitClients = computed(() => {
+    const clients = this.clients();
+    const lookup = this.visitForm.controls.existingLookup.value.trim().toLowerCase();
+
+    if (!lookup) {
+      return clients.slice(0, 8);
+    }
+
+    return clients
+      .filter((client) => {
+        const fullName = `${client.firstName} ${client.lastName}`.trim().toLowerCase();
+        const email = (client.email ?? "").toLowerCase();
+        const phone = (client.phone ?? "").toLowerCase();
+        return (
+          fullName.includes(lookup) ||
+          email.includes(lookup) ||
+          phone.includes(lookup)
+        );
+      })
+      .slice(0, 8);
+  });
+
+  readonly sortedVisits = computed(() =>
+    this.visits()
+      .slice()
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+  );
 
   private mediaRecorder: MediaRecorder | null = null;
   private mediaStream: MediaStream | null = null;
@@ -238,20 +299,27 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   async loadPropertyBundle(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.risks.set(null);
+    this.risksError.set(null);
+    this.risksLoading.set(false);
 
     try {
-      const [property, messagesResponse, filesResponse, prospectsResponse] = await Promise.all([
-        this.propertyService.getById(this.propertyId),
-        this.messageService.listByProperty(this.propertyId, 100),
-        this.fileService.listByProperty(this.propertyId, 100),
-        this.propertyService.listProspects(this.propertyId),
-      ]);
+      const [property, messagesResponse, filesResponse, prospectsResponse, visitsResponse] =
+        await Promise.all([
+          this.propertyService.getById(this.propertyId),
+          this.messageService.listByProperty(this.propertyId, 100),
+          this.fileService.listByProperty(this.propertyId, 100),
+          this.propertyService.listProspects(this.propertyId),
+          this.propertyService.listVisits(this.propertyId),
+        ]);
 
       this.property.set(property);
       this.messages.set(messagesResponse.items);
       this.files.set(filesResponse.items);
       this.prospects.set(prospectsResponse.items);
+      this.visits.set(visitsResponse.items);
       this.categoryForms.set(this.createCategoryForms(property));
+      void this.loadPropertyRisks();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Chargement impossible.";
       this.error.set(message);
@@ -824,6 +892,202 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
   }
 
+  openVisitModal(): void {
+    const startsAt = this.getDefaultVisitStart();
+    const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+
+    this.visitProspectMode.set("existing");
+    this.visitForm.reset({
+      existingLookup: "",
+      userId: "",
+      startsAt: this.formatForDateTimeInput(startsAt),
+      endsAt: this.formatForDateTimeInput(endsAt),
+      firstName: "",
+      lastName: "",
+      phone: "",
+      email: "",
+      address: "",
+      postalCode: "",
+      city: "",
+    });
+    this.visitFeedback.set(null);
+    this.visitSuggestionsOpen.set(false);
+    this.visitModalOpen.set(true);
+
+    if (this.clients().length === 0) {
+      void this.loadClientOptions();
+    }
+  }
+
+  closeVisitModal(): void {
+    this.visitModalOpen.set(false);
+    this.visitSuggestionsOpen.set(false);
+  }
+
+  onVisitBackdropClick(event: MouseEvent): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    this.closeVisitModal();
+  }
+
+  setVisitProspectMode(mode: VisitProspectMode): void {
+    this.visitProspectMode.set(mode);
+    this.visitFeedback.set(null);
+    this.visitForm.controls.userId.setValue("");
+    this.visitSuggestionsOpen.set(false);
+  }
+
+  onVisitStartInput(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const startsAtRaw = target.value.trim();
+    if (!startsAtRaw) {
+      return;
+    }
+
+    const startDate = new Date(startsAtRaw);
+    if (Number.isNaN(startDate.getTime())) {
+      return;
+    }
+
+    const endsAt = new Date(startDate.getTime() + 60 * 60 * 1000);
+    this.visitForm.controls.endsAt.setValue(this.formatForDateTimeInput(endsAt));
+  }
+
+  onVisitLookupInput(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+
+    this.applyVisitLookupValue(target.value);
+    this.visitSuggestionsOpen.set(true);
+  }
+
+  onVisitLookupFocus(): void {
+    this.visitSuggestionsOpen.set(true);
+  }
+
+  onVisitLookupContainerFocusOut(event: FocusEvent, container: HTMLElement): void {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && container.contains(relatedTarget)) {
+      return;
+    }
+
+    this.visitSuggestionsOpen.set(false);
+  }
+
+  onVisitSuggestionMouseDown(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
+  toggleVisitSuggestions(): void {
+    this.visitSuggestionsOpen.update((isOpen) => !isOpen);
+  }
+
+  selectVisitClient(client: AccountUserResponse): void {
+    this.visitForm.controls.existingLookup.setValue(this.prospectOptionLabel(client));
+    this.visitForm.controls.userId.setValue(client.id);
+    this.visitSuggestionsOpen.set(false);
+  }
+
+  async addVisit(): Promise<void> {
+    if (this.visitPending()) {
+      return;
+    }
+
+    const startsAtRaw = this.visitForm.controls.startsAt.value.trim();
+    const endsAtRaw = this.visitForm.controls.endsAt.value.trim();
+
+    if (!startsAtRaw || !endsAtRaw) {
+      this.visitFeedback.set("Renseignez les horaires de debut et de fin.");
+      return;
+    }
+
+    const startsAtIso = this.toIsoFromDateTimeInput(startsAtRaw);
+    const endsAtIso = this.toIsoFromDateTimeInput(endsAtRaw);
+
+    if (!startsAtIso || !endsAtIso) {
+      this.visitFeedback.set("Les horaires fournis sont invalides.");
+      return;
+    }
+
+    if (new Date(endsAtIso).getTime() <= new Date(startsAtIso).getTime()) {
+      this.visitFeedback.set("L'heure de fin doit etre apres l'heure de debut.");
+      return;
+    }
+
+    this.visitPending.set(true);
+    this.visitFeedback.set("Creation de la visite en cours...");
+
+    try {
+      let prospectUserId = "";
+      const mode = this.visitProspectMode();
+
+      if (mode === "existing") {
+        const client = this.resolveSelectedVisitClient();
+
+        if (!client) {
+          this.visitFeedback.set(
+            "Selectionnez un client existant dans la liste d'autocompletion.",
+          );
+          return;
+        }
+
+        prospectUserId = client.id;
+      } else {
+        const firstName = this.visitForm.controls.firstName.value.trim();
+        const lastName = this.visitForm.controls.lastName.value.trim();
+        const phone = this.visitForm.controls.phone.value.trim();
+        const email = this.visitForm.controls.email.value.trim().toLowerCase();
+
+        if (!firstName || !lastName || !phone || !email) {
+          this.visitFeedback.set("Renseignez les champs obligatoires du nouveau prospect.");
+          return;
+        }
+
+        const createdProspect = await this.propertyService.addProspect(this.propertyId, {
+          newClient: {
+            firstName,
+            lastName,
+            phone,
+            email,
+            address: this.normalizeEmptyAsNull(this.visitForm.controls.address.value),
+            postalCode: this.normalizeEmptyAsNull(this.visitForm.controls.postalCode.value),
+            city: this.normalizeEmptyAsNull(this.visitForm.controls.city.value),
+          },
+        });
+
+        prospectUserId = createdProspect.userId;
+        this.prospects.update((items) =>
+          [createdProspect, ...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        );
+      }
+
+      const createdVisit = await this.propertyService.addVisit(this.propertyId, {
+        prospectUserId,
+        startsAt: startsAtIso,
+        endsAt: endsAtIso,
+      });
+
+      this.visits.update((items) =>
+        [createdVisit, ...items].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+      );
+      this.requestFeedback.set("Visite ajoutee.");
+      this.closeVisitModal();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Creation de visite impossible.";
+      this.visitFeedback.set(message);
+    } finally {
+      this.visitPending.set(false);
+    }
+  }
+
   formatSize(bytes: number): string {
     if (bytes < 1024) {
       return `${bytes} o`;
@@ -865,10 +1129,32 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
   }
 
+  private async loadPropertyRisks(): Promise<void> {
+    this.risksLoading.set(true);
+    this.risksError.set(null);
+
+    try {
+      const response = await this.propertyService.getRisks(this.propertyId);
+      this.risks.set(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Chargement des risques impossible.";
+      this.risksError.set(message);
+    } finally {
+      this.risksLoading.set(false);
+    }
+  }
+
   private applyProspectLookupValue(lookup: string): void {
     this.prospectForm.controls.existingLookup.setValue(lookup);
     const match = this.findClientFromLookup(lookup);
     this.prospectForm.controls.userId.setValue(match?.id ?? "");
+  }
+
+  private applyVisitLookupValue(lookup: string): void {
+    this.visitForm.controls.existingLookup.setValue(lookup);
+    const match = this.findClientFromLookup(lookup);
+    this.visitForm.controls.userId.setValue(match?.id ?? "");
   }
 
   private resolveSelectedProspectClient(): AccountUserResponse | null {
@@ -881,6 +1167,19 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const lookup = this.prospectForm.controls.existingLookup.value.trim();
+    return this.findClientFromLookup(lookup);
+  }
+
+  private resolveSelectedVisitClient(): AccountUserResponse | null {
+    const selectedId = this.visitForm.controls.userId.value.trim();
+    if (selectedId) {
+      const selected = this.clients().find((client) => client.id === selectedId) ?? null;
+      if (selected) {
+        return selected;
+      }
+    }
+
+    const lookup = this.visitForm.controls.existingLookup.value.trim();
     return this.findClientFromLookup(lookup);
   }
 
@@ -944,6 +1243,31 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private normalizeEmptyAsNull(value: string): string | null {
     const trimmed = value.trim();
     return trimmed ? trimmed : null;
+  }
+
+  private getDefaultVisitStart(): Date {
+    const now = new Date();
+    const rounded = new Date(now);
+    rounded.setSeconds(0, 0);
+
+    const minutes = rounded.getMinutes();
+    const roundedMinutes = Math.ceil(minutes / 15) * 15;
+    rounded.setMinutes(roundedMinutes);
+    return rounded;
+  }
+
+  private formatForDateTimeInput(date: Date): string {
+    const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
+    return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+  }
+
+  private toIsoFromDateTimeInput(rawValue: string): string | null {
+    const parsed = new Date(rawValue);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed.toISOString();
   }
 
   private getPropertyCategoryDefinition(

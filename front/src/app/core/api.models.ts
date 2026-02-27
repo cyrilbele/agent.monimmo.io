@@ -188,6 +188,62 @@ export interface PropertyProspectCreateRequest {
   newClient?: PropertyOwner;
 }
 
+export interface PropertyVisitCreateRequest {
+  prospectUserId: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface PropertyVisitResponse {
+  id: string;
+  propertyId: string;
+  propertyTitle: string;
+  prospectUserId: string;
+  prospectFirstName: string;
+  prospectLastName: string;
+  prospectEmail: string | null;
+  prospectPhone: string | null;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PropertyVisitListResponse {
+  items: PropertyVisitResponse[];
+}
+
+export type PropertyRiskStatus = "OK" | "NO_DATA" | "UNAVAILABLE";
+
+export interface PropertyRiskLocation {
+  address: string | null;
+  postalCode: string;
+  city: string;
+  inseeCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export interface PropertyRiskItemResponse {
+  label: string;
+  categoryCode: string | null;
+  source: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface PropertyRiskResponse {
+  propertyId: string;
+  status: PropertyRiskStatus;
+  source: "GEORISQUES";
+  georisquesUrl: string;
+  reportPdfUrl: string | null;
+  generatedAt: string;
+  message: string | null;
+  location: PropertyRiskLocation;
+  items: PropertyRiskItemResponse[];
+}
+
 export type TypeDocument =
   | "PIECE_IDENTITE"
   | "LIVRET_FAMILLE"

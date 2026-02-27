@@ -244,6 +244,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/properties/{id}/visits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPropertyVisits"];
+        put?: never;
+        post: operations["postPropertyVisits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/properties/{id}/risks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPropertyRisks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getVisits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files": {
         parameters: {
             query?: never;
@@ -794,6 +842,67 @@ export interface components {
         };
         PropertyProspectListResponse: {
             items: components["schemas"]["PropertyProspectResponse"][];
+        };
+        PropertyVisitCreateRequest: {
+            prospectUserId: string;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+        };
+        PropertyVisitResponse: {
+            id: string;
+            propertyId: string;
+            propertyTitle: string;
+            prospectUserId: string;
+            prospectFirstName: string;
+            prospectLastName: string;
+            /** Format: email */
+            prospectEmail: string | null;
+            prospectPhone: string | null;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PropertyVisitListResponse: {
+            items: components["schemas"]["PropertyVisitResponse"][];
+        };
+        /** @enum {string} */
+        PropertyRiskStatus: "OK" | "NO_DATA" | "UNAVAILABLE";
+        PropertyRiskLocation: {
+            address: string | null;
+            postalCode: string;
+            city: string;
+            inseeCode: string | null;
+            latitude: number | null;
+            longitude: number | null;
+        };
+        PropertyRiskItemResponse: {
+            label: string;
+            categoryCode: string | null;
+            source: string | null;
+            startDate: string | null;
+            endDate: string | null;
+        };
+        PropertyRiskResponse: {
+            propertyId: string;
+            status: components["schemas"]["PropertyRiskStatus"];
+            /** @enum {string} */
+            source: "GEORISQUES";
+            /** Format: uri */
+            georisquesUrl: string;
+            /** Format: uri */
+            reportPdfUrl: string | null;
+            /** Format: date-time */
+            generatedAt: string;
+            message: string | null;
+            location: components["schemas"]["PropertyRiskLocation"];
+            items: components["schemas"]["PropertyRiskItemResponse"][];
         };
         /** @enum {string} */
         TypeDocument: "PIECE_IDENTITE" | "LIVRET_FAMILLE" | "CONTRAT_MARIAGE_PACS" | "JUGEMENT_DIVORCE" | "TITRE_PROPRIETE" | "ATTESTATION_NOTARIALE" | "TAXE_FONCIERE" | "REFERENCE_CADASTRALE" | "MANDAT_VENTE_SIGNE" | "BON_VISITE" | "OFFRE_ACHAT_SIGNEE" | "DPE" | "AMIANTE" | "PLOMB" | "ELECTRICITE" | "GAZ" | "TERMITES" | "ERP_ETAT_RISQUES" | "ASSAINISSEMENT" | "LOI_CARREZ" | "REGLEMENT_COPROPRIETE" | "ETAT_DESCRIPTIF_DIVISION" | "PV_AG_3_DERNIERES_ANNEES" | "MONTANT_CHARGES" | "CARNET_ENTRETIEN" | "FICHE_SYNTHETIQUE" | "PRE_ETAT_DATE" | "ETAT_DATE" | "PHOTOS_HD" | "VIDEO_VISITE" | "PLAN_BIEN" | "ANNONCE_IMMOBILIERE" | "AFFICHE_VITRINE" | "REPORTING_VENDEUR" | "SIMULATION_FINANCEMENT" | "ATTESTATION_CAPACITE_EMPRUNT" | "ACCORD_PRINCIPE_BANCAIRE" | "COMPROMIS_OU_PROMESSE" | "ANNEXES_COMPROMIS" | "PREUVE_SEQUESTRE" | "COURRIER_RETRACTATION" | "LEVEE_CONDITIONS_SUSPENSIVES" | "ACTE_AUTHENTIQUE" | "DECOMPTE_NOTAIRE";
@@ -1480,6 +1589,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PropertyProspectResponse"];
+                };
+            };
+        };
+    };
+    getPropertyVisits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des visites du bien. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyVisitListResponse"];
+                };
+            };
+        };
+    };
+    postPropertyVisits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PropertyVisitCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Visite ajoutée. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyVisitResponse"];
+                };
+            };
+        };
+    };
+    getPropertyRisks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Risques geographiques recuperes depuis Georisques. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyRiskResponse"];
+                };
+            };
+            /** @description Bien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getVisits: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des visites pour le calendrier. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyVisitListResponse"];
                 };
             };
         };

@@ -16,16 +16,18 @@ Objectifs principaux:
 ## Source de verite
 
 - Spec produit: `SPEC.md`
-- Suivi execution: `TASKS.md`
 - Contrat API: `backend/openapi/openapi.yaml`
 
 ## Regles de contribution
 
 1. Lire `SPEC.md` avant toute modification significative.
-2. Traiter les taches dans l'ordre de `TASKS.md` sauf consigne explicite.
-3. Cocher les taches terminees dans `TASKS.md`.
-4. Maintenir compatibilite API/OpenAPI/Zod.
-5. Ajouter/mettre a jour les tests avec les changements backend.
+2. Maintenir compatibilite API/OpenAPI/Zod.
+3. Ajouter/mettre a jour les tests avec les changements backend.
+4. toujours faire les tests et maintenir un coverage de 80%
+
+## Regles pour la UI
+
+Ne pas afficher les identifiants techniques, cela ne parle pas à l utilisateur
 
 ## Lancer chaque piece
 

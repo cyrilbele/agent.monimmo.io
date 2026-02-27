@@ -9,6 +9,10 @@ import type {
   PropertyProspectCreateRequest,
   PropertyProspectListResponse,
   PropertyProspectResponse,
+  PropertyRiskResponse,
+  PropertyVisitCreateRequest,
+  PropertyVisitListResponse,
+  PropertyVisitResponse,
   PropertyResponse,
   PropertyStatus,
 } from "../core/api.models";
@@ -81,5 +85,38 @@ export class PropertyService {
         body: payload,
       },
     );
+  }
+
+  listVisits(propertyId: string): Promise<PropertyVisitListResponse> {
+    return this.api.request<PropertyVisitListResponse>(
+      "GET",
+      `/properties/${encodeURIComponent(propertyId)}/visits`,
+    );
+  }
+
+  addVisit(
+    propertyId: string,
+    payload: PropertyVisitCreateRequest,
+  ): Promise<PropertyVisitResponse> {
+    return this.api.request<PropertyVisitResponse>(
+      "POST",
+      `/properties/${encodeURIComponent(propertyId)}/visits`,
+      {
+        body: payload,
+      },
+    );
+  }
+
+  getRisks(propertyId: string): Promise<PropertyRiskResponse> {
+    return this.api.request<PropertyRiskResponse>(
+      "GET",
+      `/properties/${encodeURIComponent(propertyId)}/risks`,
+    );
+  }
+
+  listCalendarVisits(from?: string, to?: string): Promise<PropertyVisitListResponse> {
+    return this.api.request<PropertyVisitListResponse>("GET", "/visits", {
+      params: { from, to },
+    });
   }
 }

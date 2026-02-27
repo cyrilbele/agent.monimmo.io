@@ -45,6 +45,7 @@ export class AppShellComponent {
 
   readonly primaryNav: readonly NavItem[] = [
     { label: "Pipeline", route: "/app/kanban" },
+    { label: "Calendrier", route: "/app/calendrier" },
     { label: "Utilisateurs", route: "/app/utilisateurs" },
     { label: "Vocaux", route: "/app/vocaux" },
     { label: "Nouveau dossier", route: "/app/bien/nouveau" },

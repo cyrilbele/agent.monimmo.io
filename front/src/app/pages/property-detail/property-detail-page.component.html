@@ -123,6 +123,19 @@
         <button
           type="button"
           class="rounded-xl px-3 py-2 text-sm font-semibold"
+          [class.bg-blue-600]="isMainTabActive('visits')"
+          [class.text-white]="isMainTabActive('visits')"
+          [class.bg-slate-100]="!isMainTabActive('visits')"
+          [class.text-slate-700]="!isMainTabActive('visits')"
+          [attr.aria-pressed]="isMainTabActive('visits') ? 'true' : 'false'"
+          (click)="setMainTab('visits')"
+        >
+          Visites
+        </button>
+
+        <button
+          type="button"
+          class="rounded-xl px-3 py-2 text-sm font-semibold"
           [class.bg-blue-600]="isMainTabActive('messages')"
           [class.text-white]="isMainTabActive('messages')"
           [class.bg-slate-100]="!isMainTabActive('messages')"
@@ -131,6 +144,19 @@
           (click)="setMainTab('messages')"
         >
           Messages
+        </button>
+
+        <button
+          type="button"
+          class="rounded-xl px-3 py-2 text-sm font-semibold"
+          [class.bg-blue-600]="isMainTabActive('risks')"
+          [class.text-white]="isMainTabActive('risks')"
+          [class.bg-slate-100]="!isMainTabActive('risks')"
+          [class.text-slate-700]="!isMainTabActive('risks')"
+          [attr.aria-pressed]="isMainTabActive('risks') ? 'true' : 'false'"
+          (click)="setMainTab('risks')"
+        >
+          Risques
         </button>
       </nav>
 
@@ -356,6 +382,51 @@
         </section>
       }
 
+      @if (isMainTabActive('visits')) {
+        <section class="panel space-y-4 p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-xl font-semibold text-slate-900">Visites planifiees</h3>
+            <button
+              type="button"
+              class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              (click)="openVisitModal()"
+            >
+              Ajouter une visite
+            </button>
+          </div>
+
+          @if (sortedVisits().length === 0) {
+            <p class="text-sm text-slate-600">Aucune visite planifiee.</p>
+          } @else {
+            <section class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="min-w-full border-collapse text-sm">
+                <thead class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                  <tr>
+                    <th class="px-4 py-3">Prospect</th>
+                    <th class="px-4 py-3">Debut</th>
+                    <th class="px-4 py-3">Fin</th>
+                    <th class="px-4 py-3">Contact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (visit of sortedVisits(); track visit.id) {
+                    <tr class="border-t border-slate-200 align-top">
+                      <td class="px-4 py-3">
+                        <p class="font-semibold text-slate-900">{{ visit.prospectFirstName }} {{ visit.prospectLastName }}</p>
+                        <p class="mt-1 text-xs text-slate-500">ID prospect: {{ visit.prospectUserId }}</p>
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">{{ visit.startsAt | date: 'short' }}</td>
+                      <td class="px-4 py-3 text-slate-700">{{ visit.endsAt | date: 'short' }}</td>
+                      <td class="px-4 py-3 text-slate-700">{{ visit.prospectEmail || visit.prospectPhone || "Non renseigne" }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          }
+        </section>
+      }
+
       @if (isMainTabActive('messages')) {
         <section class="panel space-y-4 p-5">
           <h3 class="text-xl font-semibold text-slate-900">Messages rattaches</h3>
@@ -375,6 +446,50 @@
                 </article>
               }
             </div>
+          }
+        </section>
+      }
+
+      @if (isMainTabActive('risks')) {
+        <section class="panel space-y-4 p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-xl font-semibold text-slate-900">Risques geographiques (Georisques)</h3>
+            @if (risks(); as risksResponse) {
+              <div class="flex flex-wrap items-center gap-2">
+                @if (risksResponse.reportPdfUrl) {
+                  <a
+                    [href]="risksResponse.reportPdfUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    Ouvrir le rapport PDF
+                  </a>
+                }
+                <a
+                  [href]="risksResponse.georisquesUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  Ouvrir Georisques
+                </a>
+              </div>
+            }
+          </div>
+
+          @if (risksLoading()) {
+            <p class="text-sm text-slate-600">Chargement des risques...</p>
+          } @else if (risksError()) {
+            <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {{ risksError() }}
+            </p>
+          } @else if (risks()) {
+            <p class="text-sm text-slate-600">
+              Utilisez les liens ci-dessus pour consulter les informations Georisques.
+            </p>
+          } @else {
+            <p class="text-sm text-slate-600">Les risques ne sont pas encore charges.</p>
           }
         </section>
       }
@@ -696,6 +811,193 @@
                 [disabled]="prospectPending()"
               >
                 {{ prospectPending() ? "Ajout..." : "Ajouter" }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    }
+
+    @if (visitModalOpen()) {
+      <div
+        class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="visit-modal-title"
+        (click)="onVisitBackdropClick($event)"
+      >
+        <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+          <div class="flex items-start justify-between gap-2">
+            <h3 id="visit-modal-title" class="text-xl font-semibold text-slate-900">Ajouter une visite</h3>
+            <button
+              type="button"
+              class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              (click)="closeVisitModal()"
+            >
+              Fermer
+            </button>
+          </div>
+
+          <form class="mt-4 space-y-3" [formGroup]="visitForm" (ngSubmit)="addVisit()" novalidate>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="field-label" for="visit-start">Heure debut visite</label>
+                <input
+                  id="visit-start"
+                  class="field-input"
+                  type="datetime-local"
+                  formControlName="startsAt"
+                  (input)="onVisitStartInput($event)"
+                />
+              </div>
+              <div>
+                <label class="field-label" for="visit-end">Heure fin visite</label>
+                <input id="visit-end" class="field-input" type="datetime-local" formControlName="endsAt" />
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="rounded-xl px-3 py-2 text-sm font-semibold"
+                [class.bg-blue-600]="visitProspectMode() === 'existing'"
+                [class.text-white]="visitProspectMode() === 'existing'"
+                [class.bg-slate-100]="visitProspectMode() !== 'existing'"
+                [class.text-slate-700]="visitProspectMode() !== 'existing'"
+                [attr.aria-pressed]="visitProspectMode() === 'existing' ? 'true' : 'false'"
+                (click)="setVisitProspectMode('existing')"
+              >
+                Client existant
+              </button>
+              <button
+                type="button"
+                class="rounded-xl px-3 py-2 text-sm font-semibold"
+                [class.bg-blue-600]="visitProspectMode() === 'new'"
+                [class.text-white]="visitProspectMode() === 'new'"
+                [class.bg-slate-100]="visitProspectMode() !== 'new'"
+                [class.text-slate-700]="visitProspectMode() !== 'new'"
+                [attr.aria-pressed]="visitProspectMode() === 'new' ? 'true' : 'false'"
+                (click)="setVisitProspectMode('new')"
+              >
+                Nouveau client
+              </button>
+            </div>
+
+            @if (visitProspectMode() === 'existing') {
+              <div>
+                <label class="field-label" [for]="visitAutocompleteId">Client</label>
+                <div
+                  #visitLookupContainer
+                  class="relative"
+                  role="combobox"
+                  aria-haspopup="listbox"
+                  [attr.aria-expanded]="visitSuggestionsOpen() ? 'true' : 'false'"
+                  [attr.aria-owns]="visitAutocompleteListId"
+                  [attr.aria-controls]="visitAutocompleteListId"
+                  (focusout)="onVisitLookupContainerFocusOut($event, visitLookupContainer)"
+                >
+                  <input
+                    [id]="visitAutocompleteId"
+                    class="field-input pr-11"
+                    type="text"
+                    formControlName="existingLookup"
+                    placeholder="Nom ou email d'un client"
+                    autocomplete="off"
+                    [attr.aria-autocomplete]="'list'"
+                    [attr.aria-controls]="visitAutocompleteListId"
+                    (focus)="onVisitLookupFocus()"
+                    (input)="onVisitLookupInput($event)"
+                  />
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-100"
+                    aria-label="Afficher les clients"
+                    (click)="toggleVisitSuggestions()"
+                  >
+                    ▾
+                  </button>
+
+                  @if (visitSuggestionsOpen()) {
+                    <ul
+                      [id]="visitAutocompleteListId"
+                      class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+                      role="listbox"
+                      tabindex="-1"
+                    >
+                      @for (client of filteredVisitClients(); track client.id) {
+                        <li role="option" [attr.aria-selected]="visitForm.controls.userId.value === client.id ? 'true' : 'false'">
+                          <button
+                            type="button"
+                            class="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                            (mousedown)="onVisitSuggestionMouseDown($event)"
+                            (click)="selectVisitClient(client)"
+                          >
+                            {{ prospectOptionLabel(client) }}
+                          </button>
+                        </li>
+                      } @empty {
+                        <li class="px-3 py-2 text-sm text-slate-500">Aucun client trouve.</li>
+                      }
+                    </ul>
+                  }
+                </div>
+                @if (clientsLoading()) {
+                  <p class="mt-1 text-xs text-slate-500">Chargement des clients...</p>
+                }
+              </div>
+            } @else {
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="field-label" for="visit-prospect-first-name">Prenom</label>
+                  <input id="visit-prospect-first-name" class="field-input" type="text" formControlName="firstName" />
+                </div>
+                <div>
+                  <label class="field-label" for="visit-prospect-last-name">Nom</label>
+                  <input id="visit-prospect-last-name" class="field-input" type="text" formControlName="lastName" />
+                </div>
+                <div>
+                  <label class="field-label" for="visit-prospect-phone">Telephone</label>
+                  <input id="visit-prospect-phone" class="field-input" type="text" formControlName="phone" />
+                </div>
+                <div>
+                  <label class="field-label" for="visit-prospect-email">Email</label>
+                  <input id="visit-prospect-email" class="field-input" type="email" formControlName="email" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="field-label" for="visit-prospect-address">Adresse</label>
+                  <input id="visit-prospect-address" class="field-input" type="text" formControlName="address" />
+                </div>
+                <div>
+                  <label class="field-label" for="visit-prospect-postal">Code postal</label>
+                  <input id="visit-prospect-postal" class="field-input" type="text" formControlName="postalCode" />
+                </div>
+                <div>
+                  <label class="field-label" for="visit-prospect-city">Ville</label>
+                  <input id="visit-prospect-city" class="field-input" type="text" formControlName="city" />
+                </div>
+              </div>
+            }
+
+            @if (visitFeedback()) {
+              <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+                {{ visitFeedback() }}
+              </p>
+            }
+
+            <div class="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                (click)="closeVisitModal()"
+              >
+                Annuler
+              </button>
+              <button
+                class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                type="submit"
+                [disabled]="visitPending()"
+              >
+                {{ visitPending() ? "Ajout..." : "Ajouter" }}
               </button>
             </div>
           </form>

@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const timestampColumns = {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
@@ -93,6 +93,33 @@ export const propertyParties = sqliteTable("property_parties", {
   role: text("role").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+export const propertyVisits = sqliteTable(
+  "property_visits",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    propertyId: text("property_id")
+      .notNull()
+      .references(() => properties.id),
+    prospectUserId: text("prospect_user_id")
+      .notNull()
+      .references(() => users.id),
+    startsAt: integer("starts_at", { mode: "timestamp_ms" }).notNull(),
+    endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    orgStartsAtIdx: index("property_visits_org_starts_at_idx").on(table.orgId, table.startsAt),
+    propertyStartsAtIdx: index("property_visits_property_starts_at_idx").on(
+      table.propertyId,
+      table.startsAt,
+    ),
+  }),
+);
 
 export const files = sqliteTable("files", {
   id: text("id").primaryKey(),

@@ -253,6 +253,62 @@ export const PropertyProspectListResponseSchema = z.object({
   items: z.array(PropertyProspectResponseSchema),
 });
 
+export const PropertyVisitCreateRequestSchema = z.object({
+  prospectUserId: z.string(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+});
+
+export const PropertyVisitResponseSchema = z.object({
+  id: z.string(),
+  propertyId: z.string(),
+  propertyTitle: z.string(),
+  prospectUserId: z.string(),
+  prospectFirstName: z.string(),
+  prospectLastName: z.string(),
+  prospectEmail: z.email().nullable(),
+  prospectPhone: z.string().nullable(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const PropertyVisitListResponseSchema = z.object({
+  items: z.array(PropertyVisitResponseSchema),
+});
+
+export const PropertyRiskStatusSchema = z.enum(["OK", "NO_DATA", "UNAVAILABLE"]);
+
+export const PropertyRiskLocationSchema = z.object({
+  address: z.string().nullable(),
+  postalCode: z.string(),
+  city: z.string(),
+  inseeCode: z.string().nullable(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+});
+
+export const PropertyRiskItemResponseSchema = z.object({
+  label: z.string(),
+  categoryCode: z.string().nullable(),
+  source: z.string().nullable(),
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
+});
+
+export const PropertyRiskResponseSchema = z.object({
+  propertyId: z.string(),
+  status: PropertyRiskStatusSchema,
+  source: z.literal("GEORISQUES"),
+  georisquesUrl: z.url(),
+  reportPdfUrl: z.url().nullable(),
+  generatedAt: z.iso.datetime(),
+  message: z.string().nullable(),
+  location: PropertyRiskLocationSchema,
+  items: z.array(PropertyRiskItemResponseSchema),
+});
+
 export const PropertyParticipantResponseSchema = z.object({
   id: z.string(),
   propertyId: z.string(),
@@ -492,6 +548,13 @@ export const DtoSchemaMap = {
   PropertyProspectCreateRequest: PropertyProspectCreateRequestSchema,
   PropertyProspectResponse: PropertyProspectResponseSchema,
   PropertyProspectListResponse: PropertyProspectListResponseSchema,
+  PropertyVisitCreateRequest: PropertyVisitCreateRequestSchema,
+  PropertyVisitResponse: PropertyVisitResponseSchema,
+  PropertyVisitListResponse: PropertyVisitListResponseSchema,
+  PropertyRiskStatus: PropertyRiskStatusSchema,
+  PropertyRiskLocation: PropertyRiskLocationSchema,
+  PropertyRiskItemResponse: PropertyRiskItemResponseSchema,
+  PropertyRiskResponse: PropertyRiskResponseSchema,
   TypeDocument: TypeDocumentSchema,
   FileStatus: FileStatusSchema,
   FileUploadRequest: FileUploadRequestSchema,

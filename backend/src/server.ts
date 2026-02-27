@@ -13,6 +13,7 @@ import {
   PropertyPatchRequestSchema,
   PropertyParticipantCreateRequestSchema,
   PropertyProspectCreateRequestSchema,
+  PropertyVisitCreateRequestSchema,
   PropertyStatusUpdateRequestSchema,
   ReviewQueueResolveRequestSchema,
   RegisterRequestSchema,
@@ -359,6 +360,16 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return withCors(request, json(response, { status: 201 }));
       }
 
+      if (request.method === "GET" && url.pathname === "/visits") {
+        const user = await getAuthenticatedUser();
+        const response = await propertiesService.listCalendarVisits({
+          orgId: user.orgId,
+          from: url.searchParams.get("from") ?? undefined,
+          to: url.searchParams.get("to") ?? undefined,
+        });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
       if (request.method === "GET" && url.pathname === "/files") {
         const user = await getAuthenticatedUser();
         const response = await filesService.list({
@@ -698,6 +709,43 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           });
           return withCors(request, json(response, { status: 201 }));
         }
+      }
+
+      const propertyVisitsMatch = url.pathname.match(/^\/properties\/([^/]+)\/visits$/);
+      if (propertyVisitsMatch) {
+        const propertyId = decodeURIComponent(propertyVisitsMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await propertiesService.listVisits({
+            orgId: user.orgId,
+            propertyId,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "POST") {
+          const payload = await parseJson(PropertyVisitCreateRequestSchema);
+          const response = await propertiesService.addVisit({
+            orgId: user.orgId,
+            propertyId,
+            prospectUserId: payload.prospectUserId,
+            startsAt: payload.startsAt,
+            endsAt: payload.endsAt,
+          });
+          return withCors(request, json(response, { status: 201 }));
+        }
+      }
+
+      const propertyRisksMatch = url.pathname.match(/^\/properties\/([^/]+)\/risks$/);
+      if (propertyRisksMatch && request.method === "GET") {
+        const propertyId = decodeURIComponent(propertyRisksMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await propertiesService.getRisks({
+          orgId: user.orgId,
+          propertyId,
+        });
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const propertyByIdMatch = url.pathname.match(/^\/properties\/([^/]+)$/);

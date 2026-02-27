@@ -92,6 +92,13 @@
       "when": 1772194800000,
       "tag": "0012_solid_nihil",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1772277600000,
+      "tag": "0013_smart_flatman",
+      "breakpoints": true
     }
   ]
 }

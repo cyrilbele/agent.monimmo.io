@@ -9,6 +9,7 @@ import {
   propertyParties,
   propertyTimelineEvents,
   propertyUserLinks,
+  propertyVisits,
   users,
 } from "../src/db/schema";
 import { createApp } from "../src/server";
@@ -35,6 +36,12 @@ const ownerPayload = () => ({
   phone: "0611223344",
   email: `owner.${crypto.randomUUID()}@monimmo.fr`,
 });
+
+const toJsonResponse = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
 
 describe("properties endpoints", () => {
   beforeAll(async () => {
@@ -442,6 +449,292 @@ describe("properties endpoints", () => {
           item.userId === addedProspect.userId && item.relationRole === "PROSPECT",
       ),
     ).toBe(true);
+  });
+
+  it("ajoute et liste les visites d'un bien puis les expose dans le calendrier global", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const createPropertyResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien visites",
+          city: "Paris",
+          postalCode: "75011",
+          address: "15 rue Oberkampf",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(createPropertyResponse.status).toBe(201);
+    const propertyPayload = await createPropertyResponse.json();
+
+    const addProspectResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${propertyPayload.id}/prospects`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          newClient: {
+            firstName: "Julie",
+            lastName: "Visite",
+            phone: "0600000001",
+            email: `visite.${crypto.randomUUID()}@monimmo.fr`,
+          },
+        }),
+      }),
+    );
+    expect(addProspectResponse.status).toBe(201);
+    const prospectPayload = await addProspectResponse.json();
+
+    const startsAt = "2026-03-10T09:30:00.000Z";
+    const endsAt = "2026-03-10T10:15:00.000Z";
+
+    const addVisitResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${propertyPayload.id}/visits`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          prospectUserId: prospectPayload.userId,
+          startsAt,
+          endsAt,
+        }),
+      }),
+    );
+    expect(addVisitResponse.status).toBe(201);
+    const visitPayload = await addVisitResponse.json();
+    expect(visitPayload.propertyId).toBe(propertyPayload.id);
+    expect(visitPayload.prospectUserId).toBe(prospectPayload.userId);
+    expect(visitPayload.startsAt).toBe(startsAt);
+    expect(visitPayload.endsAt).toBe(endsAt);
+
+    const listVisitsResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${propertyPayload.id}/visits`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(listVisitsResponse.status).toBe(200);
+    const listVisitsPayload = await listVisitsResponse.json();
+    expect(
+      listVisitsPayload.items.some((item: { id: string }) => item.id === visitPayload.id),
+    ).toBe(true);
+
+    const calendarResponse = await createApp().fetch(
+      new Request(
+        "http://localhost/visits?from=2026-03-10T00:00:00.000Z&to=2026-03-11T00:00:00.000Z",
+        {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        },
+      ),
+    );
+    expect(calendarResponse.status).toBe(200);
+    const calendarPayload = await calendarResponse.json();
+    expect(
+      calendarPayload.items.some((item: { id: string }) => item.id === visitPayload.id),
+    ).toBe(true);
+
+    const dbVisit = await db.query.propertyVisits.findFirst({
+      where: and(
+        eq(propertyVisits.id, visitPayload.id),
+        eq(propertyVisits.propertyId, propertyPayload.id),
+      ),
+    });
+    expect(dbVisit).not.toBeNull();
+  });
+
+  it("planifie une visite avec un client non encore prospect et le rattache automatiquement", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const createPropertyResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien visite auto-prospect",
+          city: "Toulouse",
+          postalCode: "31000",
+          address: "22 rue Alsace Lorraine",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(createPropertyResponse.status).toBe(201);
+    const propertyPayload = await createPropertyResponse.json();
+
+    const createClientResponse = await createApp().fetch(
+      new Request("http://localhost/users", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: "Client",
+          lastName: "Direct",
+          phone: "0609090909",
+          email: `client.direct.${crypto.randomUUID()}@monimmo.fr`,
+          accountType: "CLIENT",
+        }),
+      }),
+    );
+    expect(createClientResponse.status).toBe(201);
+    const clientPayload = await createClientResponse.json();
+
+    const addVisitResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${propertyPayload.id}/visits`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          prospectUserId: clientPayload.id,
+          startsAt: "2026-03-12T14:00:00.000Z",
+          endsAt: "2026-03-12T15:00:00.000Z",
+        }),
+      }),
+    );
+    expect(addVisitResponse.status).toBe(201);
+
+    const autoLink = await db.query.propertyUserLinks.findFirst({
+      where: and(
+        eq(propertyUserLinks.propertyId, propertyPayload.id),
+        eq(propertyUserLinks.userId, clientPayload.id),
+      ),
+    });
+
+    expect(autoLink).not.toBeNull();
+    expect(autoLink?.role).toBe("PROSPECT");
+  });
+
+  it("retourne les risques georisques d'un bien", async () => {
+    const token = await loginAndGetAccessToken();
+    const createPropertyResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien risques",
+          city: "Nice",
+          postalCode: "06000",
+          address: "12 avenue de Verdun",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(createPropertyResponse.status).toBe(201);
+    const propertyPayload = await createPropertyResponse.json();
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === "string" ? input : input.toString();
+
+        if (url.startsWith("https://geo.api.gouv.fr/communes")) {
+          return toJsonResponse([{ nom: "Nice", code: "06088" }]);
+        }
+
+        return toJsonResponse({}, 404);
+      },
+      { preconnect: previousFetch.preconnect },
+    ) as typeof fetch;
+
+    try {
+      const risksResponse = await createApp().fetch(
+        new Request(`http://localhost/properties/${propertyPayload.id}/risks`, {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        }),
+      );
+
+      expect(risksResponse.status).toBe(200);
+      const payload = await risksResponse.json();
+      expect(payload.status).toBe("NO_DATA");
+      expect(payload.source).toBe("GEORISQUES");
+      expect(payload.location.city).toBe("Nice");
+      expect(payload.location.inseeCode).toBe("06088");
+      expect(payload.georisquesUrl).toContain(
+        "/mes-risques/connaitre-les-risques-pres-de-chez-moi/rapport2",
+      );
+      expect(payload.georisquesUrl).toContain("city=Nice");
+      expect(payload.georisquesUrl).toContain("codeInsee=06088");
+      expect(payload.items).toEqual([]);
+      expect(typeof payload.message).toBe("string");
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it("retourne NO_DATA meme si la resolution INSEE ne repond pas", async () => {
+    const token = await loginAndGetAccessToken();
+    const createPropertyResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Bien risques indisponibles",
+          city: "Lyon",
+          postalCode: "69003",
+          address: "20 rue Servient",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(createPropertyResponse.status).toBe(201);
+    const propertyPayload = await createPropertyResponse.json();
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      async (): Promise<Response> => {
+        throw new Error("network_down");
+      },
+      { preconnect: previousFetch.preconnect },
+    ) as typeof fetch;
+
+    try {
+      const response = await createApp().fetch(
+        new Request(`http://localhost/properties/${propertyPayload.id}/risks`, {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.status).toBe("NO_DATA");
+      expect(payload.items).toEqual([]);
+      expect(typeof payload.message).toBe("string");
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 
   it("retourne 404 sur un bien inexistant", async () => {

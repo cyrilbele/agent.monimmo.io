@@ -19,6 +19,12 @@ const ownerPayload = () => ({
   email: `proprietaire.${crypto.randomUUID()}@monimmo.fr`,
 });
 
+const toJsonResponse = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+
 describe("propertiesService", () => {
   beforeAll(async () => {
     runMigrations();
@@ -182,5 +188,113 @@ describe("propertiesService", () => {
     ).rejects.toMatchObject({
       code: "PROPERTY_NOT_FOUND",
     });
+  });
+
+  it("géocode automatiquement les coordonnées GPS à la création", async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("https://data.geopf.fr/geocodage/search")) {
+          return toJsonResponse({
+            features: [
+              {
+                geometry: {
+                  coordinates: [2.3522, 48.8566],
+                },
+              },
+            ],
+          });
+        }
+
+        return toJsonResponse({}, 404);
+      },
+      { preconnect: previousFetch.preconnect },
+    ) as typeof fetch;
+
+    try {
+      const created = await propertiesService.create({
+        orgId: "org_demo",
+        title: "Bien geocode",
+        city: "Paris",
+        postalCode: "75011",
+        address: "12 rue Oberkampf",
+        owner: ownerPayload(),
+      });
+
+      const details = created.details as Record<string, unknown>;
+      const location = details.location as Record<string, unknown>;
+      expect(location.gpsLat).toBe(48.8566);
+      expect(location.gpsLng).toBe(2.3522);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it("recalcule les coordonnées GPS quand adresse/ville/code postal changent", async () => {
+    let geocodingCalls = 0;
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("https://data.geopf.fr/geocodage/search")) {
+          geocodingCalls += 1;
+
+          if (geocodingCalls === 1) {
+            return toJsonResponse({
+              features: [
+                {
+                  geometry: {
+                    coordinates: [4.8357, 45.764],
+                  },
+                },
+              ],
+            });
+          }
+
+          return toJsonResponse({
+            features: [
+              {
+                geometry: {
+                  coordinates: [2.3522, 48.8566],
+                },
+              },
+            ],
+          });
+        }
+
+        return toJsonResponse({}, 404);
+      },
+      { preconnect: previousFetch.preconnect },
+    ) as typeof fetch;
+
+    try {
+      const created = await propertiesService.create({
+        orgId: "org_demo",
+        title: "Bien geocode patch",
+        city: "Lyon",
+        postalCode: "69003",
+        address: "10 rue Servient",
+        owner: ownerPayload(),
+      });
+
+      const patched = await propertiesService.patchById({
+        orgId: "org_demo",
+        id: created.id,
+        data: {
+          city: "Paris",
+          postalCode: "75011",
+          address: "12 rue Oberkampf",
+        },
+      });
+
+      const details = patched.details as Record<string, unknown>;
+      const location = details.location as Record<string, unknown>;
+      expect(location.gpsLat).toBe(48.8566);
+      expect(location.gpsLng).toBe(2.3522);
+      expect(geocodingCalls).toBe(2);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 });

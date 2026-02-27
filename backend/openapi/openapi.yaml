@@ -10,6 +10,7 @@ tags:
   - name: Auth
   - name: Users
   - name: Properties
+  - name: Visits
   - name: Files
   - name: Messages
   - name: Vocals
@@ -397,6 +398,88 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyProspectResponse"
+  /properties/{id}/visits:
+    get:
+      tags: [Visits]
+      operationId: getPropertyVisits
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Liste des visites du bien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyVisitListResponse"
+    post:
+      tags: [Visits]
+      operationId: postPropertyVisits
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyVisitCreateRequest"
+      responses:
+        "201":
+          description: Visite ajoutée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyVisitResponse"
+  /properties/{id}/risks:
+    get:
+      tags: [Properties]
+      operationId: getPropertyRisks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Risques geographiques recuperes depuis Georisques.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyRiskResponse"
+        "404":
+          description: Bien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /visits:
+    get:
+      tags: [Visits]
+      operationId: getVisits
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Liste des visites pour le calendrier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyVisitListResponse"
   /files:
     get:
       tags: [Files]
@@ -1322,6 +1405,147 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PropertyProspectResponse"
+    PropertyVisitCreateRequest:
+      type: object
+      required: [prospectUserId, startsAt, endsAt]
+      properties:
+        prospectUserId:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+    PropertyVisitResponse:
+      type: object
+      required:
+        [
+          id,
+          propertyId,
+          propertyTitle,
+          prospectUserId,
+          prospectFirstName,
+          prospectLastName,
+          prospectEmail,
+          prospectPhone,
+          startsAt,
+          endsAt,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+        propertyTitle:
+          type: string
+        prospectUserId:
+          type: string
+        prospectFirstName:
+          type: string
+        prospectLastName:
+          type: string
+        prospectEmail:
+          type: string
+          format: email
+          nullable: true
+        prospectPhone:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PropertyVisitListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyVisitResponse"
+    PropertyRiskStatus:
+      type: string
+      enum: [OK, NO_DATA, UNAVAILABLE]
+    PropertyRiskLocation:
+      type: object
+      required: [address, postalCode, city, inseeCode, latitude, longitude]
+      properties:
+        address:
+          type: string
+          nullable: true
+        postalCode:
+          type: string
+        city:
+          type: string
+        inseeCode:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+    PropertyRiskItemResponse:
+      type: object
+      required: [label, categoryCode, source, startDate, endDate]
+      properties:
+        label:
+          type: string
+        categoryCode:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+    PropertyRiskResponse:
+      type: object
+      required:
+        [propertyId, status, source, georisquesUrl, reportPdfUrl, generatedAt, message, location, items]
+      properties:
+        propertyId:
+          type: string
+        status:
+          $ref: "#/components/schemas/PropertyRiskStatus"
+        source:
+          type: string
+          enum: [GEORISQUES]
+        georisquesUrl:
+          type: string
+          format: uri
+        reportPdfUrl:
+          type: string
+          format: uri
+          nullable: true
+        generatedAt:
+          type: string
+          format: date-time
+        message:
+          type: string
+          nullable: true
+        location:
+          $ref: "#/components/schemas/PropertyRiskLocation"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyRiskItemResponse"
     TypeDocument:
       type: string
       enum:

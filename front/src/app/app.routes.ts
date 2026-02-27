@@ -75,6 +75,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: "calendrier",
+        loadComponent: () =>
+          import("./pages/calendar/calendar-page.component").then(
+            (module) => module.CalendarPageComponent,
+          ),
+      },
+      {
         path: "bien/nouveau",
         loadComponent: () =>
           import("./pages/property-create/property-create-page.component").then(
