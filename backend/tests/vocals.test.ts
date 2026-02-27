@@ -5,8 +5,9 @@ import { aiJobsService } from "../src/ai";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { reviewQueueItems, vocals } from "../src/db/schema";
+import { files, properties, reviewQueueItems, vocals } from "../src/db/schema";
 import { createApp } from "../src/server";
+import { vocalsService } from "../src/vocals/service";
 
 const loginAndGetAccessToken = async (): Promise<string> => {
   const response = await createApp().fetch(
@@ -145,9 +146,10 @@ describe("vocals endpoints + AI rules", () => {
         },
         body: JSON.stringify({
           propertyId: "property_demo",
-          fileName: "appel-client-budget-350000.m4a",
+          fileName: "visite-initiale-budget-350000.m4a",
           mimeType: "audio/m4a",
           size: 2048,
+          contentBase64: Buffer.from("audio-test").toString("base64"),
         }),
       }),
     );
@@ -159,6 +161,18 @@ describe("vocals endpoints + AI rules", () => {
     });
     expect(transcribed.status).toBe("TRANSCRIBED");
 
+    const typeDetection = await aiJobsService.detectVocalType({
+      orgId: "org_demo",
+      vocalId: normalVocal.id,
+    });
+    expect(typeDetection.status).toBe("TYPE_CLASSIFIED");
+
+    const propertyExtraction = await aiJobsService.extractInitialVisitPropertyParams({
+      orgId: "org_demo",
+      vocalId: normalVocal.id,
+    });
+    expect(propertyExtraction.status).toBe("UPDATED");
+
     const insights = await aiJobsService.extractVocalInsights({
       orgId: "org_demo",
       vocalId: normalVocal.id,
@@ -169,5 +183,88 @@ describe("vocals endpoints + AI rules", () => {
       where: and(eq(vocals.id, normalVocal.id), eq(vocals.orgId, "org_demo")),
     });
     expect(dbVocal?.insights).toBeString();
+    expect(dbVocal?.vocalType).toBe("VISITE_INITIALE");
+
+    const updatedProperty = await db.query.properties.findFirst({
+      where: and(eq(properties.id, "property_demo"), eq(properties.orgId, "org_demo")),
+    });
+    expect(updatedProperty?.details).toContain("aiInitialVisit");
+  });
+
+  it("marque un vocal abandonné en erreur de traitement finale", async () => {
+    const staleDate = new Date(Date.now() - 15 * 60 * 1000);
+    const propertyId = crypto.randomUUID();
+    const fileId = crypto.randomUUID();
+    const vocalId = crypto.randomUUID();
+
+    await db.insert(properties).values({
+      id: propertyId,
+      orgId: "org_demo",
+      title: "Bien recovery",
+      status: "A_ESTIMER",
+      city: "Lyon",
+      postalCode: "69003",
+      address: "1 rue Test",
+      details: "{}",
+      createdAt: staleDate,
+      updatedAt: staleDate,
+    });
+
+    await db.insert(files).values({
+      id: fileId,
+      orgId: "org_demo",
+      propertyId,
+      typeDocument: null,
+      fileName: "stale-recovery-test.m4a",
+      mimeType: "audio/m4a",
+      size: 512,
+      status: "UPLOADED",
+      storageKey: `org_demo/${fileId}/stale-recovery-test.m4a`,
+      sourceProvider: null,
+      externalId: null,
+      createdAt: staleDate,
+      updatedAt: staleDate,
+    });
+
+    await db.insert(vocals).values({
+      id: vocalId,
+      orgId: "org_demo",
+      propertyId,
+      fileId,
+      status: "UPLOADED",
+      vocalType: null,
+      processingError: null,
+      processingAttempts: 3,
+      transcript: null,
+      summary: null,
+      insights: null,
+      confidence: null,
+      createdAt: staleDate,
+      updatedAt: staleDate,
+    });
+
+    const exhausted = await vocalsService.listRecoveryExhausted({
+      staleBefore: new Date(Date.now() - 5 * 60 * 1000),
+      minAttempts: 3,
+      limit: 20,
+    });
+
+    expect(exhausted.some((item) => item.id === vocalId)).toBeTrue();
+
+    await vocalsService.markProcessingFailure({
+      orgId: "org_demo",
+      id: vocalId,
+      step: "TRANSCRIBE",
+      message: "Aucune progression depuis plusieurs cycles",
+      isFinal: true,
+    });
+
+    const updated = await db.query.vocals.findFirst({
+      where: and(eq(vocals.id, vocalId), eq(vocals.orgId, "org_demo")),
+    });
+
+    expect(updated?.status).toBe("REVIEW_REQUIRED");
+    expect(updated?.vocalType).toBe("ERREUR_TRAITEMENT");
+    expect(updated?.processingError).toContain("TRANSCRIBE");
   });
 });

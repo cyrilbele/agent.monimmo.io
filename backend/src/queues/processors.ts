@@ -16,7 +16,12 @@ export type AiProcessorMap = {
 
 type AiJobHandlers = Pick<
   typeof aiJobsService,
-  "processMessage" | "processFile" | "transcribeVocal" | "extractVocalInsights"
+  | "processMessage"
+  | "processFile"
+  | "transcribeVocal"
+  | "detectVocalType"
+  | "extractInitialVisitPropertyParams"
+  | "extractVocalInsights"
 >;
 
 export const createAiProcessorMap = (handlers: AiJobHandlers = aiJobsService): AiProcessorMap => ({
@@ -52,6 +57,30 @@ export const createAiProcessorMap = (handlers: AiJobHandlers = aiJobsService): A
 
     return {
       queue: "transcribeVocal",
+      jobId: job.id,
+      processedAt: new Date().toISOString(),
+    };
+  },
+  detectVocalType: async (job) => {
+    await handlers.detectVocalType({
+      orgId: job.data.orgId,
+      vocalId: job.data.vocalId,
+    });
+
+    return {
+      queue: "detectVocalType",
+      jobId: job.id,
+      processedAt: new Date().toISOString(),
+    };
+  },
+  extractInitialVisitPropertyParams: async (job) => {
+    await handlers.extractInitialVisitPropertyParams({
+      orgId: job.data.orgId,
+      vocalId: job.data.vocalId,
+    });
+
+    return {
+      queue: "extractInitialVisitPropertyParams",
       jobId: job.id,
       processedAt: new Date().toISOString(),
     };

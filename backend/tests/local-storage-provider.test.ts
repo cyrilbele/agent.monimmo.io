@@ -44,6 +44,22 @@ describe("LocalStorageProvider", () => {
     expect(url).toContain("expiresAt=");
   });
 
+  it("lit un objet local", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "monimmo-storage-"));
+    tempDirs.push(rootDir);
+
+    const provider = new LocalStorageProvider({ rootDir });
+    await provider.putObject({
+      key: "docs/vocal.wav",
+      data: "audio",
+      contentType: "audio/wav",
+    });
+
+    const object = await provider.getObject("docs/vocal.wav");
+    expect(object.key).toBe("docs/vocal.wav");
+    expect(new TextDecoder().decode(object.data)).toBe("audio");
+  });
+
   it("supprime un objet", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "monimmo-storage-"));
     tempDirs.push(rootDir);
@@ -60,4 +76,3 @@ describe("LocalStorageProvider", () => {
     expect(exists).toBe(false);
   });
 });
-

@@ -22,6 +22,14 @@
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+              (click)="openVocalModal()"
+            >
+              Creer un vocal
+            </button>
+
             <a routerLink="/app/kanban" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
               Retour pipeline
             </a>
@@ -371,6 +379,97 @@
         </section>
       }
     </section>
+
+    @if (vocalModalOpen()) {
+      <div
+        class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vocal-modal-title"
+        (click)="onVocalBackdropClick($event)"
+      >
+        <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+          <div class="flex items-start justify-between gap-2">
+            <h3 id="vocal-modal-title" class="text-xl font-semibold text-slate-900">Creer un vocal</h3>
+            <button
+              type="button"
+              class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              [disabled]="vocalPending()"
+              (click)="closeVocalModal()"
+            >
+              Fermer
+            </button>
+          </div>
+
+          <div class="mt-4 space-y-3">
+            <p class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Enregistrement depuis votre micro puis envoi automatique au backend avec le lien vers ce bien.
+            </p>
+
+            <div class="flex flex-wrap items-center gap-2">
+              @if (!vocalRecording()) {
+                <button
+                  type="button"
+                  class="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  [disabled]="vocalPending()"
+                  (click)="startVocalRecording()"
+                >
+                  Demarrer l'enregistrement
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+                  (click)="stopVocalRecording()"
+                >
+                  Arreter
+                </button>
+              }
+
+              @if (recordedVocal()) {
+                <button
+                  type="button"
+                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  [disabled]="vocalPending()"
+                  (click)="clearRecordedVocal()"
+                >
+                  Recommencer
+                </button>
+              }
+            </div>
+
+            @if (recordedVocalLabel()) {
+              <p class="text-sm text-slate-700">{{ recordedVocalLabel() }}</p>
+            }
+
+            @if (vocalFeedback()) {
+              <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+                {{ vocalFeedback() }}
+              </p>
+            }
+
+            <div class="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                [disabled]="vocalPending()"
+                (click)="closeVocalModal()"
+              >
+                Annuler
+              </button>
+              <button
+                class="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                type="button"
+                [disabled]="vocalPending() || vocalRecording() || !recordedVocal()"
+                (click)="uploadVocalRecording()"
+              >
+                {{ vocalPending() ? "Envoi..." : "Envoyer le vocal" }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
 
     @if (uploadModalOpen()) {
       <div

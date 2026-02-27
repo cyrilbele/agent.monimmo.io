@@ -5,13 +5,26 @@ import { files, messages, properties } from "../db/schema";
 import { filesService } from "../files/service";
 import { HttpError } from "../http/errors";
 import { messagesService } from "../messages/service";
+import { propertiesService } from "../properties/service";
+import {
+  enqueueAiDetectVocalType,
+  enqueueAiExtractInitialVisitPropertyParams,
+  getAiQueueClient,
+} from "../queues/client";
 import { reviewQueueService } from "../review-queue/service";
+import { getStorageProvider } from "../storage";
 import { vocalsService } from "../vocals/service";
 
 const MIN_MESSAGE_MATCH_CONFIDENCE = 0.6;
 const MIN_FILE_CLASSIFICATION_CONFIDENCE = 0.65;
 const MIN_TRANSCRIPT_CONFIDENCE = 0.6;
 const MIN_INSIGHTS_CONFIDENCE = 0.5;
+const MIN_VOCAL_TYPE_CONFIDENCE = 0.55;
+const MIN_INITIAL_VISIT_EXTRACTION_CONFIDENCE = 0.55;
+
+const isQueueEnabled = (): boolean => process.env.ENABLE_QUEUE === "true";
+const toJobIdPart = (value: string): string => value.replaceAll(":", "_");
+const buildJobId = (...parts: string[]): string => parts.map(toJobIdPart).join("__");
 
 const listPropertyCandidates = async (orgId: string) => {
   const rows = await db
@@ -164,10 +177,13 @@ export const aiJobsService = {
       orgId: input.orgId,
       id: input.vocalId,
     });
+    const storage = getStorageProvider();
+    const audioObject = await storage.getObject(vocal.storageKey);
 
     const transcription = await provider.transcribeVocal({
       fileName: vocal.fileName,
       mimeType: vocal.mimeType,
+      audioData: audioObject.data,
     });
 
     const reasons: string[] = [];
@@ -234,7 +250,210 @@ export const aiJobsService = {
       });
     }
 
+    if (transcription.transcript.trim() && isQueueEnabled()) {
+      try {
+        await enqueueAiDetectVocalType(
+          getAiQueueClient(),
+          {
+            orgId: input.orgId,
+            vocalId: vocal.id,
+          },
+          {
+            jobId: buildJobId("vocal", "type", input.orgId, vocal.id),
+          },
+        );
+      } catch (error) {
+        console.warn("[BullMQ] enqueue detect vocal type fallback:", error);
+      }
+    }
+
     return { status };
+  },
+
+  async detectVocalType(input: { orgId: string; vocalId: string }) {
+    const provider = getAIProvider();
+    const vocal = await vocalsService.getByIdForProcessing({
+      orgId: input.orgId,
+      id: input.vocalId,
+    });
+
+    if (!vocal.transcript || !vocal.transcript.trim()) {
+      await vocalsService.setVocalType({
+        orgId: input.orgId,
+        id: vocal.id,
+        vocalType: null,
+        status: "REVIEW_REQUIRED",
+      });
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_NO_TRANSCRIPT_FOR_TYPE",
+      });
+      return { status: "REVIEW_REQUIRED" as const, reason: "missing_transcript" };
+    }
+
+    const result = await provider.detectVocalType({
+      transcript: vocal.transcript,
+      summary: vocal.summary,
+    });
+
+    if (!result.vocalType || result.confidence < MIN_VOCAL_TYPE_CONFIDENCE) {
+      await vocalsService.setVocalType({
+        orgId: input.orgId,
+        id: vocal.id,
+        vocalType: null,
+        status: "REVIEW_REQUIRED",
+      });
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_TYPE_REVIEW_REQUIRED",
+        payload: {
+          confidence: result.confidence,
+          reasoning: result.reasoning,
+          proposedType: result.vocalType,
+        },
+      });
+      return { status: "REVIEW_REQUIRED" as const, reason: "low_confidence" };
+    }
+
+    await vocalsService.setVocalType({
+      orgId: input.orgId,
+      id: vocal.id,
+      vocalType: result.vocalType,
+    });
+
+    if (result.vocalType === "VISITE_INITIALE") {
+      if (!vocal.propertyId) {
+        await reviewQueueService.createOpenItem({
+          orgId: input.orgId,
+          itemType: "VOCAL",
+          itemId: vocal.id,
+          reason: "VOCAL_INITIAL_VISIT_NO_PROPERTY",
+        });
+        return {
+          status: "REVIEW_REQUIRED" as const,
+          reason: "initial_visit_missing_property",
+        };
+      }
+
+      if (isQueueEnabled()) {
+        try {
+          await enqueueAiExtractInitialVisitPropertyParams(
+            getAiQueueClient(),
+            {
+              orgId: input.orgId,
+              vocalId: vocal.id,
+            },
+            {
+              jobId: buildJobId("vocal", "property", input.orgId, vocal.id),
+            },
+          );
+        } catch (error) {
+          console.warn("[BullMQ] enqueue extract initial-visit params fallback:", error);
+        }
+      }
+    }
+
+    return { status: "TYPE_CLASSIFIED" as const, vocalType: result.vocalType };
+  },
+
+  async extractInitialVisitPropertyParams(input: { orgId: string; vocalId: string }) {
+    const provider = getAIProvider();
+    const vocal = await vocalsService.getByIdForProcessing({
+      orgId: input.orgId,
+      id: input.vocalId,
+    });
+
+    if (vocal.vocalType !== "VISITE_INITIALE") {
+      return { status: "SKIPPED" as const, reason: "not_initial_visit" };
+    }
+
+    if (!vocal.propertyId) {
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_INITIAL_VISIT_NO_PROPERTY",
+      });
+      return { status: "REVIEW_REQUIRED" as const, reason: "missing_property" };
+    }
+
+    if (!vocal.transcript || !vocal.transcript.trim()) {
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_NO_TRANSCRIPT",
+      });
+      return { status: "REVIEW_REQUIRED" as const, reason: "missing_transcript" };
+    }
+
+    const extracted = await provider.extractInitialVisitPropertyParams({
+      transcript: vocal.transcript,
+      summary: vocal.summary,
+    });
+
+    if (extracted.confidence < MIN_INITIAL_VISIT_EXTRACTION_CONFIDENCE) {
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_INITIAL_VISIT_LOW_CONFIDENCE",
+        payload: {
+          confidence: extracted.confidence,
+        },
+      });
+      return { status: "REVIEW_REQUIRED" as const, reason: "low_confidence" };
+    }
+
+    const patchPayload: {
+      title?: string;
+      address?: string;
+      city?: string;
+      postalCode?: string;
+      price?: number;
+      details?: Record<string, unknown>;
+    } = {};
+
+    if (extracted.title && extracted.title.trim()) {
+      patchPayload.title = extracted.title.trim();
+    }
+    if (extracted.address && extracted.address.trim()) {
+      patchPayload.address = extracted.address.trim();
+    }
+    if (extracted.city && extracted.city.trim()) {
+      patchPayload.city = extracted.city.trim();
+    }
+    if (extracted.postalCode && extracted.postalCode.trim()) {
+      patchPayload.postalCode = extracted.postalCode.trim();
+    }
+    if (
+      typeof extracted.price === "number" &&
+      Number.isFinite(extracted.price) &&
+      extracted.price > 0
+    ) {
+      patchPayload.price = Math.round(extracted.price);
+    }
+
+    patchPayload.details = {
+      aiInitialVisit: extracted.details,
+      aiInitialVisitMeta: {
+        vocalId: vocal.id,
+        confidence: extracted.confidence,
+        processedAt: new Date().toISOString(),
+      },
+    };
+
+    await propertiesService.patchById({
+      orgId: input.orgId,
+      id: vocal.propertyId,
+      data: patchPayload,
+    });
+
+    return { status: "UPDATED" as const, propertyId: vocal.propertyId };
   },
 
   async extractVocalInsights(input: { orgId: string; vocalId: string }) {

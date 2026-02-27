@@ -1,6 +1,11 @@
 import { inject, Injectable } from "@angular/core";
 
-import type { FileListResponse, FileResponse, FileUploadRequest } from "../core/api.models";
+import type {
+  FileDownloadUrlResponse,
+  FileListResponse,
+  FileResponse,
+  FileUploadRequest,
+} from "../core/api.models";
 import { ApiClientService } from "../core/api-client.service";
 
 @Injectable({ providedIn: "root" })
@@ -20,5 +25,12 @@ export class FileService {
     return this.api.request<FileResponse>("POST", "/files/upload", {
       body: payload,
     });
+  }
+
+  getDownloadUrl(fileId: string): Promise<FileDownloadUrlResponse> {
+    return this.api.request<FileDownloadUrlResponse>(
+      "GET",
+      `/files/${encodeURIComponent(fileId)}/download-url`,
+    );
   }
 }

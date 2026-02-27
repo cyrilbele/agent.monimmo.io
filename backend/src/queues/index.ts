@@ -4,5 +4,6 @@ export * from "./connection";
 export * from "./dispatch";
 export * from "./metrics";
 export * from "./processors";
+export * from "./recovery";
 export * from "./types";
 export * from "./workers";

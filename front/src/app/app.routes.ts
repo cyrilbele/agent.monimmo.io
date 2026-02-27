@@ -61,6 +61,20 @@ export const routes: Routes = [
           ),
       },
       {
+        path: "vocaux",
+        loadComponent: () =>
+          import("./pages/vocals/vocals-page.component").then(
+            (module) => module.VocalsPageComponent,
+          ),
+      },
+      {
+        path: "vocaux/:id",
+        loadComponent: () =>
+          import("./pages/vocals/vocal-detail-page.component").then(
+            (module) => module.VocalDetailPageComponent,
+          ),
+      },
+      {
         path: "bien/nouveau",
         loadComponent: () =>
           import("./pages/property-create/property-create-page.component").then(

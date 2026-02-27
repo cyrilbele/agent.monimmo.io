@@ -3,17 +3,28 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const queueEnabledEnv = {
+  ...process.env,
+  ENABLE_QUEUE: "true",
+};
 
 const processes = [
   {
     name: "backend",
     cwd: rootDir,
     cmd: ["bun", "run", "dev:backend"],
+    env: queueEnabledEnv,
   },
   {
     name: "front",
     cwd: resolve(rootDir, "front"),
     cmd: ["bun", "run", "start"],
+  },
+  {
+    name: "worker",
+    cwd: rootDir,
+    cmd: ["bun", "run", "--cwd", "backend", "worker"],
+    env: queueEnabledEnv,
   },
 ];
 
@@ -53,7 +64,7 @@ for (const proc of processes) {
   const child = spawn(proc.cmd[0], proc.cmd.slice(1), {
     cwd: proc.cwd,
     stdio: "inherit",
-    env: process.env,
+    env: proc.env ?? process.env,
   });
 
   child.on("exit", (code, signal) => {

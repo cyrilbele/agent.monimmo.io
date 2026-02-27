@@ -253,6 +253,11 @@ export interface FileListResponse {
   nextCursor?: string | null;
 }
 
+export interface FileDownloadUrlResponse {
+  url: string;
+  expiresAt: string;
+}
+
 export interface FileUploadRequest {
   propertyId: string;
   typeDocument: TypeDocument;
@@ -279,6 +284,50 @@ export interface MessageResponse {
 export interface MessageListResponse {
   items: MessageResponse[];
   nextCursor?: string | null;
+}
+
+export type VocalStatus =
+  | "UPLOADED"
+  | "TRANSCRIBED"
+  | "INSIGHTS_READY"
+  | "REVIEW_REQUIRED";
+
+export type VocalType =
+  | "VISITE_INITIALE"
+  | "VISITE_SUIVI"
+  | "COMPTE_RENDU_VISITE_CLIENT"
+  | "ERREUR_TRAITEMENT";
+
+export interface VocalUploadRequest {
+  propertyId?: string | null;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  contentBase64?: string;
+}
+
+export interface VocalResponse {
+  id: string;
+  propertyId?: string | null;
+  fileId: string;
+  status: VocalStatus;
+  vocalType?: VocalType | null;
+  processingError?: string | null;
+  transcript?: string | null;
+  summary?: string | null;
+  insights?: Record<string, unknown> | null;
+  confidence?: number | null;
+  createdAt: string;
+}
+
+export interface VocalListResponse {
+  items: VocalResponse[];
+  nextCursor?: string | null;
+}
+
+export interface RunAIResponse {
+  jobId: string;
+  status: "QUEUED";
 }
 
 export type IntegrationProvider = "GMAIL" | "GOOGLE_CALENDAR" | "WHATSAPP";

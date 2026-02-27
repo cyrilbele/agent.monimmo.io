@@ -179,6 +179,9 @@ export const vocals = sqliteTable("vocals", {
     .notNull()
     .references(() => files.id),
   status: text("status").notNull(),
+  vocalType: text("vocal_type"),
+  processingError: text("processing_error"),
+  processingAttempts: integer("processing_attempts").notNull().default(0),
   transcript: text("transcript"),
   summary: text("summary"),
   insights: text("insights"),

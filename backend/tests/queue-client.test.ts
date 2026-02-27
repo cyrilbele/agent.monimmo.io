@@ -1,5 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
+  enqueueAiDetectVocalType,
+  enqueueAiExtractInitialVisitPropertyParams,
   enqueueAiExtractVocalInsights,
   enqueueAiProcessFile,
   enqueueAiProcessMessage,
@@ -41,10 +43,20 @@ describe("queue client helpers", () => {
 
   it("couvre aussi les jobs vocaux", async () => {
     const addTranscribe = mock(async () => ({ id: "job-3" }));
+    const addType = mock(async () => ({ id: "job-5" }));
+    const addPropertyExtract = mock(async () => ({ id: "job-6" }));
     const addInsights = mock(async () => ({ id: "job-4" }));
 
     await enqueueAiTranscribeVocal(
       { transcribeVocal: { add: addTranscribe } },
+      { orgId: "org_1", vocalId: "voc_1" },
+    );
+    await enqueueAiDetectVocalType(
+      { detectVocalType: { add: addType } },
+      { orgId: "org_1", vocalId: "voc_1" },
+    );
+    await enqueueAiExtractInitialVisitPropertyParams(
+      { extractInitialVisitPropertyParams: { add: addPropertyExtract } },
       { orgId: "org_1", vocalId: "voc_1" },
     );
     await enqueueAiExtractVocalInsights(
@@ -59,6 +71,16 @@ describe("queue client helpers", () => {
     );
     expect(addInsights).toHaveBeenCalledWith(
       "extract-vocal-insights",
+      { orgId: "org_1", vocalId: "voc_1" },
+      undefined,
+    );
+    expect(addType).toHaveBeenCalledWith(
+      "detect-vocal-type",
+      { orgId: "org_1", vocalId: "voc_1" },
+      undefined,
+    );
+    expect(addPropertyExtract).toHaveBeenCalledWith(
+      "extract-initial-visit-property-params",
       { orgId: "org_1", vocalId: "voc_1" },
       undefined,
     );

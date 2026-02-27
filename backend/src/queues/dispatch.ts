@@ -1,4 +1,6 @@
 import {
+  enqueueAiDetectVocalType,
+  enqueueAiExtractInitialVisitPropertyParams,
   enqueueAiExtractVocalInsights,
   enqueueAiProcessFile,
   enqueueAiProcessMessage,
@@ -12,6 +14,8 @@ type QueueResult = {
 };
 
 const fallbackJobId = (prefix: string): string => `${prefix}_${crypto.randomUUID()}`;
+const toJobIdPart = (value: string): string => value.replaceAll(":", "_");
+const buildJobId = (...parts: string[]): string => parts.map(toJobIdPart).join("__");
 const isQueueEnabled = (): boolean => process.env.ENABLE_QUEUE === "true";
 
 export const enqueueMessageAiJob = async (payload: {
@@ -27,7 +31,7 @@ export const enqueueMessageAiJob = async (payload: {
 
   try {
     const job = await enqueueAiProcessMessage(getAiQueueClient(), payload, {
-      jobId: `msg:${payload.orgId}:${payload.messageId}`,
+      jobId: buildJobId("msg", payload.orgId, payload.messageId),
     });
 
     return {
@@ -56,7 +60,7 @@ export const enqueueFileAiJob = async (payload: {
 
   try {
     const job = await enqueueAiProcessFile(getAiQueueClient(), payload, {
-      jobId: `file:${payload.orgId}:${payload.fileId}`,
+      jobId: buildJobId("file", payload.orgId, payload.fileId),
     });
 
     return {
@@ -85,7 +89,7 @@ export const enqueueVocalTranscriptionJob = async (payload: {
 
   try {
     const job = await enqueueAiTranscribeVocal(getAiQueueClient(), payload, {
-      jobId: `vocal:transcribe:${payload.orgId}:${payload.vocalId}`,
+      jobId: buildJobId("vocal", "transcribe", payload.orgId, payload.vocalId),
     });
 
     return {
@@ -114,7 +118,7 @@ export const enqueueVocalInsightsJob = async (payload: {
 
   try {
     const job = await enqueueAiExtractVocalInsights(getAiQueueClient(), payload, {
-      jobId: `vocal:insights:${payload.orgId}:${payload.vocalId}`,
+      jobId: buildJobId("vocal", "insights", payload.orgId, payload.vocalId),
     });
 
     return {
@@ -125,6 +129,64 @@ export const enqueueVocalInsightsJob = async (payload: {
     console.warn("[BullMQ] enqueue vocal insights fallback:", error);
     return {
       jobId: fallbackJobId("vocal_insights"),
+      status: "QUEUED",
+    };
+  }
+};
+
+export const enqueueVocalTypeDetectionJob = async (payload: {
+  orgId: string;
+  vocalId: string;
+}): Promise<QueueResult> => {
+  if (!isQueueEnabled()) {
+    return {
+      jobId: fallbackJobId("vocal_type"),
+      status: "QUEUED",
+    };
+  }
+
+  try {
+    const job = await enqueueAiDetectVocalType(getAiQueueClient(), payload, {
+      jobId: buildJobId("vocal", "type", payload.orgId, payload.vocalId),
+    });
+
+    return {
+      jobId: String((job as { id?: string }).id ?? fallbackJobId("vocal_type")),
+      status: "QUEUED",
+    };
+  } catch (error) {
+    console.warn("[BullMQ] enqueue vocal type fallback:", error);
+    return {
+      jobId: fallbackJobId("vocal_type"),
+      status: "QUEUED",
+    };
+  }
+};
+
+export const enqueueInitialVisitPropertyExtractionJob = async (payload: {
+  orgId: string;
+  vocalId: string;
+}): Promise<QueueResult> => {
+  if (!isQueueEnabled()) {
+    return {
+      jobId: fallbackJobId("vocal_property_extract"),
+      status: "QUEUED",
+    };
+  }
+
+  try {
+    const job = await enqueueAiExtractInitialVisitPropertyParams(getAiQueueClient(), payload, {
+      jobId: buildJobId("vocal", "property", payload.orgId, payload.vocalId),
+    });
+
+    return {
+      jobId: String((job as { id?: string }).id ?? fallbackJobId("vocal_property_extract")),
+      status: "QUEUED",
+    };
+  } catch (error) {
+    console.warn("[BullMQ] enqueue vocal property extraction fallback:", error);
+    return {
+      jobId: fallbackJobId("vocal_property_extract"),
       status: "QUEUED",
     };
   }

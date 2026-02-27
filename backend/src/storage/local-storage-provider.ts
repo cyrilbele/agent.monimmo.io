@@ -1,6 +1,7 @@
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
+  StorageGetObjectResult,
   StorageObjectMetadata,
   StorageProvider,
   StoragePutObjectInput,
@@ -61,6 +62,15 @@ export class LocalStorageProvider implements StorageProvider {
     };
   }
 
+  async getObject(key: string): Promise<StorageGetObjectResult> {
+    const filePath = this.resolveKeyPath(key);
+    const data = await readFile(filePath);
+    return {
+      key,
+      data: new Uint8Array(data),
+    };
+  }
+
   async getDownloadUrl(key: string, expiresInSeconds: number): Promise<string> {
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
     const encodedKey = encodeURIComponent(key);
@@ -72,4 +82,3 @@ export class LocalStorageProvider implements StorageProvider {
     await rm(filePath, { force: true });
   }
 }
-

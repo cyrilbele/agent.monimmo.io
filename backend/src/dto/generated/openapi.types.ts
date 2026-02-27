@@ -858,11 +858,14 @@ export interface components {
         };
         /** @enum {string} */
         VocalStatus: "UPLOADED" | "TRANSCRIBED" | "INSIGHTS_READY" | "REVIEW_REQUIRED";
+        /** @enum {string} */
+        VocalType: "VISITE_INITIALE" | "VISITE_SUIVI" | "COMPTE_RENDU_VISITE_CLIENT" | "ERREUR_TRAITEMENT";
         VocalUploadRequest: {
             propertyId?: string | null;
             fileName: string;
             mimeType: string;
             size: number;
+            contentBase64?: string;
         };
         VocalUpdateRequest: {
             propertyId: string;
@@ -872,6 +875,8 @@ export interface components {
             propertyId?: string | null;
             fileId: string;
             status: components["schemas"]["VocalStatus"];
+            vocalType?: components["schemas"]["VocalType"] | null;
+            processingError?: string | null;
             transcript?: string | null;
             summary?: string | null;
             insights?: {

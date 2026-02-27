@@ -1,5 +1,6 @@
 import { closeAiQueueClient } from "./queues/client";
 import { getQueueRedisConnection } from "./queues/connection";
+import { startVocalRecoveryLoop, stopVocalRecoveryLoop } from "./queues/recovery";
 import { startAiWorkers, stopAiWorkers } from "./queues/workers";
 
 let workersStarted = false;
@@ -14,6 +15,7 @@ const shutdown = async (signal: string) => {
   console.info(`[BullMQ] Arrêt demandé (${signal})`);
 
   if (workersStarted) {
+    await stopVocalRecoveryLoop();
     await stopAiWorkers();
     await closeAiQueueClient();
   }
@@ -34,6 +36,7 @@ try {
 
   const workers = startAiWorkers();
   workersStarted = true;
+  startVocalRecoveryLoop();
   const workerNames = Object.keys(workers).join(", ");
   console.info(`[BullMQ] Workers démarrés: ${workerNames}`);
 } catch (error) {

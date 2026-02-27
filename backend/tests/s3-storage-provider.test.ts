@@ -60,6 +60,33 @@ describe("S3StorageProvider", () => {
     expect(url).toBe("https://signed.example/download");
   });
 
+  it("récupère un objet via GetObjectCommand", async () => {
+    const sentCommands: unknown[] = [];
+    const provider = new S3StorageProvider({
+      bucket: "bucket-test",
+      region: "eu-west-3",
+      client: {
+        send: async (command: unknown) => {
+          sentCommands.push(command);
+          return {
+            Body: {
+              async transformToByteArray() {
+                return new TextEncoder().encode("audio-content");
+              },
+            },
+            ContentType: "audio/mpeg",
+          };
+        },
+      },
+    });
+
+    const object = await provider.getObject("docs/vocal.mp3");
+    expect(object.key).toBe("docs/vocal.mp3");
+    expect(object.contentType).toBe("audio/mpeg");
+    expect(new TextDecoder().decode(object.data)).toBe("audio-content");
+    expect(sentCommands[0]).toBeInstanceOf(GetObjectCommand);
+  });
+
   it("envoie un DeleteObjectCommand sur deleteObject", async () => {
     const sentCommands: unknown[] = [];
     const provider = new S3StorageProvider({

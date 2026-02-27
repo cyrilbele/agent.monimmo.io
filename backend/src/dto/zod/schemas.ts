@@ -378,11 +378,19 @@ export const VocalStatusSchema = z.enum([
   "REVIEW_REQUIRED",
 ]);
 
+export const VocalTypeSchema = z.enum([
+  "VISITE_INITIALE",
+  "VISITE_SUIVI",
+  "COMPTE_RENDU_VISITE_CLIENT",
+  "ERREUR_TRAITEMENT",
+]);
+
 export const VocalUploadRequestSchema = z.object({
   propertyId: z.string().nullable().optional(),
   fileName: z.string(),
   mimeType: z.string(),
   size: z.number().int(),
+  contentBase64: z.string().optional(),
 });
 
 export const VocalUpdateRequestSchema = z.object({
@@ -394,6 +402,8 @@ export const VocalResponseSchema = z.object({
   propertyId: z.string().nullable().optional(),
   fileId: z.string(),
   status: VocalStatusSchema,
+  vocalType: VocalTypeSchema.nullable().optional(),
+  processingError: z.string().nullable().optional(),
   transcript: z.string().nullable().optional(),
   summary: z.string().nullable().optional(),
   insights: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -495,6 +505,7 @@ export const DtoSchemaMap = {
   MessageListResponse: MessageListResponseSchema,
   MessageUpdateRequest: MessageUpdateRequestSchema,
   VocalStatus: VocalStatusSchema,
+  VocalType: VocalTypeSchema,
   VocalUploadRequest: VocalUploadRequestSchema,
   VocalUpdateRequest: VocalUpdateRequestSchema,
   VocalResponse: VocalResponseSchema,

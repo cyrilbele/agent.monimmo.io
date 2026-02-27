@@ -1494,6 +1494,9 @@ components:
     VocalStatus:
       type: string
       enum: [UPLOADED, TRANSCRIBED, INSIGHTS_READY, REVIEW_REQUIRED]
+    VocalType:
+      type: string
+      enum: [VISITE_INITIALE, VISITE_SUIVI, COMPTE_RENDU_VISITE_CLIENT, ERREUR_TRAITEMENT]
     VocalUploadRequest:
       type: object
       required: [fileName, mimeType, size]
@@ -1507,6 +1510,8 @@ components:
           type: string
         size:
           type: integer
+        contentBase64:
+          type: string
     VocalUpdateRequest:
       type: object
       required: [propertyId]
@@ -1526,6 +1531,13 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/VocalStatus"
+        vocalType:
+          allOf:
+            - $ref: "#/components/schemas/VocalType"
+          nullable: true
+        processingError:
+          type: string
+          nullable: true
         transcript:
           type: string
           nullable: true

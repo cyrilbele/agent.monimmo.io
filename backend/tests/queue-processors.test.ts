@@ -7,6 +7,12 @@ describe("queue processors", () => {
       processMessage: mock(async () => ({ status: "PROCESSED" as const, reason: "ok" })),
       processFile: mock(async () => ({ status: "CLASSIFIED" as const })),
       transcribeVocal: mock(async () => ({ status: "TRANSCRIBED" as const })),
+      detectVocalType: mock(
+        async () => ({ status: "TYPE_CLASSIFIED" as const, vocalType: "VISITE_INITIALE" as const }),
+      ),
+      extractInitialVisitPropertyParams: mock(
+        async () => ({ status: "UPDATED" as const, propertyId: "property_1" }),
+      ),
       extractVocalInsights: mock(async () => ({ status: "INSIGHTS_READY" as const })),
     };
     const processors = createAiProcessorMap(handlers);

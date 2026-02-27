@@ -14,6 +14,10 @@ export type AiQueueClient = {
   processMessage: QueueWriter<AiJobPayloadByKey["processMessage"]>;
   processFile: QueueWriter<AiJobPayloadByKey["processFile"]>;
   transcribeVocal: QueueWriter<AiJobPayloadByKey["transcribeVocal"]>;
+  detectVocalType: QueueWriter<AiJobPayloadByKey["detectVocalType"]>;
+  extractInitialVisitPropertyParams: QueueWriter<
+    AiJobPayloadByKey["extractInitialVisitPropertyParams"]
+  >;
   extractVocalInsights: QueueWriter<AiJobPayloadByKey["extractVocalInsights"]>;
 };
 
@@ -21,6 +25,10 @@ export type AiBullQueueClient = {
   processMessage: Queue<AiJobPayloadByKey["processMessage"]>;
   processFile: Queue<AiJobPayloadByKey["processFile"]>;
   transcribeVocal: Queue<AiJobPayloadByKey["transcribeVocal"]>;
+  detectVocalType: Queue<AiJobPayloadByKey["detectVocalType"]>;
+  extractInitialVisitPropertyParams: Queue<
+    AiJobPayloadByKey["extractInitialVisitPropertyParams"]
+  >;
   extractVocalInsights: Queue<AiJobPayloadByKey["extractVocalInsights"]>;
 };
 
@@ -46,6 +54,16 @@ export const createAiQueueClient = (input: {
   processFile: createQueue(AI_QUEUE_NAMES.processFile, input.connection, input.defaultJobOptions),
   transcribeVocal: createQueue(
     AI_QUEUE_NAMES.transcribeVocal,
+    input.connection,
+    input.defaultJobOptions,
+  ),
+  detectVocalType: createQueue(
+    AI_QUEUE_NAMES.detectVocalType,
+    input.connection,
+    input.defaultJobOptions,
+  ),
+  extractInitialVisitPropertyParams: createQueue(
+    AI_QUEUE_NAMES.extractInitialVisitPropertyParams,
     input.connection,
     input.defaultJobOptions,
   ),
@@ -104,6 +122,23 @@ export const enqueueAiTranscribeVocal = (
   payload: AiJobPayloadByKey["transcribeVocal"],
   options?: JobsOptions,
 ) => queueClient.transcribeVocal.add(AI_JOB_NAMES.transcribeVocal, payload, options);
+
+export const enqueueAiDetectVocalType = (
+  queueClient: Pick<AiQueueClient, "detectVocalType">,
+  payload: AiJobPayloadByKey["detectVocalType"],
+  options?: JobsOptions,
+) => queueClient.detectVocalType.add(AI_JOB_NAMES.detectVocalType, payload, options);
+
+export const enqueueAiExtractInitialVisitPropertyParams = (
+  queueClient: Pick<AiQueueClient, "extractInitialVisitPropertyParams">,
+  payload: AiJobPayloadByKey["extractInitialVisitPropertyParams"],
+  options?: JobsOptions,
+) =>
+  queueClient.extractInitialVisitPropertyParams.add(
+    AI_JOB_NAMES.extractInitialVisitPropertyParams,
+    payload,
+    options,
+  );
 
 export const enqueueAiExtractVocalInsights = (
   queueClient: Pick<AiQueueClient, "extractVocalInsights">,

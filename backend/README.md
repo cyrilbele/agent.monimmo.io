@@ -38,14 +38,16 @@ Depuis la racine du repo:
 bun run dev:infra:up
 bun run --cwd backend db:migrate
 bun run --cwd backend db:seed
-bun run --cwd backend dev
+bun run dev
 ```
 
 API: `http://localhost:3000`
 
+`bun run dev` lance backend + front + worker, avec `ENABLE_QUEUE=true` force pour backend + worker.
+
 ## Worker IA
 
-Dans un autre terminal:
+Si tu n'utilises pas `bun run dev`, lance-le dans un autre terminal:
 
 ```bash
 cd backend
@@ -53,6 +55,11 @@ ENABLE_QUEUE=true bun run worker
 ```
 
 Sans `ENABLE_QUEUE=true`, les endpoints `run-ai` renvoient `QUEUED` mais sans pousser de jobs Redis.
+
+Le worker lance aussi une reprise automatique des vocaux abandonnes:
+- vocaux `UPLOADED` trop anciens => requeue transcription
+- vocaux `TRANSCRIBED` sans type => requeue detection type
+- au-dela du seuil de tentatives, le vocal passe en `ERREUR_TRAITEMENT` avec `processingError`
 
 ## Endpoints utiles
 
@@ -95,7 +102,12 @@ Variables principales:
 - `BULLMQ_REMOVE_ON_COMPLETE`
 - `BULLMQ_REMOVE_ON_FAIL`
 - `BULLMQ_WORKER_CONCURRENCY`
-- `AI_PROVIDER` (`mock`)
+- `VOCAL_RECOVERY_STALE_AFTER_MS`
+- `VOCAL_RECOVERY_INTERVAL_MS`
+- `VOCAL_RECOVERY_MAX_ATTEMPTS`
+- `VOCAL_RECOVERY_BATCH_SIZE`
+- `AI_PROVIDER` (`mock` ou `openai`)
+- `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_WHISPER_MODEL`, `OPENAI_BASE_URL`
 - `CONNECTOR_RUNTIME` (`mock`)
 - `INTEGRATION_TOKEN_SECRET`
 - Stockage: `STORAGE_PROVIDER`, `LOCAL_STORAGE_DIR`, `APP_BASE_URL`, `S3_*`, `AWS_*`
@@ -107,5 +119,7 @@ bun run typecheck
 bun run test
 bun run test:coverage
 ```
+
+Les scripts `test` et `test:coverage` forcent `AI_PROVIDER=mock` et `CONNECTOR_RUNTIME=mock`.
 
 Objectif coverage backend: >= 80% (bloquant CI).

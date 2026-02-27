@@ -8,4 +8,4 @@ Bun.serve({
 });
 
 console.info(`Backend démarré sur http://localhost:${port}`);
-
+console.info(`[Backend] ENABLE_QUEUE=${process.env.ENABLE_QUEUE === "true" ? "true" : "false"}`);

@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
+  OnDestroy,
   OnInit,
   computed,
   inject,
@@ -41,6 +42,7 @@ import { FileService } from "../../services/file.service";
 import { MessageService } from "../../services/message.service";
 import { PropertyService } from "../../services/property.service";
 import { UserService } from "../../services/user.service";
+import { VocalService } from "../../services/vocal.service";
 
 type MainTabId = "property" | "documents" | "prospects" | "messages";
 type ProspectMode = "existing" | "new";
@@ -56,13 +58,14 @@ const DEFAULT_TYPE_DOCUMENT: TypeDocument = "PIECE_IDENTITE";
   templateUrl: "./property-detail-page.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class PropertyDetailPageComponent implements OnInit {
+export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private readonly formBuilder = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly propertyService = inject(PropertyService);
   private readonly messageService = inject(MessageService);
   private readonly fileService = inject(FileService);
   private readonly userService = inject(UserService);
+  private readonly vocalService = inject(VocalService);
 
   readonly propertyId = this.route.snapshot.paramMap.get("id") ?? "";
 
@@ -92,6 +95,11 @@ export class PropertyDetailPageComponent implements OnInit {
 
   readonly uploadModalOpen = signal(false);
   readonly selectedFile = signal<File | null>(null);
+  readonly vocalModalOpen = signal(false);
+  readonly vocalRecording = signal(false);
+  readonly vocalPending = signal(false);
+  readonly vocalFeedback = signal<string | null>(null);
+  readonly recordedVocal = signal<Blob | null>(null);
   readonly prospectModalOpen = signal(false);
   readonly prospectMode = signal<ProspectMode>("existing");
   readonly clientsLoading = signal(false);
@@ -175,6 +183,14 @@ export class PropertyDetailPageComponent implements OnInit {
   });
 
   readonly selectedFileName = computed(() => this.selectedFile()?.name ?? null);
+  readonly recordedVocalLabel = computed(() => {
+    const blob = this.recordedVocal();
+    if (!blob) {
+      return null;
+    }
+
+    return `Enregistrement prêt (${this.formatSize(blob.size)})`;
+  });
   readonly prospectAutocompleteId = `prospect-autocomplete-${this.propertyId || "property"}`;
   readonly prospectAutocompleteListId = `prospect-autocomplete-list-${this.propertyId || "property"}`;
   readonly filteredProspectClients = computed(() => {
@@ -199,6 +215,10 @@ export class PropertyDetailPageComponent implements OnInit {
       .slice(0, 8);
   });
 
+  private mediaRecorder: MediaRecorder | null = null;
+  private mediaStream: MediaStream | null = null;
+  private recordedChunks: BlobPart[] = [];
+
   ngOnInit(): void {
     this.applyProspectModeConstraints(this.prospectMode());
 
@@ -209,6 +229,10 @@ export class PropertyDetailPageComponent implements OnInit {
     }
 
     void this.loadPropertyBundle();
+  }
+
+  ngOnDestroy(): void {
+    this.stopRecorderTracks();
   }
 
   async loadPropertyBundle(): Promise<void> {
@@ -519,6 +543,135 @@ export class PropertyDetailPageComponent implements OnInit {
       this.uploadFeedback.set(message);
     } finally {
       this.uploadPending.set(false);
+    }
+  }
+
+  openVocalModal(): void {
+    this.recordedVocal.set(null);
+    this.vocalFeedback.set(null);
+    this.vocalModalOpen.set(true);
+  }
+
+  closeVocalModal(force = false): void {
+    if (!force && this.vocalPending()) {
+      return;
+    }
+
+    if (this.vocalRecording()) {
+      this.stopVocalRecording();
+    } else {
+      this.stopRecorderTracks();
+    }
+
+    this.vocalModalOpen.set(false);
+  }
+
+  onVocalBackdropClick(event: MouseEvent): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    this.closeVocalModal();
+  }
+
+  async startVocalRecording(): Promise<void> {
+    if (this.vocalRecording()) {
+      return;
+    }
+
+    if (!this.isAudioRecordingSupported()) {
+      this.vocalFeedback.set("Votre navigateur ne supporte pas l'enregistrement audio.");
+      return;
+    }
+
+    this.vocalFeedback.set("Initialisation du micro...");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+
+      this.stopRecorderTracks();
+      this.mediaStream = stream;
+      this.recordedChunks = [];
+      this.recordedVocal.set(null);
+
+      this.mediaRecorder = new MediaRecorder(stream, { mimeType: preferredMimeType });
+      this.mediaRecorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+      this.mediaRecorder.onstop = () => {
+        const mimeType = this.mediaRecorder?.mimeType || "audio/webm";
+        this.recordedVocal.set(new Blob(this.recordedChunks, { type: mimeType }));
+        this.vocalRecording.set(false);
+        this.stopRecorderTracks();
+        this.vocalFeedback.set("Enregistrement terminé.");
+      };
+
+      this.mediaRecorder.start();
+      this.vocalRecording.set(true);
+      this.vocalFeedback.set("Enregistrement en cours...");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Accès micro impossible.";
+      this.vocalFeedback.set(message);
+      this.stopRecorderTracks();
+      this.vocalRecording.set(false);
+    }
+  }
+
+  stopVocalRecording(): void {
+    if (!this.mediaRecorder) {
+      return;
+    }
+
+    if (this.mediaRecorder.state !== "inactive") {
+      this.mediaRecorder.stop();
+      return;
+    }
+
+    this.vocalRecording.set(false);
+    this.stopRecorderTracks();
+  }
+
+  clearRecordedVocal(): void {
+    this.recordedVocal.set(null);
+    this.vocalFeedback.set(null);
+  }
+
+  async uploadVocalRecording(): Promise<void> {
+    if (this.vocalPending()) {
+      return;
+    }
+
+    const blob = this.recordedVocal();
+    if (!blob) {
+      this.vocalFeedback.set("Enregistrez un vocal avant l'envoi.");
+      return;
+    }
+
+    this.vocalPending.set(true);
+    this.vocalFeedback.set("Envoi du vocal...");
+
+    try {
+      const contentBase64 = await this.blobToBase64(blob);
+      await this.vocalService.upload({
+        propertyId: this.propertyId,
+        fileName: `vocal-${Date.now()}.webm`,
+        mimeType: blob.type || "audio/webm",
+        size: blob.size,
+        contentBase64,
+      });
+
+      this.closeVocalModal(true);
+      this.requestFeedback.set("Vocal ajoute. Transcription en file d'attente.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload vocal impossible.";
+      this.vocalFeedback.set(message);
+    } finally {
+      this.vocalPending.set(false);
     }
   }
 
@@ -952,6 +1105,46 @@ export class PropertyDetailPageComponent implements OnInit {
       default:
         break;
     }
+  }
+
+  private isAudioRecordingSupported(): boolean {
+    return (
+      typeof navigator !== "undefined" &&
+      typeof MediaRecorder !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia
+    );
+  }
+
+  private stopRecorderTracks(): void {
+    this.mediaRecorder = null;
+
+    if (!this.mediaStream) {
+      return;
+    }
+
+    for (const track of this.mediaStream.getTracks()) {
+      track.stop();
+    }
+
+    this.mediaStream = null;
+  }
+
+  private blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const dataUrl = String(reader.result ?? "");
+        const [, base64] = dataUrl.split(",");
+        resolve(base64 ?? "");
+      };
+
+      reader.onerror = () => {
+        reject(new Error("Impossible de lire l'enregistrement vocal."));
+      };
+
+      reader.readAsDataURL(blob);
+    });
   }
 
   private fileToBase64(file: File): Promise<string> {

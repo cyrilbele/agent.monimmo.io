@@ -33,6 +33,7 @@ export type ClassifyFileResult = {
 export type TranscribeVocalInput = {
   fileName: string;
   mimeType: string;
+  audioData: Uint8Array;
 };
 
 export type TranscribeVocalResult = {
@@ -51,6 +52,38 @@ export type ExtractVocalInsightsResult = {
   confidence: number;
 };
 
+export type VocalType =
+  | "VISITE_INITIALE"
+  | "VISITE_SUIVI"
+  | "COMPTE_RENDU_VISITE_CLIENT"
+  | "ERREUR_TRAITEMENT";
+
+export type DetectVocalTypeInput = {
+  transcript: string;
+  summary?: string | null;
+};
+
+export type DetectVocalTypeResult = {
+  vocalType: VocalType | null;
+  confidence: number;
+  reasoning: string;
+};
+
+export type ExtractInitialVisitPropertyParamsInput = {
+  transcript: string;
+  summary?: string | null;
+};
+
+export type ExtractInitialVisitPropertyParamsResult = {
+  title?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  price?: number | null;
+  details: Record<string, unknown>;
+  confidence: number;
+};
+
 export interface AIProvider {
   matchMessageToProperty(
     input: MatchMessageToPropertyInput,
@@ -60,4 +93,8 @@ export interface AIProvider {
   extractVocalInsights(
     input: ExtractVocalInsightsInput,
   ): Promise<ExtractVocalInsightsResult>;
+  detectVocalType(input: DetectVocalTypeInput): Promise<DetectVocalTypeResult>;
+  extractInitialVisitPropertyParams(
+    input: ExtractInitialVisitPropertyParamsInput,
+  ): Promise<ExtractInitialVisitPropertyParamsResult>;
 }

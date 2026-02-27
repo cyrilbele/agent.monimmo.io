@@ -1,10 +1,21 @@
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, ne, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { files, properties, vocals } from "../db/schema";
 import { filesService } from "../files/service";
 import { HttpError } from "../http/errors";
 
 type VocalRow = typeof vocals.$inferSelect;
+export type VocalType =
+  | "VISITE_INITIALE"
+  | "VISITE_SUIVI"
+  | "COMPTE_RENDU_VISITE_CLIENT"
+  | "ERREUR_TRAITEMENT";
+export type VocalStatus =
+  | "UPLOADED"
+  | "TRANSCRIBED"
+  | "INSIGHTS_READY"
+  | "REVIEW_REQUIRED";
+export type VocalRecoveryStep = "TRANSCRIBE" | "DETECT_TYPE";
 
 const parseCursor = (cursor?: string): number | undefined => {
   if (!cursor) {
@@ -35,7 +46,9 @@ const toVocalResponse = (row: VocalRow) => ({
   id: row.id,
   propertyId: row.propertyId,
   fileId: row.fileId,
-  status: row.status as "UPLOADED" | "TRANSCRIBED" | "INSIGHTS_READY" | "REVIEW_REQUIRED",
+  status: row.status as VocalStatus,
+  vocalType: row.vocalType as VocalType | null,
+  processingError: row.processingError,
   transcript: row.transcript,
   summary: row.summary,
   insights: parseInsights(row.insights),
@@ -64,6 +77,7 @@ export const vocalsService = {
     fileName: string;
     mimeType: string;
     size: number;
+    contentBase64?: string;
   }) {
     await assertPropertyScope(input.orgId, input.propertyId);
 
@@ -73,6 +87,7 @@ export const vocalsService = {
       fileName: input.fileName,
       mimeType: input.mimeType,
       size: input.size,
+      contentBase64: input.contentBase64,
     });
 
     const id = crypto.randomUUID();
@@ -84,6 +99,9 @@ export const vocalsService = {
       propertyId: input.propertyId ?? null,
       fileId: file.id,
       status: "UPLOADED",
+      vocalType: null,
+      processingError: null,
+      processingAttempts: 0,
       transcript: null,
       summary: null,
       insights: null,
@@ -178,7 +196,7 @@ export const vocalsService = {
     transcript: string | null;
     summary: string | null;
     confidence: number | null;
-    status: "TRANSCRIBED" | "REVIEW_REQUIRED";
+    status: Extract<VocalStatus, "TRANSCRIBED" | "REVIEW_REQUIRED">;
     propertyId?: string | null;
   }) {
     const existing = await db.query.vocals.findFirst({
@@ -201,6 +219,34 @@ export const vocalsService = {
         confidence: input.confidence,
         status: input.status,
         propertyId: input.propertyId === undefined ? existing.propertyId : input.propertyId,
+        processingError: null,
+        processingAttempts: 0,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)));
+  },
+
+  async setVocalType(input: {
+    orgId: string;
+    id: string;
+    vocalType: VocalType | null;
+    status?: VocalStatus;
+  }) {
+    const existing = await db.query.vocals.findFirst({
+      where: and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)),
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "VOCAL_NOT_FOUND", "Vocal introuvable");
+    }
+
+    await db
+      .update(vocals)
+      .set({
+        status: input.status ?? existing.status,
+        vocalType: input.vocalType,
+        processingError: null,
+        processingAttempts: 0,
         updatedAt: new Date(),
       })
       .where(and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)));
@@ -210,7 +256,7 @@ export const vocalsService = {
     orgId: string;
     id: string;
     insights: Record<string, unknown>;
-    status: "INSIGHTS_READY" | "REVIEW_REQUIRED";
+    status: Extract<VocalStatus, "INSIGHTS_READY" | "REVIEW_REQUIRED">;
   }) {
     const existing = await db.query.vocals.findFirst({
       where: and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)),
@@ -225,9 +271,147 @@ export const vocalsService = {
       .set({
         insights: JSON.stringify(input.insights),
         status: input.status,
+        processingError: null,
+        processingAttempts: 0,
         updatedAt: new Date(),
       })
       .where(and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)));
+  },
+
+  async markProcessingFailure(input: {
+    orgId: string;
+    id: string;
+    step: VocalRecoveryStep | "INSIGHTS" | "INITIAL_VISIT_PARAMS";
+    message: string;
+    isFinal: boolean;
+  }) {
+    const existing = await db.query.vocals.findFirst({
+      where: and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)),
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "VOCAL_NOT_FOUND", "Vocal introuvable");
+    }
+
+    const normalizedMessage = input.message.trim();
+    const processingError = normalizedMessage
+      ? `[${input.step}] ${normalizedMessage}`.slice(0, 1000)
+      : `[${input.step}] Erreur inconnue`;
+
+    await db
+      .update(vocals)
+      .set({
+        processingError,
+        status: input.isFinal ? "REVIEW_REQUIRED" : existing.status,
+        vocalType: input.isFinal ? "ERREUR_TRAITEMENT" : existing.vocalType,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)));
+  },
+
+  async registerRecoveryAttempt(input: {
+    orgId: string;
+    id: string;
+  }) {
+    const existing = await db.query.vocals.findFirst({
+      where: and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)),
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "VOCAL_NOT_FOUND", "Vocal introuvable");
+    }
+
+    await db
+      .update(vocals)
+      .set({
+        processingAttempts: existing.processingAttempts + 1,
+        processingError: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(vocals.id, input.id), eq(vocals.orgId, input.orgId)));
+  },
+
+  async listAbandonedForRecovery(input: {
+    staleBefore: Date;
+    maxAttempts: number;
+    limit: number;
+  }) {
+    const staleUploads = await db
+      .select({
+        id: vocals.id,
+        orgId: vocals.orgId,
+        step: vocals.status,
+        processingAttempts: vocals.processingAttempts,
+      })
+      .from(vocals)
+      .where(
+        and(
+          eq(vocals.status, "UPLOADED"),
+          lt(vocals.updatedAt, input.staleBefore),
+          or(isNull(vocals.vocalType), ne(vocals.vocalType, "ERREUR_TRAITEMENT")),
+          lt(vocals.processingAttempts, input.maxAttempts),
+        ),
+      )
+      .limit(input.limit);
+
+    const staleTypeDetection = await db
+      .select({
+        id: vocals.id,
+        orgId: vocals.orgId,
+        step: vocals.status,
+        processingAttempts: vocals.processingAttempts,
+      })
+      .from(vocals)
+      .where(
+        and(
+          eq(vocals.status, "TRANSCRIBED"),
+          isNull(vocals.vocalType),
+          lt(vocals.updatedAt, input.staleBefore),
+          lt(vocals.processingAttempts, input.maxAttempts),
+        ),
+      )
+      .limit(input.limit);
+
+    return {
+      transcribe: staleUploads.map((row) => ({
+        id: row.id,
+        orgId: row.orgId,
+        processingAttempts: row.processingAttempts,
+      })),
+      detectType: staleTypeDetection.map((row) => ({
+        id: row.id,
+        orgId: row.orgId,
+        processingAttempts: row.processingAttempts,
+      })),
+    };
+  },
+
+  async listRecoveryExhausted(input: {
+    staleBefore: Date;
+    minAttempts: number;
+    limit: number;
+  }) {
+    const rows = await db
+      .select({
+        id: vocals.id,
+        orgId: vocals.orgId,
+        status: vocals.status,
+      })
+      .from(vocals)
+      .where(
+        and(
+          or(
+            eq(vocals.status, "UPLOADED"),
+            and(eq(vocals.status, "TRANSCRIBED"), isNull(vocals.vocalType)),
+          ),
+          lt(vocals.updatedAt, input.staleBefore),
+          or(isNull(vocals.vocalType), ne(vocals.vocalType, "ERREUR_TRAITEMENT")),
+          gte(vocals.processingAttempts, input.minAttempts),
+        ),
+      )
+      .limit(input.limit);
+
+    return rows;
   },
 
   async getByIdForProcessing(input: { orgId: string; id: string }) {
@@ -254,10 +438,14 @@ export const vocalsService = {
       fileId: vocal.fileId,
       fileName: file.fileName,
       mimeType: file.mimeType,
+      storageKey: file.storageKey,
+      vocalType: vocal.vocalType as VocalType | null,
+      processingError: vocal.processingError,
+      processingAttempts: vocal.processingAttempts,
       transcript: vocal.transcript,
       summary: vocal.summary,
       confidence: vocal.confidence,
-      status: vocal.status as "UPLOADED" | "TRANSCRIBED" | "INSIGHTS_READY" | "REVIEW_REQUIRED",
+      status: vocal.status as VocalStatus,
     };
   },
 };

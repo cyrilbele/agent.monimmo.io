@@ -36,7 +36,10 @@ Variables importantes:
 
 - `REDIS_URL`: URL Redis
 - `ENABLE_QUEUE`: `true` pour activer les enqueues BullMQ reelles
-- `AI_PROVIDER`: provider IA (`mock`)
+- `VOCAL_RECOVERY_STALE_AFTER_MS` / `VOCAL_RECOVERY_INTERVAL_MS`: cadence de reprise vocaux abandonnes
+- `VOCAL_RECOVERY_MAX_ATTEMPTS`: nombre max de relances avant `ERREUR_TRAITEMENT`
+- `AI_PROVIDER`: provider IA (`mock` ou `openai`)
+- `OPENAI_API_KEY`: clé API OpenAI (si `AI_PROVIDER=openai`)
 - `CONNECTOR_RUNTIME`: runtime des connecteurs externes (`mock`)
 - `INTEGRATION_TOKEN_SECRET`: secret de chiffrement tokens OAuth
 - `CORS_ALLOWED_ORIGINS`: origines front autorisées (liste séparée par virgules)
@@ -91,7 +94,7 @@ bun run build
 
 Le build est genere dans `front/dist/`.
 
-### 4 bis) Lancer backend + front en meme temps
+### 4 bis) Lancer backend + front + worker en meme temps
 
 ```bash
 bun run dev
@@ -99,6 +102,9 @@ bun run dev
 
 - Backend: `http://localhost:3000`
 - Front: `http://localhost:5173`
+- Backend + Worker BullMQ: `ENABLE_QUEUE=true` forcé par le script dev
+
+Important: Redis doit etre actif (`redis-cli ping` -> `PONG`).
 
 ### 5) Marketing site
 

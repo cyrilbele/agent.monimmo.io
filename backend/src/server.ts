@@ -35,6 +35,7 @@ import {
   enqueueVocalTranscriptionJob,
 } from "./queues";
 import { reviewQueueService } from "./review-queue/service";
+import { getStorageProvider } from "./storage";
 import { usersService } from "./users/service";
 import { vocalsService } from "./vocals/service";
 
@@ -90,6 +91,21 @@ const getAllowedCorsOrigins = (): Set<string> => {
 };
 
 const allowedCorsOrigins = getAllowedCorsOrigins();
+
+const mimeTypeByExtension: Record<string, string> = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  webm: "audio/webm",
+  ogg: "audio/ogg",
+  pdf: "application/pdf",
+};
+
+const detectMimeTypeFromStorageKey = (key: string): string => {
+  const [basePath] = key.split("?", 1);
+  const extension = basePath.split(".").at(-1)?.toLowerCase() ?? "";
+  return mimeTypeByExtension[extension] ?? "application/octet-stream";
+};
 
 const buildCorsHeaders = (request: Request): Headers | null => {
   const origin = request.headers.get("origin");
@@ -211,6 +227,35 @@ export const createApp = (options?: { openapiPath?: string }) => ({
 
       if (request.method === "GET" && url.pathname === "/health") {
         return withCors(request, json({ status: "ok" }, { status: 200 }));
+      }
+
+      const storageMatch = url.pathname.match(/^\/storage\/(.+)$/);
+      if (storageMatch && request.method === "GET") {
+        const expiresAtRaw = url.searchParams.get("expiresAt");
+        if (!expiresAtRaw) {
+          throw new HttpError(400, "INVALID_STORAGE_URL", "URL de téléchargement invalide");
+        }
+
+        const expiresAt = new Date(expiresAtRaw);
+        if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now()) {
+          throw new HttpError(403, "STORAGE_URL_EXPIRED", "URL de téléchargement expirée");
+        }
+
+        const key = decodeURIComponent(storageMatch[1]);
+        const storageObject = await getStorageProvider().getObject(key);
+        const responseBytes = Buffer.from(storageObject.data);
+
+        return withCors(
+          request,
+          new Response(new Blob([responseBytes]), {
+            status: 200,
+            headers: {
+              "content-type":
+                storageObject.contentType ?? detectMimeTypeFromStorageKey(key),
+              "cache-control": "no-store",
+            },
+          }),
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/auth/login") {
@@ -443,6 +488,10 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         const response = await vocalsService.upload({
           orgId: user.orgId,
           ...payload,
+        });
+        await enqueueVocalTranscriptionJob({
+          orgId: user.orgId,
+          vocalId: response.id,
         });
         return withCors(request, json(response, { status: 201 }));
       }

@@ -131,6 +131,10 @@ describe("files endpoints", () => {
     const payload = await urlResponse.json();
     expect(typeof payload.url).toBe("string");
     expect(typeof payload.expiresAt).toBe("string");
+
+    const storageResponse = await createApp().fetch(new Request(payload.url, { method: "GET" }));
+    expect(storageResponse.status).toBe(200);
+    expect(await storageResponse.text()).toContain("%PDF-1.4");
   });
 
   it("liste les fichiers par bien", async () => {

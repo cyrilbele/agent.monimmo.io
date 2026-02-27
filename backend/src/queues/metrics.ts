@@ -12,6 +12,8 @@ const createEmptySnapshot = (): QueueMetricsSnapshot => ({
   processMessage: { started: 0, completed: 0, failed: 0 },
   processFile: { started: 0, completed: 0, failed: 0 },
   transcribeVocal: { started: 0, completed: 0, failed: 0 },
+  detectVocalType: { started: 0, completed: 0, failed: 0 },
+  extractInitialVisitPropertyParams: { started: 0, completed: 0, failed: 0 },
   extractVocalInsights: { started: 0, completed: 0, failed: 0 },
 });
 
