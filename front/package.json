@@ -9,7 +9,7 @@
     "build": "./scripts/ng-node.sh build",
     "watch": "./scripts/ng-node.sh build --watch --configuration development",
     "test": "./scripts/ng-node.sh test --watch=false",
-    "test:coverage": "./scripts/ng-node.sh test --watch=false --coverage && bun ../scripts/check-lcov-threshold.mjs coverage/lcov.info 80 front",
+    "test:coverage": "./scripts/ng-node.sh test --watch=false --coverage && bun ../scripts/check-lcov-threshold.mjs coverage/monimmo-front/lcov.info 80 front",
     "typecheck": "bunx ngc -p tsconfig.app.json && bunx tsc -p tsconfig.spec.json --noEmit"
   },
   "dependencies": {
