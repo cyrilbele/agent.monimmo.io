@@ -112,6 +112,7 @@ Variables principales:
 - `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_WHISPER_MODEL`, `OPENAI_BASE_URL`
 - `CONNECTOR_RUNTIME` (`mock`)
 - `INTEGRATION_TOKEN_SECRET`
+- `GEOCODING_TIMEOUT_MS` (timeout appel geocodage en ms, defaut `6000`)
 - Stockage: `STORAGE_PROVIDER`, `LOCAL_STORAGE_DIR`, `APP_BASE_URL`, `S3_*`, `AWS_*`
 
 ## Tests

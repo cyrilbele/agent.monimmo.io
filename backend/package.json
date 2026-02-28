@@ -12,8 +12,8 @@
     "db:generate": "bunx drizzle-kit generate",
     "db:migrate": "bun src/db/migrate.ts",
     "db:seed": "bun src/db/seed.ts",
-    "test": "AI_PROVIDER=mock CONNECTOR_RUNTIME=mock bun test",
-    "test:coverage": "AI_PROVIDER=mock CONNECTOR_RUNTIME=mock bun test --coverage --coverage-reporter=lcov --coverage-dir coverage && bun ../scripts/check-lcov-threshold.mjs coverage/lcov.info 80 backend",
+    "test": "AI_PROVIDER=mock CONNECTOR_RUNTIME=mock GEOCODING_TIMEOUT_MS=1000 bun test",
+    "test:coverage": "AI_PROVIDER=mock CONNECTOR_RUNTIME=mock GEOCODING_TIMEOUT_MS=1000 bun test --coverage --coverage-reporter=lcov --coverage-dir coverage && bun ../scripts/check-lcov-threshold.mjs coverage/lcov.info 80 backend",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {

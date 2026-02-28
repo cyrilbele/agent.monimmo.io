@@ -10,6 +10,20 @@ export type PropertyCoordinates = {
 const GEOCODING_API_URL = "https://data.geopf.fr/geocodage/search";
 const GEOCODING_TIMEOUT_MS = 6000;
 
+const getGeocodingTimeoutMs = (): number => {
+  const raw = process.env.GEOCODING_TIMEOUT_MS;
+  if (!raw) {
+    return GEOCODING_TIMEOUT_MS;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return GEOCODING_TIMEOUT_MS;
+  }
+
+  return Math.round(parsed);
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -54,7 +68,7 @@ const parseCoordinatesFromFeature = (feature: unknown): PropertyCoordinates | nu
 
 const fetchJson = async (fetchImpl: FetchLike, url: string): Promise<unknown> => {
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), GEOCODING_TIMEOUT_MS);
+  const timeoutHandle = setTimeout(() => controller.abort(), getGeocodingTimeoutMs());
 
   try {
     const response = await externalFetch({
