@@ -1,0 +1,25 @@
+<section class="space-y-4" aria-labelledby="calendar-title">
+  <header class="panel p-5">
+    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Planning</p>
+    <h2 id="calendar-title" class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+      Calendrier des visites
+    </h2>
+    <p class="mt-1 text-sm text-slate-500">
+      Cliquez sur une visite pour ouvrir la fiche du bien.
+    </p>
+  </header>
+
+  @if (loading()) {
+    <section class="panel p-5 text-sm text-slate-700" role="status" aria-live="polite">
+      Chargement du calendrier...
+    </section>
+  } @else if (error()) {
+    <section class="panel border border-red-200 bg-red-50 p-5 text-sm text-red-700" role="alert">
+      {{ error() }}
+    </section>
+  } @else {
+    <section class="panel p-3">
+      <full-calendar [options]="calendarOptions()"></full-calendar>
+    </section>
+  }
+</section>
