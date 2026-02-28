@@ -61,6 +61,25 @@ describe("server", () => {
     });
   });
 
+  it("rejette un payload JSON trop volumineux", async () => {
+    const response = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(26 * 1024 * 1024),
+        },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Payload trop volumineux",
+    });
+  });
+
   it("expose la spec OpenAPI sur /openapi.yaml", async () => {
     const response = await createApp().fetch(
       new Request("http://localhost/openapi.yaml", { method: "GET" }),

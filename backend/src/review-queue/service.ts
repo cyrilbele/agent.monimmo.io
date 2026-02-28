@@ -1,6 +1,6 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/client";
-import { files, messages, reviewQueueItems, vocals } from "../db/schema";
+import { files, messages, properties, reviewQueueItems, vocals } from "../db/schema";
 import { HttpError } from "../http/errors";
 
 type ReviewQueueItemRow = typeof reviewQueueItems.$inferSelect;
@@ -44,6 +44,16 @@ const toReviewQueueItemResponse = (item: ReviewQueueItemRow) => ({
   resolvedAt: item.resolvedAt?.toISOString() ?? null,
 });
 
+const assertPropertyScope = async (orgId: string, propertyId: string): Promise<void> => {
+  const property = await db.query.properties.findFirst({
+    where: and(eq(properties.id, propertyId), eq(properties.orgId, orgId)),
+  });
+
+  if (!property) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+  }
+};
+
 const resolveLinkedEntity = async (input: {
   orgId: string;
   itemType: ReviewQueueItemType;
@@ -53,6 +63,8 @@ const resolveLinkedEntity = async (input: {
   if (!input.propertyId) {
     return;
   }
+
+  await assertPropertyScope(input.orgId, input.propertyId);
 
   if (input.itemType === "MESSAGE") {
     await db

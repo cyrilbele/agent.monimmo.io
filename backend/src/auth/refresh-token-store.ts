@@ -17,6 +17,14 @@ class RefreshTokenStore {
     this.entries.delete(jti);
   }
 
+  revokeAllForUser(userId: string): void {
+    for (const [jti, entry] of this.entries.entries()) {
+      if (entry.userId === userId) {
+        this.entries.delete(jti);
+      }
+    }
+  }
+
   isValid(jti: string, userId: string): boolean {
     const entry = this.entries.get(jti);
     if (!entry) {
@@ -37,4 +45,3 @@ class RefreshTokenStore {
 }
 
 export const refreshTokenStore = new RefreshTokenStore();
-

@@ -175,6 +175,19 @@ describe("auth endpoints", () => {
   });
 
   it("gère forgot-password + reset-password", async () => {
+    const initialLoginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_AUTH_EMAIL,
+          password: DEMO_AUTH_PASSWORD,
+        }),
+      }),
+    );
+    expect(initialLoginResponse.status).toBe(200);
+    const initialLoginPayload = await initialLoginResponse.json();
+
     const forgotResponse = await createApp().fetch(
       new Request("http://localhost/auth/forgot-password", {
         method: "POST",
@@ -184,8 +197,38 @@ describe("auth endpoints", () => {
     );
 
     expect(forgotResponse.status).toBe(202);
+    const firstToken = passwordResetStore.peekTokenForEmail(DEMO_AUTH_EMAIL);
+    expect(typeof firstToken).toBe("string");
+
+    const secondForgotResponse = await createApp().fetch(
+      new Request("http://localhost/auth/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: DEMO_AUTH_EMAIL }),
+      }),
+    );
+    expect(secondForgotResponse.status).toBe(202);
+
     const token = passwordResetStore.peekTokenForEmail(DEMO_AUTH_EMAIL);
     expect(typeof token).toBe("string");
+    expect(token).not.toBe(firstToken);
+
+    const invalidatedTokenResetResponse = await createApp().fetch(
+      new Request("http://localhost/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token: firstToken,
+          newPassword: "PassIgnoré123!",
+        }),
+      }),
+    );
+
+    expect(invalidatedTokenResetResponse.status).toBe(400);
+    expect(await invalidatedTokenResetResponse.json()).toEqual({
+      code: "INVALID_RESET_TOKEN",
+      message: "Token de réinitialisation invalide",
+    });
 
     const newPassword = "NouveauPass123!";
     const resetResponse = await createApp().fetch(
@@ -200,6 +243,22 @@ describe("auth endpoints", () => {
     );
 
     expect(resetResponse.status).toBe(204);
+
+    const refreshAfterResetResponse = await createApp().fetch(
+      new Request("http://localhost/auth/refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          refreshToken: initialLoginPayload.refreshToken,
+        }),
+      }),
+    );
+
+    expect(refreshAfterResetResponse.status).toBe(401);
+    expect(await refreshAfterResetResponse.json()).toEqual({
+      code: "INVALID_REFRESH_TOKEN",
+      message: "Refresh token invalide",
+    });
 
     const loginResponse = await createApp().fetch(
       new Request("http://localhost/auth/login", {

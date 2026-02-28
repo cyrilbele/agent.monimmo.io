@@ -48,7 +48,9 @@ const createProperty = async (token: string): Promise<{ id: string }> => {
   return (await createPropertyResponse.json()) as { id: string };
 };
 
-const smallPdfBase64 = Buffer.from("%PDF-1.4 test").toString("base64");
+const smallPdfBuffer = Buffer.from("%PDF-1.4 test");
+const smallPdfBase64 = smallPdfBuffer.toString("base64");
+const smallPdfSize = smallPdfBuffer.byteLength;
 
 describe("files endpoints", () => {
   beforeAll(async () => {
@@ -72,7 +74,7 @@ describe("files endpoints", () => {
           typeDocument: "MANDAT_VENTE_SIGNE",
           fileName: "mandat-vente.pdf",
           mimeType: "application/pdf",
-          size: 123456,
+          size: smallPdfSize,
           contentBase64: smallPdfBase64,
         }),
       }),
@@ -113,7 +115,7 @@ describe("files endpoints", () => {
           typeDocument: "DPE",
           fileName: "dpe.pdf",
           mimeType: "application/pdf",
-          size: 2048,
+          size: smallPdfSize,
           contentBase64: smallPdfBase64,
         }),
       }),
@@ -137,6 +139,55 @@ describe("files endpoints", () => {
     expect(await storageResponse.text()).toContain("%PDF-1.4");
   });
 
+  it("rejette une download-url tamperée", async () => {
+    const token = await loginAndGetAccessToken();
+    const property = await createProperty(token);
+
+    const uploadResponse = await createApp().fetch(
+      new Request("http://localhost/files/upload", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          propertyId: property.id,
+          typeDocument: "DPE",
+          fileName: "dpe-secure.pdf",
+          mimeType: "application/pdf",
+          size: smallPdfSize,
+          contentBase64: smallPdfBase64,
+        }),
+      }),
+    );
+    const uploaded = await uploadResponse.json();
+
+    const urlResponse = await createApp().fetch(
+      new Request(`http://localhost/files/${uploaded.id}/download-url`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+
+    expect(urlResponse.status).toBe(200);
+    const payload = await urlResponse.json();
+    const tamperedUrl = new URL(payload.url as string);
+    tamperedUrl.searchParams.set(
+      "expiresAt",
+      new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    );
+
+    const tamperedResponse = await createApp().fetch(
+      new Request(tamperedUrl.toString(), { method: "GET" }),
+    );
+
+    expect(tamperedResponse.status).toBe(403);
+    expect(await tamperedResponse.json()).toEqual({
+      code: "INVALID_STORAGE_SIGNATURE",
+      message: "Signature de téléchargement invalide",
+    });
+  });
+
   it("liste les fichiers par bien", async () => {
     const token = await loginAndGetAccessToken();
     const propertyA = await createProperty(token);
@@ -154,7 +205,7 @@ describe("files endpoints", () => {
           typeDocument: "DPE",
           fileName: "a.pdf",
           mimeType: "application/pdf",
-          size: 111,
+          size: smallPdfSize,
           contentBase64: smallPdfBase64,
         }),
       }),
@@ -172,7 +223,7 @@ describe("files endpoints", () => {
           typeDocument: "AMIANTE",
           fileName: "b.pdf",
           mimeType: "application/pdf",
-          size: 222,
+          size: smallPdfSize,
           contentBase64: smallPdfBase64,
         }),
       }),
@@ -213,7 +264,7 @@ describe("files endpoints", () => {
           typeDocument: "PIECE_IDENTITE",
           fileName: "piece-identite.pdf",
           mimeType: "application/pdf",
-          size: 999,
+          size: smallPdfSize,
           contentBase64: smallPdfBase64,
         }),
       }),
@@ -258,7 +309,7 @@ describe("files endpoints", () => {
           typeDocument: "DPE",
           fileName: "dpe-run-ai.pdf",
           mimeType: "application/pdf",
-          size: 512,
+          size: smallPdfSize,
           contentBase64: smallPdfBase64,
         }),
       }),
@@ -276,5 +327,34 @@ describe("files endpoints", () => {
     const queued = await runAiResponse.json();
     expect(queued.status).toBe("QUEUED");
     expect(typeof queued.jobId).toBe("string");
+  });
+
+  it("rejette un upload avec taille incohérente", async () => {
+    const token = await loginAndGetAccessToken();
+    const property = await createProperty(token);
+
+    const response = await createApp().fetch(
+      new Request("http://localhost/files/upload", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          propertyId: property.id,
+          typeDocument: "DPE",
+          fileName: "taille-incoherente.pdf",
+          mimeType: "application/pdf",
+          size: 99999,
+          contentBase64: smallPdfBase64,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      code: "FILE_SIZE_MISMATCH",
+      message: "La taille declaree ne correspond pas au contenu du fichier",
+    });
   });
 });

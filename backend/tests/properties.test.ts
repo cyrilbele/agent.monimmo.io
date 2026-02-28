@@ -591,7 +591,7 @@ describe("properties endpoints", () => {
           propertyId: propertyPayload.id,
           fileName: "bon-visite.pdf",
           mimeType: "application/pdf",
-          size: 20,
+          size: Buffer.from("bon visite").byteLength,
           contentBase64: Buffer.from("bon visite").toString("base64"),
         }),
       }),

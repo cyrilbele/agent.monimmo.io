@@ -6,6 +6,10 @@ import type {
   StorageProvider,
   StoragePutObjectInput,
 } from "./storage-provider";
+import {
+  signStorageUrl,
+  STORAGE_URL_SIGNATURE_QUERY_PARAM,
+} from "./url-signing";
 
 type LocalStorageProviderOptions = {
   rootDir?: string;
@@ -74,7 +78,8 @@ export class LocalStorageProvider implements StorageProvider {
   async getDownloadUrl(key: string, expiresInSeconds: number): Promise<string> {
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
     const encodedKey = encodeURIComponent(key);
-    return `${this.publicBaseUrl}/storage/${encodedKey}?expiresAt=${encodeURIComponent(expiresAt)}`;
+    const signature = signStorageUrl({ key, expiresAt });
+    return `${this.publicBaseUrl}/storage/${encodedKey}?expiresAt=${encodeURIComponent(expiresAt)}&${STORAGE_URL_SIGNATURE_QUERY_PARAM}=${encodeURIComponent(signature)}`;
   }
 
   async deleteObject(key: string): Promise<void> {

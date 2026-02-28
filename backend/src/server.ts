@@ -39,6 +39,10 @@ import {
 } from "./queues";
 import { reviewQueueService } from "./review-queue/service";
 import { getStorageProvider } from "./storage";
+import {
+  STORAGE_URL_SIGNATURE_QUERY_PARAM,
+  verifyStorageUrlSignature,
+} from "./storage/url-signing";
 import { usersService } from "./users/service";
 import { vocalsService } from "./vocals/service";
 
@@ -94,6 +98,7 @@ const getAllowedCorsOrigins = (): Set<string> => {
 };
 
 const allowedCorsOrigins = getAllowedCorsOrigins();
+const MAX_JSON_BODY_BYTES = 25 * 1024 * 1024;
 
 const mimeTypeByExtension: Record<string, string> = {
   mp3: "audio/mpeg",
@@ -165,6 +170,14 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       const openapiPath = options?.openapiPath ?? "openapi/openapi.yaml";
 
       const parseJson = async <T extends z.ZodTypeAny>(schema: T): Promise<z.infer<T>> => {
+        const contentLength = request.headers.get("content-length");
+        if (contentLength) {
+          const numericLength = Number(contentLength);
+          if (Number.isFinite(numericLength) && numericLength > MAX_JSON_BODY_BYTES) {
+            throw new HttpError(413, "PAYLOAD_TOO_LARGE", "Payload trop volumineux");
+          }
+        }
+
         let body: unknown;
 
         try {
@@ -186,6 +199,13 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       ): Promise<z.infer<T>> => {
         const contentLength = request.headers.get("content-length");
         const contentType = request.headers.get("content-type");
+
+        if (contentLength && contentType?.includes("application/json")) {
+          const numericLength = Number(contentLength);
+          if (Number.isFinite(numericLength) && numericLength > MAX_JSON_BODY_BYTES) {
+            throw new HttpError(413, "PAYLOAD_TOO_LARGE", "Payload trop volumineux");
+          }
+        }
 
         if (!contentLength || contentLength === "0" || !contentType?.includes("application/json")) {
           const parsedEmpty = schema.safeParse({});
@@ -270,8 +290,23 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       const storageMatch = url.pathname.match(/^\/storage\/(.+)$/);
       if (storageMatch && request.method === "GET") {
         const expiresAtRaw = url.searchParams.get("expiresAt");
+        const signature = url.searchParams.get(STORAGE_URL_SIGNATURE_QUERY_PARAM);
         if (!expiresAtRaw) {
           throw new HttpError(400, "INVALID_STORAGE_URL", "URL de téléchargement invalide");
+        }
+
+        const key = decodeURIComponent(storageMatch[1]);
+        if (!signature) {
+          throw new HttpError(403, "INVALID_STORAGE_SIGNATURE", "Signature de téléchargement invalide");
+        }
+
+        const signatureValid = verifyStorageUrlSignature({
+          key,
+          expiresAt: expiresAtRaw,
+          signature,
+        });
+        if (!signatureValid) {
+          throw new HttpError(403, "INVALID_STORAGE_SIGNATURE", "Signature de téléchargement invalide");
         }
 
         const expiresAt = new Date(expiresAtRaw);
@@ -279,7 +314,6 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           throw new HttpError(403, "STORAGE_URL_EXPIRED", "URL de téléchargement expirée");
         }
 
-        const key = decodeURIComponent(storageMatch[1]);
         const storageObject = await getStorageProvider().getObject(key);
         const responseBytes = Buffer.from(storageObject.data);
 

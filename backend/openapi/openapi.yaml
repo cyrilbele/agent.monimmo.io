@@ -1874,8 +1874,11 @@ components:
           type: string
         size:
           type: integer
+          minimum: 0
+          maximum: 20971520
         contentBase64:
           type: string
+          maxLength: 29360128
     FileUpdateRequest:
       type: object
       properties:
@@ -1998,8 +2001,11 @@ components:
           type: string
         size:
           type: integer
+          minimum: 0
+          maximum: 20971520
         contentBase64:
           type: string
+          maxLength: 29360128
     VocalUpdateRequest:
       type: object
       required: [propertyId]

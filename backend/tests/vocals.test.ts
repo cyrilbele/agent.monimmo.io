@@ -148,7 +148,7 @@ describe("vocals endpoints + AI rules", () => {
           propertyId: "property_demo",
           fileName: "visite-initiale-budget-350000.m4a",
           mimeType: "audio/m4a",
-          size: 2048,
+          size: Buffer.from("audio-test").byteLength,
           contentBase64: Buffer.from("audio-test").toString("base64"),
         }),
       }),

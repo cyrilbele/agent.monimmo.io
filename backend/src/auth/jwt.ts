@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { HttpError } from "../http/errors";
 
@@ -20,12 +21,31 @@ const ACCESS_EXPIRES_IN_SECONDS = 15 * 60;
 const REFRESH_EXPIRES_IN_SECONDS = 30 * 24 * 60 * 60;
 
 const textEncoder = new TextEncoder();
-const accessSecret = textEncoder.encode(
-  process.env.JWT_ACCESS_SECRET ?? "dev-access-secret-change-me",
-);
-const refreshSecret = textEncoder.encode(
-  process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret-change-me",
-);
+const ephemeralFallbackSecret = randomBytes(32).toString("hex");
+const warnedMissingSecrets = new Set<string>();
+
+const resolveJwtSecret = (name: "JWT_ACCESS_SECRET" | "JWT_REFRESH_SECRET"): Uint8Array => {
+  const configured = process.env[name]?.trim();
+  if (configured) {
+    return textEncoder.encode(configured);
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(`${name} manquant en production`);
+  }
+
+  if (!warnedMissingSecrets.has(name)) {
+    warnedMissingSecrets.add(name);
+    console.warn(
+      `[Security] ${name} absent: secret ephemere en cours d'utilisation (dev/test uniquement).`,
+    );
+  }
+
+  return textEncoder.encode(`${name}:${ephemeralFallbackSecret}`);
+};
+
+const accessSecret = resolveJwtSecret("JWT_ACCESS_SECRET");
+const refreshSecret = resolveJwtSecret("JWT_REFRESH_SECRET");
 
 const signToken = async (
   claims: UserTokenClaims,
@@ -109,4 +129,3 @@ export const verifyAccessToken = async (token: string): Promise<JwtPayload> =>
 
 export const verifyRefreshToken = async (token: string): Promise<JwtPayload> =>
   verifyToken(token, "refresh");
-

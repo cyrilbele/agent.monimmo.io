@@ -1,4 +1,5 @@
 type ResetTokenEntry = {
+  email: string;
   userId: string;
   expiresAt: number;
 };
@@ -8,8 +9,13 @@ class PasswordResetStore {
   private readonly byEmail = new Map<string, string>();
 
   create(email: string, userId: string, ttlMs: number): string {
+    const previousToken = this.byEmail.get(email);
+    if (previousToken) {
+      this.byToken.delete(previousToken);
+    }
+
     const token = crypto.randomUUID();
-    this.byToken.set(token, { userId, expiresAt: Date.now() + ttlMs });
+    this.byToken.set(token, { email, userId, expiresAt: Date.now() + ttlMs });
     this.byEmail.set(email, token);
     return token;
   }
@@ -21,6 +27,9 @@ class PasswordResetStore {
     }
 
     this.byToken.delete(token);
+    if (this.byEmail.get(entry.email) === token) {
+      this.byEmail.delete(entry.email);
+    }
 
     if (Date.now() > entry.expiresAt) {
       return null;
@@ -35,4 +44,3 @@ class PasswordResetStore {
 }
 
 export const passwordResetStore = new PasswordResetStore();
-

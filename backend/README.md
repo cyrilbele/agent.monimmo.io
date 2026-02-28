@@ -97,6 +97,8 @@ Variables principales:
 - `DATABASE_URL` (defaut: `data/app.db`)
 - `REDIS_URL`
 - `ENABLE_QUEUE`
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
+- `STORAGE_URL_SECRET` (signature des URLs `/storage/*` en mode local)
 - `BULLMQ_ATTEMPTS`
 - `BULLMQ_BACKOFF_DELAY_MS`
 - `BULLMQ_REMOVE_ON_COMPLETE`

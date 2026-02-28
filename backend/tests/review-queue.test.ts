@@ -4,7 +4,7 @@ import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { messages, reviewQueueItems } from "../src/db/schema";
+import { messages, organizations, properties, reviewQueueItems } from "../src/db/schema";
 import { createApp } from "../src/server";
 import { reviewQueueService } from "../src/review-queue/service";
 
@@ -99,5 +99,79 @@ describe("review queue endpoints", () => {
     });
     expect(dbMessage?.propertyId).toBe("property_demo");
     expect(dbMessage?.aiStatus).toBe("PROCESSED");
+  });
+
+  it("rejette une résolution avec un propertyId hors organisation", async () => {
+    const now = new Date();
+    const outsiderOrgId = `org_outside_${crypto.randomUUID()}`;
+    const outsiderPropertyId = `property_outside_${crypto.randomUUID()}`;
+
+    await db.insert(organizations).values({
+      id: outsiderOrgId,
+      name: "Org extérieure",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(properties).values({
+      id: outsiderPropertyId,
+      orgId: outsiderOrgId,
+      title: "Bien extérieur",
+      city: "Paris",
+      postalCode: "75001",
+      address: "1 rue extérieure",
+      price: 100000,
+      details: "{}",
+      hiddenExpectedDocumentKeys: "[]",
+      status: "PROSPECTION",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const messageId = crypto.randomUUID();
+    await db.insert(messages).values({
+      id: messageId,
+      orgId: "org_demo",
+      propertyId: null,
+      channel: "GMAIL",
+      sourceProvider: "GMAIL",
+      externalId: `rq_scope_${messageId}`,
+      subject: "Aide review scope",
+      body: "Message ambigu scope",
+      aiStatus: "REVIEW_REQUIRED",
+      receivedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const reviewItem = await reviewQueueService.createOpenItem({
+      orgId: "org_demo",
+      itemType: "MESSAGE",
+      itemId: messageId,
+      reason: "MESSAGE_PROPERTY_AMBIGUOUS",
+      payload: { confidence: 0.2 },
+    });
+
+    const token = await loginAndGetAccessToken();
+
+    const resolveResponse = await createApp().fetch(
+      new Request(`http://localhost/review-queue/${reviewItem.id}/resolve`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          resolution: "Tentative liaison hors scope",
+          propertyId: outsiderPropertyId,
+        }),
+      }),
+    );
+
+    expect(resolveResponse.status).toBe(404);
+    expect(await resolveResponse.json()).toEqual({
+      code: "PROPERTY_NOT_FOUND",
+      message: "Bien introuvable",
+    });
   });
 });

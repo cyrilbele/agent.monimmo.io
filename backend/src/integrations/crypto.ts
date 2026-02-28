@@ -2,10 +2,28 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 const ALGO = "aes-256-gcm";
 const IV_LENGTH = 12;
+const FALLBACK_INTEGRATION_SECRET = randomBytes(32).toString("hex");
+let hasWarnedMissingIntegrationSecret = false;
 
 const getKey = (env: Record<string, string | undefined> = process.env): Buffer => {
-  const secret = env.INTEGRATION_TOKEN_SECRET ?? "dev_integration_secret_change_me";
-  return createHash("sha256").update(secret).digest();
+  const secret = env.INTEGRATION_TOKEN_SECRET?.trim();
+  if (secret) {
+    return createHash("sha256").update(secret).digest();
+  }
+
+  if (env.NODE_ENV === "production") {
+    throw new Error("INTEGRATION_TOKEN_SECRET manquant en production");
+  }
+
+  if (!hasWarnedMissingIntegrationSecret) {
+    hasWarnedMissingIntegrationSecret = true;
+    console.warn(
+      "[Security] INTEGRATION_TOKEN_SECRET absent: secret ephemere en cours d'utilisation (dev/test uniquement).",
+    );
+  }
+
+  const fallbackSecret = `INTEGRATION_TOKEN_SECRET:${FALLBACK_INTEGRATION_SECRET}`;
+  return createHash("sha256").update(fallbackSecret).digest();
 };
 
 export const encryptToken = (

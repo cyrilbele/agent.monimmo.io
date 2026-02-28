@@ -5,6 +5,7 @@ import { HttpError } from "../http/errors";
 import { getStorageProvider } from "../storage";
 
 type FileRow = typeof files.$inferSelect;
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 const toFileResponse = (row: FileRow) => ({
   id: row.id,
@@ -45,6 +46,16 @@ const decodeBase64Content = (contentBase64?: string): Uint8Array | string => {
     return Uint8Array.from(Buffer.from(cleaned, "base64"));
   } catch {
     throw new HttpError(400, "INVALID_FILE_CONTENT", "Contenu du fichier invalide");
+  }
+};
+
+const assertUploadSize = (size: number): void => {
+  if (!Number.isInteger(size) || size < 0) {
+    throw new HttpError(400, "INVALID_FILE_SIZE", "Taille de fichier invalide");
+  }
+
+  if (size > MAX_UPLOAD_BYTES) {
+    throw new HttpError(413, "FILE_TOO_LARGE", "Le fichier depasse la taille maximale autorisee");
   }
 };
 
@@ -111,11 +122,26 @@ export const filesService = {
     contentBase64?: string;
   }) {
     await assertPropertyScope(input.orgId, input.propertyId);
+    assertUploadSize(input.size);
 
     const now = new Date();
     const id = crypto.randomUUID();
     const storageKey = `${input.orgId}/${id}/${encodeURIComponent(input.fileName)}`;
     const fileContent = decodeBase64Content(input.contentBase64);
+
+    if (fileContent instanceof Uint8Array) {
+      if (fileContent.byteLength > MAX_UPLOAD_BYTES) {
+        throw new HttpError(413, "FILE_TOO_LARGE", "Le fichier depasse la taille maximale autorisee");
+      }
+
+      if (fileContent.byteLength !== input.size) {
+        throw new HttpError(
+          400,
+          "FILE_SIZE_MISMATCH",
+          "La taille declaree ne correspond pas au contenu du fichier",
+        );
+      }
+    }
 
     const storage = getStorageProvider();
     await storage.putObject({

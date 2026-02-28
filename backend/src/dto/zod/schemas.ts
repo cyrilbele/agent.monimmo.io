@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_UPLOAD_CONTENT_BASE64_LENGTH = 28 * 1024 * 1024;
+
 export const HealthResponseSchema = z.object({
   status: z.string(),
 });
@@ -461,8 +464,12 @@ export const FileUploadRequestSchema = z.object({
   typeDocument: TypeDocumentSchema.optional(),
   fileName: z.string(),
   mimeType: z.string(),
-  size: z.number().int(),
-  contentBase64: z.string().optional(),
+  size: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_UPLOAD_BYTES),
+  contentBase64: z.string().max(MAX_UPLOAD_CONTENT_BASE64_LENGTH).optional(),
 });
 
 export const FileUpdateRequestSchema = z.object({
@@ -535,8 +542,12 @@ export const VocalUploadRequestSchema = z.object({
   propertyId: z.string().nullable().optional(),
   fileName: z.string(),
   mimeType: z.string(),
-  size: z.number().int(),
-  contentBase64: z.string().optional(),
+  size: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_UPLOAD_BYTES),
+  contentBase64: z.string().max(MAX_UPLOAD_CONTENT_BASE64_LENGTH).optional(),
 });
 
 export const VocalUpdateRequestSchema = z.object({

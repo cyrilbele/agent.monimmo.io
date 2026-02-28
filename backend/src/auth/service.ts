@@ -180,9 +180,7 @@ export const authService = {
     }
 
     const ttlMs = 30 * 60 * 1000;
-    const token = passwordResetStore.create(user.email, user.id, ttlMs);
-
-    console.info(`Reset token généré pour ${user.email}: ${token}`);
+    passwordResetStore.create(user.email, user.id, ttlMs);
   },
 
   async resetPassword(input: { token: string; newPassword: string }) {
@@ -201,6 +199,8 @@ export const authService = {
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId));
+
+    refreshTokenStore.revokeAllForUser(userId);
   },
 
   async me(accessToken: string) {
