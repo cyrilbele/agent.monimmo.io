@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "../db/client";
 import {
+  files,
   marketDvfQueryCache,
   marketDvfTransactions,
   properties,
@@ -174,6 +175,33 @@ const parseDetails = (raw: string | null): Record<string, unknown> => {
   }
 };
 
+const sanitizeHiddenExpectedDocumentKeys = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const parseHiddenExpectedDocumentKeys = (raw: string | null): string[] => {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    return sanitizeHiddenExpectedDocumentKeys(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+};
+
 const toFiniteNumber = (value: unknown): number | null => {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
@@ -240,8 +268,43 @@ const toPropertyResponse = (row: PropertyRow) => ({
   address: row.address,
   price: row.price,
   details: parseDetails(row.details),
+  hiddenExpectedDocumentKeys: parseHiddenExpectedDocumentKeys(row.hiddenExpectedDocumentKeys),
   status: row.status,
   orgId: row.orgId,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
+});
+
+const toPropertyVisitResponse = (row: {
+  id: string;
+  propertyId: string;
+  propertyTitle: string;
+  prospectUserId: string;
+  prospectFirstName: string;
+  prospectLastName: string;
+  prospectEmail: string | null;
+  prospectPhone: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  compteRendu: string | null;
+  bonDeVisiteFileId: string | null;
+  bonDeVisiteFileName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) => ({
+  id: row.id,
+  propertyId: row.propertyId,
+  propertyTitle: row.propertyTitle,
+  prospectUserId: row.prospectUserId,
+  prospectFirstName: row.prospectFirstName,
+  prospectLastName: row.prospectLastName,
+  prospectEmail: row.prospectEmail,
+  prospectPhone: row.prospectPhone,
+  startsAt: row.startsAt.toISOString(),
+  endsAt: row.endsAt.toISOString(),
+  compteRendu: row.compteRendu,
+  bonDeVisiteFileId: row.bonDeVisiteFileId,
+  bonDeVisiteFileName: row.bonDeVisiteFileName,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
@@ -744,6 +807,7 @@ export const propertiesService = {
         address: input.address,
         price: null,
         details: JSON.stringify(detailsWithCoordinates),
+        hiddenExpectedDocumentKeys: "[]",
         status: "PROSPECTION",
         createdAt: now,
         updatedAt: now,
@@ -792,6 +856,7 @@ export const propertiesService = {
       address?: string;
       price?: number;
       details?: PropertyDetailsInput;
+      hiddenExpectedDocumentKeys?: string[];
     };
   }) {
     const existing = await db.query.properties.findFirst({
@@ -826,6 +891,10 @@ export const propertiesService = {
           city: nextCity,
         })
       : mergedDetails;
+    const nextHiddenExpectedDocumentKeys =
+      input.data.hiddenExpectedDocumentKeys === undefined
+        ? parseHiddenExpectedDocumentKeys(existing.hiddenExpectedDocumentKeys)
+        : sanitizeHiddenExpectedDocumentKeys(input.data.hiddenExpectedDocumentKeys);
 
     await db
       .update(properties)
@@ -837,6 +906,7 @@ export const propertiesService = {
         price:
           input.data.price === undefined ? existing.price : Math.round(input.data.price),
         details: JSON.stringify(detailsWithCoordinates),
+        hiddenExpectedDocumentKeys: JSON.stringify(nextHiddenExpectedDocumentKeys),
         updatedAt: new Date(),
       })
       .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));
@@ -1145,6 +1215,9 @@ export const propertiesService = {
         prospectPhone: users.phone,
         startsAt: propertyVisits.startsAt,
         endsAt: propertyVisits.endsAt,
+        compteRendu: propertyVisits.compteRendu,
+        bonDeVisiteFileId: propertyVisits.bonDeVisiteFileId,
+        bonDeVisiteFileName: files.fileName,
         createdAt: propertyVisits.createdAt,
         updatedAt: propertyVisits.updatedAt,
       })
@@ -1163,6 +1236,13 @@ export const propertiesService = {
           eq(users.orgId, input.orgId),
         ),
       )
+      .leftJoin(
+        files,
+        and(
+          eq(propertyVisits.bonDeVisiteFileId, files.id),
+          eq(files.orgId, input.orgId),
+        ),
+      )
       .where(
         and(
           eq(propertyVisits.orgId, input.orgId),
@@ -1172,20 +1252,7 @@ export const propertiesService = {
       .orderBy(desc(propertyVisits.startsAt));
 
     return {
-      items: rows.map((row) => ({
-        id: row.id,
-        propertyId: row.propertyId,
-        propertyTitle: row.propertyTitle,
-        prospectUserId: row.prospectUserId,
-        prospectFirstName: row.prospectFirstName,
-        prospectLastName: row.prospectLastName,
-        prospectEmail: row.prospectEmail,
-        prospectPhone: row.prospectPhone,
-        startsAt: row.startsAt.toISOString(),
-        endsAt: row.endsAt.toISOString(),
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      })),
+      items: rows.map(toPropertyVisitResponse),
     };
   },
 
@@ -1282,6 +1349,8 @@ export const propertiesService = {
       prospectUserId: input.prospectUserId,
       startsAt,
       endsAt,
+      compteRendu: null,
+      bonDeVisiteFileId: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -1311,9 +1380,121 @@ export const propertiesService = {
       prospectPhone: prospect.phone,
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),
+      compteRendu: null,
+      bonDeVisiteFileId: null,
+      bonDeVisiteFileName: null,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
+  },
+
+  async getVisitById(input: {
+    orgId: string;
+    id: string;
+  }) {
+    const rows = await db
+      .select({
+        id: propertyVisits.id,
+        propertyId: propertyVisits.propertyId,
+        propertyTitle: properties.title,
+        prospectUserId: propertyVisits.prospectUserId,
+        prospectFirstName: users.firstName,
+        prospectLastName: users.lastName,
+        prospectEmail: users.email,
+        prospectPhone: users.phone,
+        startsAt: propertyVisits.startsAt,
+        endsAt: propertyVisits.endsAt,
+        compteRendu: propertyVisits.compteRendu,
+        bonDeVisiteFileId: propertyVisits.bonDeVisiteFileId,
+        bonDeVisiteFileName: files.fileName,
+        createdAt: propertyVisits.createdAt,
+        updatedAt: propertyVisits.updatedAt,
+      })
+      .from(propertyVisits)
+      .innerJoin(
+        properties,
+        and(eq(propertyVisits.propertyId, properties.id), eq(properties.orgId, input.orgId)),
+      )
+      .innerJoin(
+        users,
+        and(eq(propertyVisits.prospectUserId, users.id), eq(users.orgId, input.orgId)),
+      )
+      .leftJoin(
+        files,
+        and(
+          eq(propertyVisits.bonDeVisiteFileId, files.id),
+          eq(files.orgId, input.orgId),
+        ),
+      )
+      .where(and(eq(propertyVisits.id, input.id), eq(propertyVisits.orgId, input.orgId)))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) {
+      throw new HttpError(404, "VISIT_NOT_FOUND", "Visite introuvable");
+    }
+
+    return toPropertyVisitResponse(row);
+  },
+
+  async patchVisitById(input: {
+    orgId: string;
+    id: string;
+    data: {
+      compteRendu?: string | null;
+      bonDeVisiteFileId?: string | null;
+    };
+  }) {
+    const existingVisit = await db.query.propertyVisits.findFirst({
+      where: and(eq(propertyVisits.id, input.id), eq(propertyVisits.orgId, input.orgId)),
+    });
+
+    if (!existingVisit) {
+      throw new HttpError(404, "VISIT_NOT_FOUND", "Visite introuvable");
+    }
+
+    const nextCompteRenduNormalized = normalizeOptionalString(input.data.compteRendu);
+    const nextBonDeVisiteFileIdNormalized = normalizeOptionalString(input.data.bonDeVisiteFileId);
+    const nextCompteRendu =
+      nextCompteRenduNormalized === undefined
+        ? existingVisit.compteRendu
+        : nextCompteRenduNormalized;
+    const nextBonDeVisiteFileId =
+      nextBonDeVisiteFileIdNormalized === undefined
+        ? existingVisit.bonDeVisiteFileId
+        : nextBonDeVisiteFileIdNormalized;
+
+    if (nextBonDeVisiteFileId) {
+      const matchingFile = await db.query.files.findFirst({
+        where: and(
+          eq(files.id, nextBonDeVisiteFileId),
+          eq(files.orgId, input.orgId),
+          eq(files.propertyId, existingVisit.propertyId),
+        ),
+      });
+
+      if (!matchingFile) {
+        throw new HttpError(
+          400,
+          "INVALID_VISIT_ATTENDANCE_SHEET_FILE",
+          "Le bon de visite doit etre un fichier du meme bien",
+        );
+      }
+    }
+
+    await db
+      .update(propertyVisits)
+      .set({
+        compteRendu: nextCompteRendu,
+        bonDeVisiteFileId: nextBonDeVisiteFileId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(propertyVisits.id, input.id), eq(propertyVisits.orgId, input.orgId)));
+
+    return this.getVisitById({
+      orgId: input.orgId,
+      id: input.id,
+    });
   },
 
   async listCalendarVisits(input: {
@@ -1350,6 +1531,9 @@ export const propertiesService = {
         prospectPhone: users.phone,
         startsAt: propertyVisits.startsAt,
         endsAt: propertyVisits.endsAt,
+        compteRendu: propertyVisits.compteRendu,
+        bonDeVisiteFileId: propertyVisits.bonDeVisiteFileId,
+        bonDeVisiteFileName: files.fileName,
         createdAt: propertyVisits.createdAt,
         updatedAt: propertyVisits.updatedAt,
       })
@@ -1362,24 +1546,18 @@ export const propertiesService = {
         users,
         and(eq(propertyVisits.prospectUserId, users.id), eq(users.orgId, input.orgId)),
       )
+      .leftJoin(
+        files,
+        and(
+          eq(propertyVisits.bonDeVisiteFileId, files.id),
+          eq(files.orgId, input.orgId),
+        ),
+      )
       .where(and(...filters))
       .orderBy(propertyVisits.startsAt);
 
     return {
-      items: rows.map((row) => ({
-        id: row.id,
-        propertyId: row.propertyId,
-        propertyTitle: row.propertyTitle,
-        prospectUserId: row.prospectUserId,
-        prospectFirstName: row.prospectFirstName,
-        prospectLastName: row.prospectLastName,
-        prospectEmail: row.prospectEmail,
-        prospectPhone: row.prospectPhone,
-        startsAt: row.startsAt.toISOString(),
-        endsAt: row.endsAt.toISOString(),
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      })),
+      items: rows.map(toPropertyVisitResponse),
     };
   },
 

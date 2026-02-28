@@ -308,6 +308,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/visits/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getVisitById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchVisitById"];
+        trace?: never;
+    };
     "/files": {
         parameters: {
             query?: never;
@@ -684,6 +700,7 @@ export interface components {
             address: string | null;
             postalCode: string | null;
             city: string | null;
+            personalNotes: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -715,6 +732,7 @@ export interface components {
             address?: string | null;
             postalCode?: string | null;
             city?: string | null;
+            personalNotes?: string | null;
             accountType?: components["schemas"]["AccountType"];
         } | unknown | unknown;
         UserPatchRequest: {
@@ -726,6 +744,7 @@ export interface components {
             address?: string | null;
             postalCode?: string | null;
             city?: string | null;
+            personalNotes?: string | null;
             accountType?: components["schemas"]["AccountType"];
         };
         MeResponse: {
@@ -800,6 +819,7 @@ export interface components {
             address?: string;
             price?: number;
             details?: components["schemas"]["PropertyDetails"];
+            hiddenExpectedDocumentKeys?: string[];
         };
         PropertyResponse: {
             id: string;
@@ -809,6 +829,7 @@ export interface components {
             address?: string | null;
             price?: number | null;
             details: components["schemas"]["PropertyDetails"];
+            hiddenExpectedDocumentKeys: string[];
             status: components["schemas"]["PropertyStatus"];
             orgId: string;
             /** Format: date-time */
@@ -866,6 +887,10 @@ export interface components {
             /** Format: date-time */
             endsAt: string;
         };
+        PropertyVisitPatchRequest: {
+            compteRendu?: string | null;
+            bonDeVisiteFileId?: string | null;
+        };
         PropertyVisitResponse: {
             id: string;
             propertyId: string;
@@ -880,6 +905,9 @@ export interface components {
             startsAt: string;
             /** Format: date-time */
             endsAt: string;
+            compteRendu: string | null;
+            bonDeVisiteFileId: string | null;
+            bonDeVisiteFileName: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -981,12 +1009,12 @@ export interface components {
             points: components["schemas"]["ComparablePointResponse"][];
         };
         /** @enum {string} */
-        TypeDocument: "PIECE_IDENTITE" | "LIVRET_FAMILLE" | "CONTRAT_MARIAGE_PACS" | "JUGEMENT_DIVORCE" | "TITRE_PROPRIETE" | "ATTESTATION_NOTARIALE" | "TAXE_FONCIERE" | "REFERENCE_CADASTRALE" | "MANDAT_VENTE_SIGNE" | "BON_VISITE" | "OFFRE_ACHAT_SIGNEE" | "DPE" | "AMIANTE" | "PLOMB" | "ELECTRICITE" | "GAZ" | "TERMITES" | "ERP_ETAT_RISQUES" | "ASSAINISSEMENT" | "LOI_CARREZ" | "REGLEMENT_COPROPRIETE" | "ETAT_DESCRIPTIF_DIVISION" | "PV_AG_3_DERNIERES_ANNEES" | "MONTANT_CHARGES" | "CARNET_ENTRETIEN" | "FICHE_SYNTHETIQUE" | "PRE_ETAT_DATE" | "ETAT_DATE" | "PHOTOS_HD" | "VIDEO_VISITE" | "PLAN_BIEN" | "ANNONCE_IMMOBILIERE" | "AFFICHE_VITRINE" | "REPORTING_VENDEUR" | "SIMULATION_FINANCEMENT" | "ATTESTATION_CAPACITE_EMPRUNT" | "ACCORD_PRINCIPE_BANCAIRE" | "COMPROMIS_OU_PROMESSE" | "ANNEXES_COMPROMIS" | "PREUVE_SEQUESTRE" | "COURRIER_RETRACTATION" | "LEVEE_CONDITIONS_SUSPENSIVES" | "ACTE_AUTHENTIQUE" | "DECOMPTE_NOTAIRE";
+        TypeDocument: "PIECE_IDENTITE" | "LIVRET_FAMILLE" | "CONTRAT_MARIAGE_PACS" | "JUGEMENT_DIVORCE" | "TITRE_PROPRIETE" | "ATTESTATION_NOTARIALE" | "TAXE_FONCIERE" | "REFERENCE_CADASTRALE" | "MANDAT_VENTE_SIGNE" | "OFFRE_ACHAT_SIGNEE" | "DPE" | "AMIANTE" | "PLOMB" | "ELECTRICITE" | "GAZ" | "TERMITES" | "ERP_ETAT_RISQUES" | "ASSAINISSEMENT" | "LOI_CARREZ" | "REGLEMENT_COPROPRIETE" | "ETAT_DESCRIPTIF_DIVISION" | "PV_AG_3_DERNIERES_ANNEES" | "MONTANT_CHARGES" | "CARNET_ENTRETIEN" | "FICHE_SYNTHETIQUE" | "PRE_ETAT_DATE" | "ETAT_DATE" | "PHOTOS_HD" | "VIDEO_VISITE" | "PLAN_BIEN" | "ANNONCE_IMMOBILIERE" | "AFFICHE_VITRINE" | "REPORTING_VENDEUR" | "SIMULATION_FINANCEMENT" | "ATTESTATION_CAPACITE_EMPRUNT" | "ACCORD_PRINCIPE_BANCAIRE" | "COMPROMIS_OU_PROMESSE" | "ANNEXES_COMPROMIS" | "PREUVE_SEQUESTRE" | "COURRIER_RETRACTATION" | "LEVEE_CONDITIONS_SUSPENSIVES" | "ACTE_AUTHENTIQUE" | "DECOMPTE_NOTAIRE";
         /** @enum {string} */
         FileStatus: "UPLOADED" | "CLASSIFIED" | "REVIEW_REQUIRED";
         FileUploadRequest: {
             propertyId: string;
-            typeDocument: components["schemas"]["TypeDocument"];
+            typeDocument?: components["schemas"]["TypeDocument"];
             fileName: string;
             mimeType: string;
             size: number;
@@ -1819,6 +1847,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PropertyVisitListResponse"];
+                };
+            };
+        };
+    };
+    getVisitById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Détail d'une visite. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyVisitResponse"];
+                };
+            };
+            /** @description Visite introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patchVisitById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PropertyVisitPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Visite mise à jour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyVisitResponse"];
+                };
+            };
+            /** @description Visite introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -523,6 +523,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyVisitListResponse"
+  /visits/{id}:
+    get:
+      tags: [Visits]
+      operationId: getVisitById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail d'une visite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyVisitResponse"
+        "404":
+          description: Visite introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Visits]
+      operationId: patchVisitById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyVisitPatchRequest"
+      responses:
+        "200":
+          description: Visite mise à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyVisitResponse"
+        "404":
+          description: Visite introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /files:
     get:
       tags: [Files]
@@ -1030,7 +1077,7 @@ components:
     AccountUserResponse:
       type: object
       required:
-        [id, email, firstName, lastName, orgId, accountType, role, phone, address, postalCode, city, createdAt, updatedAt]
+        [id, email, firstName, lastName, orgId, accountType, role, phone, address, postalCode, city, personalNotes, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1058,6 +1105,9 @@ components:
           type: string
           nullable: true
         city:
+          type: string
+          nullable: true
+        personalNotes:
           type: string
           nullable: true
         createdAt:
@@ -1134,6 +1184,9 @@ components:
         city:
           type: string
           nullable: true
+        personalNotes:
+          type: string
+          nullable: true
         accountType:
           $ref: "#/components/schemas/AccountType"
     UserPatchRequest:
@@ -1159,6 +1212,9 @@ components:
           type: string
           nullable: true
         city:
+          type: string
+          nullable: true
+        personalNotes:
           type: string
           nullable: true
         accountType:
@@ -1323,9 +1379,14 @@ components:
           type: number
         details:
           $ref: "#/components/schemas/PropertyDetails"
+        hiddenExpectedDocumentKeys:
+          type: array
+          items:
+            type: string
     PropertyResponse:
       type: object
-      required: [id, title, city, postalCode, status, orgId, details, createdAt, updatedAt]
+      required:
+        [id, title, city, postalCode, status, orgId, details, hiddenExpectedDocumentKeys, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1343,6 +1404,10 @@ components:
           nullable: true
         details:
           $ref: "#/components/schemas/PropertyDetails"
+        hiddenExpectedDocumentKeys:
+          type: array
+          items:
+            type: string
         status:
           $ref: "#/components/schemas/PropertyStatus"
         orgId:
@@ -1460,6 +1525,15 @@ components:
         endsAt:
           type: string
           format: date-time
+    PropertyVisitPatchRequest:
+      type: object
+      properties:
+        compteRendu:
+          type: string
+          nullable: true
+        bonDeVisiteFileId:
+          type: string
+          nullable: true
     PropertyVisitResponse:
       type: object
       required:
@@ -1474,6 +1548,9 @@ components:
           prospectPhone,
           startsAt,
           endsAt,
+          compteRendu,
+          bonDeVisiteFileId,
+          bonDeVisiteFileName,
           createdAt,
           updatedAt,
         ]
@@ -1503,6 +1580,15 @@ components:
         endsAt:
           type: string
           format: date-time
+        compteRendu:
+          type: string
+          nullable: true
+        bonDeVisiteFileId:
+          type: string
+          nullable: true
+        bonDeVisiteFileName:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -1737,7 +1823,6 @@ components:
         - TAXE_FONCIERE
         - REFERENCE_CADASTRALE
         - MANDAT_VENTE_SIGNE
-        - BON_VISITE
         - OFFRE_ACHAT_SIGNEE
         - DPE
         - AMIANTE
@@ -1777,7 +1862,7 @@ components:
       enum: [UPLOADED, CLASSIFIED, REVIEW_REQUIRED]
     FileUploadRequest:
       type: object
-      required: [propertyId, typeDocument, fileName, mimeType, size]
+      required: [propertyId, fileName, mimeType, size]
       properties:
         propertyId:
           type: string

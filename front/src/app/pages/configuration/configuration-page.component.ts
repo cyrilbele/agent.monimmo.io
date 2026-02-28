@@ -180,13 +180,13 @@ export class ConfigurationPageComponent {
     const normalizedInput = raw.replace(",", ".");
     const parsed = Number(normalizedInput);
     if (!raw || !Number.isFinite(parsed) || parsed < 0) {
-      this.valuationFeedback.set("Le taux de frais de notaire doit etre un nombre positif.");
+      this.valuationFeedback.set("Le taux de frais de notaire doit être un nombre positif.");
       return;
     }
 
     const persisted = this.appSettingsService.updateNotaryFeePct(parsed);
     this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(persisted));
-    this.valuationFeedback.set("Parametre enregistre.");
+    this.valuationFeedback.set("Paramètre enregistré.");
   }
 
   private createConnectForm(): ConnectFormGroup {

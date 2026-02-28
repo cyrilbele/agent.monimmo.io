@@ -419,4 +419,265 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(component.comparablesDisplayedSummary().medianPricePerM2).not.toBeNull();
     expect(component.paginatedComparableSales().length).toBe(1);
   });
+
+  it("calcule la progression des types documentaires et persiste les documents attendus masques", async () => {
+    let persistedHiddenExpectedDocumentKeys: string[] = [];
+    const patchCalls: string[][] = [];
+    const basePropertyResponse: PropertyResponse = {
+      id: "property_docs",
+      title: "Appartement Lyon",
+      city: "Lyon",
+      postalCode: "69001",
+      address: "10 rue de la Republique",
+      price: 410000,
+      details: {},
+      hiddenExpectedDocumentKeys: [],
+      status: "MANDAT_SIGNE",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const risksResponse: PropertyRiskResponse = {
+      propertyId: "property_docs",
+      status: "NO_DATA",
+      source: "GEORISQUES",
+      georisquesUrl: "https://www.georisques.gouv.fr",
+      reportPdfUrl: null,
+      generatedAt: "2026-02-01T10:00:00.000Z",
+      message: null,
+      location: {
+        address: "10 rue de la Republique",
+        postalCode: "69001",
+        city: "Lyon",
+        inseeCode: "69123",
+        latitude: 45.764,
+        longitude: 4.8357,
+      },
+      items: [],
+    };
+
+    const filesResponse: FileListResponse = {
+      items: [
+        {
+          id: "file_1",
+          propertyId: "property_docs",
+          typeDocument: "MANDAT_VENTE_SIGNE",
+          fileName: "mandat.pdf",
+          mimeType: "application/pdf",
+          size: 1024,
+          status: "UPLOADED",
+          storageKey: "files/mandat.pdf",
+          createdAt: "2026-02-01T10:00:00.000Z",
+        },
+        {
+          id: "file_2",
+          propertyId: "property_docs",
+          typeDocument: "OFFRE_ACHAT_SIGNEE",
+          fileName: "offre-achat.pdf",
+          mimeType: "application/pdf",
+          size: 2048,
+          status: "UPLOADED",
+          storageKey: "files/offre-achat.pdf",
+          createdAt: "2026-02-02T10:00:00.000Z",
+        },
+      ],
+    };
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () =>
+        Promise.resolve({
+          ...basePropertyResponse,
+          hiddenExpectedDocumentKeys: [...persistedHiddenExpectedDocumentKeys],
+        }),
+      patch: (_propertyId, payload) => {
+        persistedHiddenExpectedDocumentKeys = [...(payload.hiddenExpectedDocumentKeys ?? [])];
+        patchCalls.push([...persistedHiddenExpectedDocumentKeys]);
+        return Promise.resolve({
+          ...basePropertyResponse,
+          hiddenExpectedDocumentKeys: [...persistedHiddenExpectedDocumentKeys],
+        });
+      },
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () => Promise.resolve(risksResponse),
+    };
+
+    const messageServiceMock: Partial<MessageService> = {
+      listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse),
+    };
+
+    const fileServiceMock: Partial<FileService> = {
+      listByProperty: () => Promise.resolve(filesResponse),
+    };
+
+    const userServiceMock: Partial<UserService> = {
+      list: () => Promise.resolve({ items: [] } as AccountUserListResponse),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_docs" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        { provide: MessageService, useValue: messageServiceMock },
+        { provide: FileService, useValue: fileServiceMock },
+        { provide: UserService, useValue: userServiceMock },
+        { provide: InseeCityService, useValue: {} },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const firstFixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const firstComponent = firstFixture.componentInstance;
+
+    firstFixture.detectChanges();
+    await firstFixture.whenStable();
+    firstFixture.detectChanges();
+    firstComponent.files.set(filesResponse.items);
+
+    firstComponent.setMainTab("documents");
+    firstComponent.setActiveDocumentTab("mandat");
+    firstFixture.detectChanges();
+
+    const mandatTab = firstComponent.documentTabs.find((tab) => tab.id === "mandat");
+    expect(mandatTab).toBeDefined();
+    expect(firstComponent.documentTabProgressLabel(mandatTab!)).toBe("2/2");
+    expect(firstComponent.expectedDocumentsForActiveTab().map((item) => item.provided)).toEqual([true, true]);
+
+    firstComponent.hideExpectedDocument("mandat", 0);
+    firstFixture.detectChanges();
+    expect(firstComponent.hiddenExpectedDocumentKeys()).toContain("mandat::MANDAT_VENTE_SIGNE");
+    expect(firstComponent.expectedDocumentsForActiveTab().length).toBe(1);
+    expect(firstComponent.expectedDocumentsForActiveTab().some((item) => item.index === 0)).toBe(false);
+    expect(firstComponent.documentTabProgressLabel(mandatTab!)).toBe("1/1");
+
+    await firstFixture.whenStable();
+    firstFixture.detectChanges();
+
+    expect(patchCalls).toEqual([["mandat::MANDAT_VENTE_SIGNE"]]);
+
+    firstFixture.destroy();
+
+    const secondFixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const secondComponent = secondFixture.componentInstance;
+    secondFixture.detectChanges();
+    await secondFixture.whenStable();
+    await secondComponent.loadPropertyBundle();
+    secondFixture.detectChanges();
+    secondComponent.files.set(filesResponse.items);
+
+    secondComponent.setMainTab("documents");
+    secondComponent.setActiveDocumentTab("mandat");
+    secondFixture.detectChanges();
+
+    expect(secondComponent.hiddenExpectedDocumentKeys()).toEqual(["mandat::MANDAT_VENTE_SIGNE"]);
+    expect(secondComponent.expectedDocumentsForActiveTab().length).toBe(1);
+
+    secondComponent.restoreHiddenExpectedDocumentsForTab("mandat");
+    await secondFixture.whenStable();
+    secondFixture.detectChanges();
+
+    expect(secondComponent.activeTabHasHiddenExpectedDocuments()).toBe(false);
+    expect(secondComponent.expectedDocumentsForActiveTab().length).toBe(2);
+    expect(patchCalls).toEqual([["mandat::MANDAT_VENTE_SIGNE"], []]);
+  });
+
+  it("masque l onglet documents copropriete si le bien n est pas en copropriete", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_no_copro",
+      title: "Maison Toulouse",
+      city: "Toulouse",
+      postalCode: "31000",
+      address: "5 rue Alsace",
+      price: 360000,
+      details: {
+        copropriete: {
+          isCopropriete: false,
+        },
+      },
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () => Promise.resolve(propertyResponse),
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () =>
+        Promise.resolve({
+          propertyId: "property_no_copro",
+          status: "NO_DATA",
+          source: "GEORISQUES",
+          georisquesUrl: "https://www.georisques.gouv.fr",
+          reportPdfUrl: null,
+          generatedAt: "2026-02-01T10:00:00.000Z",
+          message: null,
+          location: {
+            address: "5 rue Alsace",
+            postalCode: "31000",
+            city: "Toulouse",
+            inseeCode: "31555",
+            latitude: 43.6,
+            longitude: 1.44,
+          },
+          items: [],
+        } as PropertyRiskResponse),
+    };
+
+    const messageServiceMock: Partial<MessageService> = {
+      listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse),
+    };
+
+    const fileServiceMock: Partial<FileService> = {
+      listByProperty: () => Promise.resolve({ items: [] } as FileListResponse),
+    };
+
+    const userServiceMock: Partial<UserService> = {
+      list: () => Promise.resolve({ items: [] } as AccountUserListResponse),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_no_copro" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        { provide: MessageService, useValue: messageServiceMock },
+        { provide: FileService, useValue: fileServiceMock },
+        { provide: UserService, useValue: userServiceMock },
+        { provide: InseeCityService, useValue: {} },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    component.property.set(propertyResponse);
+
+    component.setMainTab("documents");
+    fixture.detectChanges();
+
+    expect(component.visibleDocumentTabs().some((tab) => tab.id === "copropriete")).toBe(false);
+    component.setActiveDocumentTab("copropriete");
+    expect(component.activeDocumentTabDefinition().id).not.toBe("copropriete");
+  });
 });

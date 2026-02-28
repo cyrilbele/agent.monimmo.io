@@ -44,9 +44,9 @@ export class CalendarPageComponent {
     height: "auto",
     events: this.calendarEvents(),
     eventClick: (clickInfo) => {
-      const propertyId = clickInfo.event.extendedProps["propertyId"];
-      if (typeof propertyId === "string" && propertyId) {
-        void this.router.navigate(["/app/bien", propertyId]);
+      const visitId = clickInfo.event.id;
+      if (typeof visitId === "string" && visitId) {
+        void this.router.navigate(["/app/visites", visitId]);
       }
     },
   }));

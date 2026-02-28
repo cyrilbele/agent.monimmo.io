@@ -28,6 +28,7 @@ export interface AccountUserResponse {
   address: string | null;
   postalCode: string | null;
   city: string | null;
+  personalNotes: string | null;
   linkedProperties: AccountUserLinkedPropertyResponse[];
   createdAt: string;
   updatedAt: string;
@@ -60,6 +61,7 @@ export interface AccountUserPatchRequest {
   address?: string | null;
   postalCode?: string | null;
   city?: string | null;
+  personalNotes?: string | null;
   accountType?: AccountType;
 }
 
@@ -71,6 +73,7 @@ export interface AccountUserCreateRequest {
   address?: string | null;
   postalCode?: string | null;
   city?: string | null;
+  personalNotes?: string | null;
   accountType?: AccountType;
 }
 
@@ -109,6 +112,7 @@ export interface PropertyResponse {
   address?: string | null;
   price?: number | null;
   details: Record<string, unknown>;
+  hiddenExpectedDocumentKeys?: string[];
   status: PropertyStatus;
   orgId: string;
   createdAt: string;
@@ -137,6 +141,7 @@ export interface PropertyPatchRequest {
   address?: string;
   price?: number;
   details?: Record<string, unknown>;
+  hiddenExpectedDocumentKeys?: string[];
 }
 
 export interface PropertyStatusUpdateRequest {
@@ -194,6 +199,11 @@ export interface PropertyVisitCreateRequest {
   endsAt: string;
 }
 
+export interface PropertyVisitPatchRequest {
+  compteRendu?: string | null;
+  bonDeVisiteFileId?: string | null;
+}
+
 export interface PropertyVisitResponse {
   id: string;
   propertyId: string;
@@ -205,6 +215,9 @@ export interface PropertyVisitResponse {
   prospectPhone: string | null;
   startsAt: string;
   endsAt: string;
+  compteRendu: string | null;
+  bonDeVisiteFileId: string | null;
+  bonDeVisiteFileName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -328,7 +341,6 @@ export type TypeDocument =
   | "TAXE_FONCIERE"
   | "REFERENCE_CADASTRALE"
   | "MANDAT_VENTE_SIGNE"
-  | "BON_VISITE"
   | "OFFRE_ACHAT_SIGNEE"
   | "DPE"
   | "AMIANTE"
@@ -390,7 +402,7 @@ export interface FileDownloadUrlResponse {
 
 export interface FileUploadRequest {
   propertyId: string;
-  typeDocument: TypeDocument;
+  typeDocument?: TypeDocument;
   fileName: string;
   mimeType: string;
   size: number;

@@ -5,6 +5,7 @@ import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
 import {
+  files,
   properties,
   propertyParties,
   propertyTimelineEvents,
@@ -74,6 +75,7 @@ describe("properties endpoints", () => {
     expect(payload.title).toBe("Maison de ville");
     expect(payload.orgId).toBe("org_demo");
     expect(payload.status).toBe("PROSPECTION");
+    expect(payload.hiddenExpectedDocumentKeys).toEqual([]);
 
     const ownerUser = await db.query.users.findFirst({
       where: eq(users.email, owner.email.toLowerCase()),
@@ -210,6 +212,7 @@ describe("properties endpoints", () => {
           title: "Bien modifié",
           city: "Rennes",
           address: "11 rue Le Bastard",
+          hiddenExpectedDocumentKeys: ["mandat::MANDAT_VENTE_SIGNE", "technique::AMIANTE"],
         }),
       }),
     );
@@ -218,6 +221,18 @@ describe("properties endpoints", () => {
     const patched = await patchResponse.json();
     expect(patched.title).toBe("Bien modifié");
     expect(patched.city).toBe("Rennes");
+    expect(patched.hiddenExpectedDocumentKeys).toEqual([
+      "mandat::MANDAT_VENTE_SIGNE",
+      "technique::AMIANTE",
+    ]);
+
+    const dbProperty = await db.query.properties.findFirst({
+      where: eq(properties.id, created.id),
+    });
+    expect(dbProperty).not.toBeUndefined();
+    expect(
+      JSON.parse(dbProperty?.hiddenExpectedDocumentKeys ?? "[]"),
+    ).toEqual(["mandat::MANDAT_VENTE_SIGNE", "technique::AMIANTE"]);
   });
 
   it("met à jour le statut et crée un événement timeline", async () => {
@@ -516,6 +531,9 @@ describe("properties endpoints", () => {
     expect(visitPayload.prospectUserId).toBe(prospectPayload.userId);
     expect(visitPayload.startsAt).toBe(startsAt);
     expect(visitPayload.endsAt).toBe(endsAt);
+    expect(visitPayload.compteRendu).toBeNull();
+    expect(visitPayload.bonDeVisiteFileId).toBeNull();
+    expect(visitPayload.bonDeVisiteFileName).toBeNull();
 
     const listVisitsResponse = await createApp().fetch(
       new Request(`http://localhost/properties/${propertyPayload.id}/visits`, {
@@ -548,6 +566,58 @@ describe("properties endpoints", () => {
       calendarPayload.items.some((item: { id: string }) => item.id === visitPayload.id),
     ).toBe(true);
 
+    const getVisitByIdResponse = await createApp().fetch(
+      new Request(`http://localhost/visits/${visitPayload.id}`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(getVisitByIdResponse.status).toBe(200);
+    const fetchedVisit = await getVisitByIdResponse.json();
+    expect(fetchedVisit.id).toBe(visitPayload.id);
+    expect(fetchedVisit.compteRendu).toBeNull();
+    expect(fetchedVisit.bonDeVisiteFileId).toBeNull();
+
+    const uploadBonResponse = await createApp().fetch(
+      new Request("http://localhost/files/upload", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          propertyId: propertyPayload.id,
+          fileName: "bon-visite.pdf",
+          mimeType: "application/pdf",
+          size: 20,
+          contentBase64: Buffer.from("bon visite").toString("base64"),
+        }),
+      }),
+    );
+    expect(uploadBonResponse.status).toBe(201);
+    const uploadedBon = await uploadBonResponse.json();
+
+    const patchVisitResponse = await createApp().fetch(
+      new Request(`http://localhost/visits/${visitPayload.id}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          compteRendu: "Prospect interesse, deuxieme visite proposee.",
+          bonDeVisiteFileId: uploadedBon.id,
+        }),
+      }),
+    );
+    expect(patchVisitResponse.status).toBe(200);
+    const patchedVisit = await patchVisitResponse.json();
+    expect(patchedVisit.compteRendu).toBe("Prospect interesse, deuxieme visite proposee.");
+    expect(patchedVisit.bonDeVisiteFileId).toBe(uploadedBon.id);
+    expect(patchedVisit.bonDeVisiteFileName).toBe("bon-visite.pdf");
+
     const dbVisit = await db.query.propertyVisits.findFirst({
       where: and(
         eq(propertyVisits.id, visitPayload.id),
@@ -555,6 +625,16 @@ describe("properties endpoints", () => {
       ),
     });
     expect(dbVisit).not.toBeNull();
+    expect(dbVisit?.compteRendu).toBe("Prospect interesse, deuxieme visite proposee.");
+    expect(dbVisit?.bonDeVisiteFileId).toBe(uploadedBon.id);
+
+    const linkedFile = await db.query.files.findFirst({
+      where: and(
+        eq(files.id, uploadedBon.id),
+        eq(files.propertyId, propertyPayload.id),
+      ),
+    });
+    expect(linkedFile).not.toBeNull();
   });
 
   it("planifie une visite avec un client non encore prospect et le rattache automatiquement", async () => {

@@ -47,6 +47,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: "biens",
+        loadComponent: () =>
+          import("./pages/properties/properties-page.component").then(
+            (module) => module.PropertiesPageComponent,
+          ),
+      },
+      {
         path: "utilisateurs",
         loadComponent: () =>
           import("./pages/users/users-page.component").then(
@@ -79,6 +86,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import("./pages/calendar/calendar-page.component").then(
             (module) => module.CalendarPageComponent,
+          ),
+      },
+      {
+        path: "visites/:id",
+        loadComponent: () =>
+          import("./pages/visit-detail/visit-detail-page.component").then(
+            (module) => module.VisitDetailPageComponent,
           ),
       },
       {

@@ -1,8 +1,8 @@
 <section class="panel mx-auto w-full max-w-4xl p-6 sm:p-8" aria-labelledby="property-create-title">
   <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Nouveau dossier</p>
-  <h2 id="property-create-title" class="mt-2 font-serif text-3xl text-slate-900">Creer un bien</h2>
+  <h2 id="property-create-title" class="mt-2 font-serif text-3xl text-slate-900">Créer un bien</h2>
   <p class="mt-3 text-sm text-slate-600">
-    Saisissez les informations du bien puis associez un proprietaire client existant ou creez-en un nouveau.
+    Saisissez les informations du bien puis associez un propriétaire client existant ou créez-en un nouveau.
   </p>
 
   <form
@@ -35,7 +35,7 @@
     </div>
 
     <div class="mt-4 border-t border-slate-200 pt-4">
-      <h3 class="font-serif text-2xl text-slate-900">Proprietaire</h3>
+      <h3 class="font-serif text-2xl text-slate-900">Propriétaire</h3>
 
       <div class="mt-3 flex flex-wrap gap-2">
         <button
@@ -60,13 +60,13 @@
           [attr.aria-pressed]="ownerMode() === 'new' ? 'true' : 'false'"
           (click)="setOwnerMode('new')"
         >
-          Creer un nouveau proprietaire
+          Créer un nouveau propriétaire
         </button>
       </div>
 
       @if (ownerMode() === 'existing') {
         <div class="mt-3 space-y-2">
-          <label class="field-label" [for]="ownerAutocompleteId">Client proprietaire</label>
+          <label class="field-label" [for]="ownerAutocompleteId">Client propriétaire</label>
           <div
             #ownerLookupContainer
             class="relative"
@@ -117,7 +117,7 @@
                     </button>
                   </li>
                 } @empty {
-                  <li class="px-3 py-2 text-sm text-slate-500">Aucun client trouve.</li>
+                  <li class="px-3 py-2 text-sm text-slate-500">Aucun client trouvé.</li>
                 }
               </ul>
             }
@@ -129,7 +129,7 @@
       } @else {
         <div class="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="field-label" for="owner-first-name">Prenom</label>
+            <label class="field-label" for="owner-first-name">Prénom</label>
             <input id="owner-first-name" class="field-input" type="text" formControlName="ownerFirstName" />
           </div>
 
@@ -139,7 +139,7 @@
           </div>
 
           <div>
-            <label class="field-label" for="owner-phone">Telephone</label>
+            <label class="field-label" for="owner-phone">Téléphone</label>
             <input id="owner-phone" class="field-input" type="text" formControlName="ownerPhone" />
           </div>
 

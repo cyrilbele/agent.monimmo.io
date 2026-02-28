@@ -49,6 +49,11 @@ describe("PropertyService", () => {
       startsAt: "2026-02-01T10:00:00.000Z",
       endsAt: "2026-02-01T10:30:00.000Z",
     });
+    await service.getVisitById("visit:1");
+    await service.patchVisitById("visit:1", {
+      compteRendu: "RAS",
+      bonDeVisiteFileId: "file_1",
+    });
     await service.getRisks("property:1");
     await service.listCalendarVisits("2026-01-01T00:00:00.000Z", "2026-12-31T00:00:00.000Z");
 
@@ -93,6 +98,12 @@ describe("PropertyService", () => {
             endsAt: "2026-02-01T10:30:00.000Z",
           },
         },
+      ],
+      ["GET", "/visits/visit%3A1"],
+      [
+        "PATCH",
+        "/visits/visit%3A1",
+        { body: { compteRendu: "RAS", bonDeVisiteFileId: "file_1" } },
       ],
       ["GET", "/properties/property%3A1/risks"],
       [

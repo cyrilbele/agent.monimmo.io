@@ -100,8 +100,16 @@ type RentalProfitabilityResult = {
   holdingYears: number | null;
   resalePrice: number | null;
 };
+type ExpectedDocumentItem = {
+  key: string;
+  index: number;
+  label: string;
+  typeDocument: TypeDocument | null;
+  provided: boolean;
+};
 
 const DEFAULT_TYPE_DOCUMENT: TypeDocument = "PIECE_IDENTITE";
+const EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR = "::";
 const FRONT_COMPARABLE_PRICE_TOLERANCE = 0.1;
 const SALES_PAGE_SIZE = 10;
 const COMPARABLE_TYPE_OPTIONS: Array<{ value: ComparablePropertyType; label: string }> = [
@@ -216,6 +224,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly propertyCategories = PROPERTY_DETAILS_CATEGORIES;
   readonly documentTabs = DOCUMENT_TABS;
   readonly categoryForms = signal<Partial<CategoryForms>>({});
+  readonly hiddenExpectedDocumentKeys = signal<string[]>([]);
 
   readonly prospectForm = this.formBuilder.nonNullable.group({
     existingLookup: [""],
@@ -256,7 +265,38 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   });
 
   readonly activeDocumentTabDefinition = computed<DocumentTabDefinition>(() => {
-    return this.getDocumentTabDefinition(this.activeDocumentTab());
+    const visibleTabs = this.visibleDocumentTabs();
+    return (
+      visibleTabs.find((tab) => tab.id === this.activeDocumentTab()) ??
+      visibleTabs[0] ??
+      this.documentTabs[0]
+    );
+  });
+
+  readonly visibleDocumentTabs = computed<DocumentTabDefinition[]>(() => {
+    const property = this.property();
+    if (!property) {
+      return [...this.documentTabs];
+    }
+
+    const isCopropriete = this.resolveIsPropertyInCopropriete(property);
+    if (isCopropriete === false) {
+      return this.documentTabs.filter((tab) => tab.id !== "copropriete");
+    }
+
+    return [...this.documentTabs];
+  });
+
+  readonly providedDocumentTypes = computed<Set<TypeDocument>>(() => {
+    const provided = new Set<TypeDocument>();
+
+    for (const file of this.files()) {
+      if (file.typeDocument) {
+        provided.add(file.typeDocument);
+      }
+    }
+
+    return provided;
   });
 
   readonly documentsForActiveTab = computed<FileResponse[]>(() => {
@@ -272,6 +312,35 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       })
       .slice()
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  });
+
+  readonly expectedDocumentsForActiveTab = computed<ExpectedDocumentItem[]>(() => {
+    const tab = this.activeDocumentTabDefinition();
+    const hiddenExpectedDocumentKeys = new Set(this.hiddenExpectedDocumentKeys());
+    const providedDocumentTypes = this.providedDocumentTypes();
+
+    return tab.expected
+      .map((label, index): ExpectedDocumentItem | null => {
+        const key = this.buildExpectedDocumentKey(tab.id, index);
+        if (hiddenExpectedDocumentKeys.has(key)) {
+          return null;
+        }
+
+        const typeDocument = tab.typeDocuments[index] ?? null;
+        return {
+          key,
+          index,
+          label,
+          typeDocument,
+          provided: typeDocument !== null && providedDocumentTypes.has(typeDocument),
+        };
+      })
+      .filter((item): item is ExpectedDocumentItem => item !== null);
+  });
+
+  readonly activeTabHasHiddenExpectedDocuments = computed<boolean>(() => {
+    const tab = this.activeDocumentTabDefinition();
+    return this.hasHiddenExpectedDocuments(tab.id);
   });
 
   readonly previousStatus = computed<PropertyStatus | null>(() => {
@@ -979,6 +1048,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private mediaRecorder: MediaRecorder | null = null;
   private mediaStream: MediaStream | null = null;
   private recordedChunks: BlobPart[] = [];
+  private hiddenExpectedDocumentKeysPersistQueue: Promise<void> = Promise.resolve();
 
   ngOnInit(): void {
     this.applyProspectModeConstraints(this.prospectMode());
@@ -1023,6 +1093,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.latestSimilarTerrainMinM2.set(null);
     this.latestSimilarTerrainMaxM2.set(null);
     this.salesPage.set(1);
+    this.hiddenExpectedDocumentKeys.set([]);
     this.destroyComparablesChart();
 
     try {
@@ -1036,6 +1107,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         ]);
 
       this.property.set(property);
+      this.hiddenExpectedDocumentKeys.set(
+        this.normalizeHiddenExpectedDocumentKeys(property.hiddenExpectedDocumentKeys),
+      );
       this.initializeRentalProfitabilityInputs(property);
       this.messages.set(messagesResponse.items);
       this.files.set(filesResponse.items);
@@ -1114,7 +1188,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       try {
         parsedValue = this.parseFieldFormValue(rawValue, field);
       } catch {
-        this.requestFeedback.set(`Le champ \"${field.label}\" doit etre un nombre valide.`);
+        this.requestFeedback.set(`Le champ \"${field.label}\" doit être un nombre valide.`);
         return;
       }
 
@@ -1136,16 +1210,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     };
 
     this.patchPending.set(true);
-    this.requestFeedback.set("Mise a jour des informations en cours...");
+    this.requestFeedback.set("Mise à jour des informations en cours...");
 
     try {
       const updated = await this.propertyService.patch(this.propertyId, patchPayload);
       this.property.set(updated);
       this.categoryForms.set(this.createCategoryForms(updated));
       this.editingPropertyCategory.set(null);
-      this.requestFeedback.set("Informations mises a jour.");
+      this.requestFeedback.set("Informations mises à jour.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise a jour impossible.";
+      const message = error instanceof Error ? error.message : "Mise à jour impossible.";
       this.requestFeedback.set(message);
     } finally {
       this.patchPending.set(false);
@@ -1158,13 +1232,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   ): string {
     const property = this.property();
     if (!property) {
-      return "Non renseigne";
+      return "Non renseigné";
     }
 
     const rawValue = this.getFieldRawValue(property, categoryId, field);
 
     if (rawValue === null || typeof rawValue === "undefined" || rawValue === "") {
-      return "Non renseigne";
+      return "Non renseigné";
     }
 
     if (field.type === "boolean") {
@@ -1227,14 +1301,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.statusPending.set(true);
-    this.requestFeedback.set("Mise a jour du statut en cours...");
+    this.requestFeedback.set("Mise à jour du statut en cours...");
 
     try {
       const updated = await this.propertyService.updateStatus(this.propertyId, status);
       this.property.set(updated);
-      this.requestFeedback.set(`Statut mis a jour: ${this.statusLabels[updated.status]}.`);
+      this.requestFeedback.set(`Statut mis à jour: ${this.statusLabels[updated.status]}.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise a jour impossible.";
+      const message = error instanceof Error ? error.message : "Mise à jour impossible.";
       this.requestFeedback.set(message);
     } finally {
       this.statusPending.set(false);
@@ -1264,10 +1338,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   setActiveDocumentTab(tabId: DocumentTabId): void {
-    this.activeDocumentTab.set(tabId);
+    const tab = this.visibleDocumentTabs().find((item) => item.id === tabId);
+    if (!tab) {
+      return;
+    }
+
+    this.activeDocumentTab.set(tab.id);
 
     const currentType = this.uploadForm.controls.typeDocument.value;
-    const tab = this.getDocumentTabDefinition(tabId);
 
     if (!tab.typeDocuments.includes(currentType)) {
       this.uploadForm.controls.typeDocument.setValue(tab.typeDocuments[0] ?? DEFAULT_TYPE_DOCUMENT);
@@ -1275,7 +1353,69 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   isActiveDocumentTab(tabId: DocumentTabId): boolean {
-    return this.activeDocumentTab() === tabId;
+    return this.activeDocumentTabDefinition().id === tabId;
+  }
+
+  documentTabProgressLabel(tab: DocumentTabDefinition): string {
+    const providedDocumentTypes = this.providedDocumentTypes();
+    const hiddenExpectedDocumentKeys = new Set(this.hiddenExpectedDocumentKeys());
+    const visibleTypeDocuments = new Set<TypeDocument>();
+    let providedCount = 0;
+    let totalCount = 0;
+
+    for (let index = 0; index < tab.expected.length; index += 1) {
+      const key = this.buildExpectedDocumentKey(tab.id, index);
+      if (hiddenExpectedDocumentKeys.has(key)) {
+        continue;
+      }
+
+      const typeDocument = tab.typeDocuments[index] ?? null;
+      if (!typeDocument) {
+        totalCount += 1;
+        continue;
+      }
+
+      if (visibleTypeDocuments.has(typeDocument)) {
+        continue;
+      }
+
+      visibleTypeDocuments.add(typeDocument);
+      totalCount += 1;
+      if (providedDocumentTypes.has(typeDocument)) {
+        providedCount += 1;
+      }
+    }
+
+    return `${providedCount}/${totalCount}`;
+  }
+
+  hideExpectedDocument(tabId: DocumentTabId, expectedIndex: number): void {
+    const tab = this.getDocumentTabDefinition(tabId);
+    if (expectedIndex < 0 || expectedIndex >= tab.expected.length) {
+      return;
+    }
+
+    const key = this.buildExpectedDocumentKey(tabId, expectedIndex);
+    const currentKeys = this.hiddenExpectedDocumentKeys();
+    if (currentKeys.includes(key)) {
+      return;
+    }
+
+    const nextKeys = [...currentKeys, key];
+    this.hiddenExpectedDocumentKeys.set(nextKeys);
+    this.enqueueHiddenExpectedDocumentKeysPersist(nextKeys);
+  }
+
+  restoreHiddenExpectedDocumentsForTab(tabId: DocumentTabId): void {
+    const prefix = `${tabId}${EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR}`;
+    const currentKeys = this.hiddenExpectedDocumentKeys();
+    const nextKeys = currentKeys.filter((key) => !key.startsWith(prefix));
+    if (nextKeys.length === currentKeys.length) {
+      return;
+    }
+
+    this.hiddenExpectedDocumentKeys.set(nextKeys);
+    this.enqueueHiddenExpectedDocumentKeysPersist(nextKeys);
   }
 
   openUploadModal(): void {
@@ -1316,7 +1456,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const selectedFile = this.selectedFile();
     if (!selectedFile) {
-      this.uploadFeedback.set("Veuillez selectionner un fichier.");
+      this.uploadFeedback.set("Veuillez sélectionner un fichier.");
       return;
     }
 
@@ -1337,7 +1477,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
       this.files.update((items) => [uploaded, ...items]);
       this.closeUploadModal();
-      this.uploadFeedback.set("Document ajoute.");
+      this.uploadFeedback.set("Document ajouté.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload impossible.";
       this.uploadFeedback.set(message);
@@ -1466,7 +1606,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       });
 
       this.closeVocalModal(true);
-      this.requestFeedback.set("Vocal ajoute. Transcription en file d'attente.");
+      this.requestFeedback.set("Vocal ajouté. Transcription en file d'attente.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload vocal impossible.";
       this.vocalFeedback.set(message);
@@ -1579,7 +1719,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
         if (!client) {
           this.prospectFeedback.set(
-            "Selectionnez un client existant dans la liste d'autocompletion.",
+            "Sélectionnez un client existant dans la liste d'autocomplétion.",
           );
           return;
         }
@@ -1614,7 +1754,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.prospects.update((items) =>
         [created, ...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       );
-      this.prospectFeedback.set("Prospect ajoute.");
+      this.prospectFeedback.set("Prospect ajouté.");
       this.closeProspectModal();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ajout impossible.";
@@ -1737,7 +1877,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const endsAtRaw = this.visitForm.controls.endsAt.value.trim();
 
     if (!startsAtRaw || !endsAtRaw) {
-      this.visitFeedback.set("Renseignez les horaires de debut et de fin.");
+      this.visitFeedback.set("Renseignez les horaires de début et de fin.");
       return;
     }
 
@@ -1750,12 +1890,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     if (new Date(endsAtIso).getTime() <= new Date(startsAtIso).getTime()) {
-      this.visitFeedback.set("L'heure de fin doit etre apres l'heure de debut.");
+      this.visitFeedback.set("L'heure de fin doit être après l'heure de début.");
       return;
     }
 
     this.visitPending.set(true);
-    this.visitFeedback.set("Creation de la visite en cours...");
+    this.visitFeedback.set("Création de la visite en cours...");
 
     try {
       let prospectUserId = "";
@@ -1766,7 +1906,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
         if (!client) {
           this.visitFeedback.set(
-            "Selectionnez un client existant dans la liste d'autocompletion.",
+            "Sélectionnez un client existant dans la liste d'autocomplétion.",
           );
           return;
         }
@@ -1810,10 +1950,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.visits.update((items) =>
         [createdVisit, ...items].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
       );
-      this.requestFeedback.set("Visite ajoutee.");
+      this.requestFeedback.set("Visite ajoutée.");
       this.closeVisitModal();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Creation de visite impossible.";
+      const message = error instanceof Error ? error.message : "Création de visite impossible.";
       this.visitFeedback.set(message);
     } finally {
       this.visitPending.set(false);
@@ -1842,7 +1982,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       case "ACHETEUR":
         return "Prospect";
       case "OWNER":
-        return "Proprietaire";
+        return "Propriétaire";
       case "NOTAIRE":
         return "Notaire";
       default:
@@ -1930,7 +2070,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.inseeIndicators.set(response);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Chargement des donnees INSEE impossible.";
+        error instanceof Error ? error.message : "Chargement des données INSEE impossible.";
       this.inseeError.set(message);
     } finally {
       this.inseeLoading.set(false);
@@ -2942,6 +3082,167 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private getDocumentTabDefinition(tabId: DocumentTabId): DocumentTabDefinition {
     return this.documentTabs.find((tab) => tab.id === tabId) ?? this.documentTabs[0];
+  }
+
+  private resolveIsPropertyInCopropriete(property: PropertyResponse): boolean | null {
+    const details = property.details;
+    if (!this.isRecord(details)) {
+      return null;
+    }
+
+    const copropriete = this.isRecord(details["copropriete"]) ? details["copropriete"] : null;
+    if (!copropriete) {
+      return null;
+    }
+
+    return this.parseBooleanDetail(copropriete["isCopropriete"]);
+  }
+
+  private parseBooleanDetail(value: unknown): boolean | null {
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+
+    return null;
+  }
+
+  private hasHiddenExpectedDocuments(tabId: DocumentTabId): boolean {
+    const tab = this.getDocumentTabDefinition(tabId);
+    const hiddenExpectedDocumentKeys = new Set(this.hiddenExpectedDocumentKeys());
+
+    for (let index = 0; index < tab.expected.length; index += 1) {
+      if (hiddenExpectedDocumentKeys.has(this.buildExpectedDocumentKey(tabId, index))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private buildExpectedDocumentKey(tabId: DocumentTabId, expectedIndex: number): string {
+    const tab = this.getDocumentTabDefinition(tabId);
+    const token = this.resolveExpectedDocumentHiddenToken(tab, expectedIndex);
+    return `${tab.id}${EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR}${token}`;
+  }
+
+  private resolveExpectedDocumentHiddenToken(
+    tab: DocumentTabDefinition,
+    expectedIndex: number,
+  ): string {
+    const typeDocument = tab.typeDocuments[expectedIndex];
+    if (typeDocument) {
+      return typeDocument;
+    }
+
+    const expectedLabel = tab.expected[expectedIndex] ?? `expected_${expectedIndex + 1}`;
+    return this.toExpectedDocumentToken(expectedLabel);
+  }
+
+  private toExpectedDocumentToken(value: string): string {
+    const withoutDiacritics = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const normalized = withoutDiacritics
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    return normalized || "EXPECTED";
+  }
+
+  private toCanonicalHiddenExpectedDocumentKey(rawKey: string): string | null {
+    const trimmedKey = rawKey.trim();
+    if (!trimmedKey) {
+      return null;
+    }
+
+    const separatorIndex = trimmedKey.indexOf(EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR);
+    if (separatorIndex <= 0) {
+      return trimmedKey;
+    }
+
+    const rawTabId = trimmedKey.slice(0, separatorIndex);
+    const rawToken = trimmedKey.slice(
+      separatorIndex + EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR.length,
+    );
+    if (!rawToken) {
+      return null;
+    }
+
+    const tab = this.documentTabs.find((item) => item.id === rawTabId);
+    if (!tab) {
+      return trimmedKey;
+    }
+
+    if (/^\d+$/.test(rawToken)) {
+      const legacyIndex = Number(rawToken);
+      if (legacyIndex >= 0 && legacyIndex < tab.expected.length) {
+        return this.buildExpectedDocumentKey(tab.id, legacyIndex);
+      }
+    }
+
+    const matchingTypeDocument = tab.typeDocuments.find(
+      (typeDocument) => typeDocument.toLowerCase() === rawToken.toLowerCase(),
+    );
+    if (matchingTypeDocument) {
+      return `${tab.id}${EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR}${matchingTypeDocument}`;
+    }
+
+    return `${tab.id}${EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR}${rawToken}`;
+  }
+
+  private normalizeHiddenExpectedDocumentKeys(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const normalizedKeys = value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => this.toCanonicalHiddenExpectedDocumentKey(entry))
+      .filter((entry): entry is string => Boolean(entry));
+
+    return Array.from(new Set(normalizedKeys));
+  }
+
+  private enqueueHiddenExpectedDocumentKeysPersist(keys: string[]): void {
+    const normalizedKeys = this.normalizeHiddenExpectedDocumentKeys(keys);
+    this.hiddenExpectedDocumentKeysPersistQueue = this.hiddenExpectedDocumentKeysPersistQueue.then(
+      async () => {
+        await this.persistHiddenExpectedDocumentKeys(normalizedKeys);
+      },
+    );
+  }
+
+  private async persistHiddenExpectedDocumentKeys(keys: string[]): Promise<void> {
+    if (!this.propertyId) {
+      return;
+    }
+
+    try {
+      const updated = await this.propertyService.patch(this.propertyId, {
+        hiddenExpectedDocumentKeys: keys,
+      });
+      this.property.set(updated);
+      this.hiddenExpectedDocumentKeys.set(
+        this.normalizeHiddenExpectedDocumentKeys(updated.hiddenExpectedDocumentKeys),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Mise à jour des documents masqués impossible.";
+      this.requestFeedback.set(message);
+      this.hiddenExpectedDocumentKeys.set(
+        this.normalizeHiddenExpectedDocumentKeys(this.property()?.hiddenExpectedDocumentKeys),
+      );
+    }
   }
 
   private createCategoryForms(property: PropertyResponse): CategoryForms {

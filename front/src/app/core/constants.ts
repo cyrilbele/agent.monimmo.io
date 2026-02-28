@@ -31,13 +31,13 @@ export const PROPERTY_FLOW_STATUSES: readonly PropertyStatus[] = [
 
 export const STATUS_LABELS: Record<PropertyStatus, string> = {
   PROSPECTION: "Prospection",
-  MANDAT_SIGNE: "Mandat signe",
+  MANDAT_SIGNE: "Mandat signé",
   EN_DIFFUSION: "En diffusion",
   VISITES: "Visites",
   OFFRES: "Offres",
   COMPROMIS: "Compromis",
   VENDU: "Vendu",
-  ARCHIVE: "Archive",
+  ARCHIVE: "Archivé",
 };
 
 export const PARTICIPANT_ROLES: readonly ParticipantRole[] = [
@@ -68,7 +68,6 @@ export const TYPE_DOCUMENT_OPTIONS: readonly TypeDocument[] = [
   "TAXE_FONCIERE",
   "REFERENCE_CADASTRALE",
   "MANDAT_VENTE_SIGNE",
-  "BON_VISITE",
   "OFFRE_ACHAT_SIGNEE",
   "DPE",
   "AMIANTE",
@@ -154,21 +153,21 @@ const OPERATION_TYPE_OPTIONS: readonly DetailSelectOption[] = [
   { value: "VENTE", label: "Vente" },
   { value: "LOCATION", label: "Location" },
   { value: "VIAGER", label: "Viager" },
-  { value: "LOCATION_SAISONNIERE", label: "Location saisonniere" },
+  { value: "LOCATION_SAISONNIERE", label: "Location saisonnière" },
 ];
 
 const KITCHEN_TYPE_OPTIONS: readonly DetailSelectOption[] = [
-  { value: "SEPAREE", label: "Separee" },
+  { value: "SEPAREE", label: "Séparée" },
   { value: "OUVERTE", label: "Ouverte" },
-  { value: "EQUIPEE", label: "Equipee" },
+  { value: "EQUIPEE", label: "Équipée" },
   { value: "AUTRE", label: "Autre" },
 ];
 
 const FIELD_STATE_OPTIONS: readonly DetailSelectOption[] = [
   { value: "NEUF", label: "Neuf" },
-  { value: "RENOVE", label: "Renove" },
-  { value: "A_RAFRAICHIR", label: "A rafraichir" },
-  { value: "A_RENOVER", label: "A renover" },
+  { value: "RENOVE", label: "Rénové" },
+  { value: "A_RAFRAICHIR", label: "À rafraîchir" },
+  { value: "A_RENOVER", label: "À rénover" },
 ];
 
 const FIELD_STANDING_OPTIONS: readonly DetailSelectOption[] = [
@@ -179,7 +178,7 @@ const FIELD_STANDING_OPTIONS: readonly DetailSelectOption[] = [
 
 const FEES_RESPONSIBILITY_OPTIONS: readonly DetailSelectOption[] = [
   { value: "VENDEUR", label: "Charge vendeur" },
-  { value: "ACQUEREUR", label: "Charge acquereur" },
+  { value: "ACQUEREUR", label: "Charge acquéreur" },
 ];
 
 const LEASE_TYPE_OPTIONS: readonly DetailSelectOption[] = [
@@ -208,18 +207,18 @@ const DPE_CLASS_OPTIONS: readonly DetailSelectOption[] = [
 export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefinition[] = [
   {
     id: "general",
-    label: "Informations generales",
+    label: "Informations générales",
     fields: [
-      { key: "internalReference", label: "Reference interne agence", type: "text" },
+      { key: "internalReference", label: "Référence interne agence", type: "text" },
       { key: "title", label: "Titre de l'annonce", type: "text", source: "property" },
       { key: "propertyType", label: "Type de bien", type: "select", options: PROPERTY_TYPE_OPTIONS },
       {
         key: "operationType",
-        label: "Type d'operation",
+        label: "Type d'opération",
         type: "select",
         options: OPERATION_TYPE_OPTIONS,
       },
-      { key: "portfolioEntryDate", label: "Date d'entree portefeuille", type: "date" },
+      { key: "portfolioEntryDate", label: "Date d'entrée portefeuille", type: "date" },
       { key: "propertySource", label: "Source du bien", type: "text" },
     ],
   },
@@ -230,16 +229,16 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "address", label: "Adresse", type: "text", source: "property" },
       { key: "postalCode", label: "Code postal", type: "text", source: "property" },
       { key: "city", label: "Ville", type: "text", source: "property" },
-      { key: "floor", label: "Etage", type: "text" },
-      { key: "lotNumber", label: "Numero de lot", type: "text" },
-      { key: "gpsLat", label: "Coordonnee GPS lat", type: "number" },
-      { key: "gpsLng", label: "Coordonnee GPS lng", type: "number" },
-      { key: "distanceSchools", label: "Distance ecoles", type: "number" },
+      { key: "floor", label: "Étage", type: "text" },
+      { key: "lotNumber", label: "Numéro de lot", type: "text" },
+      { key: "gpsLat", label: "Coordonnée GPS lat", type: "number" },
+      { key: "gpsLng", label: "Coordonnée GPS lng", type: "number" },
+      { key: "distanceSchools", label: "Distance écoles", type: "number" },
       { key: "distanceTransport", label: "Distance transports", type: "number" },
       { key: "distanceShops", label: "Distance commerces", type: "number" },
-      { key: "distanceSupermarket", label: "Distance supermarche", type: "number" },
+      { key: "distanceSupermarket", label: "Distance supermarché", type: "number" },
       { key: "distancePharmacy", label: "Distance pharmacie", type: "number" },
-      { key: "distanceDoctor", label: "Distance medecin", type: "number" },
+      { key: "distanceDoctor", label: "Distance médecin", type: "number" },
       { key: "distancePark", label: "Distance parc", type: "number" },
       { key: "distanceTrainStation", label: "Distance gare", type: "number" },
       { key: "distanceHighway", label: "Distance autoroute", type: "number" },
@@ -247,28 +246,28 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
   },
   {
     id: "characteristics",
-    label: "Caracteristiques principales",
+    label: "Caractéristiques principales",
     fields: [
       { key: "livingArea", label: "Surface habitable (m2)", type: "number" },
       { key: "landArea", label: "Surface terrain (m2)", type: "number" },
       { key: "carrezArea", label: "Surface loi Carrez (m2)", type: "number" },
-      { key: "rooms", label: "Nombre de pieces", type: "number" },
+      { key: "rooms", label: "Nombre de pièces", type: "number" },
       { key: "bedrooms", label: "Nombre de chambres", type: "number" },
       { key: "bathrooms", label: "Nombre de salles de bain", type: "number" },
       { key: "toilets", label: "Nombre de WC", type: "number" },
       { key: "kitchenType", label: "Cuisine", type: "select", options: KITCHEN_TYPE_OPTIONS },
-      { key: "livingRoomArea", label: "Sejour (surface)", type: "number" },
+      { key: "livingRoomArea", label: "Séjour (surface)", type: "number" },
       { key: "ceilingHeight", label: "Hauteur sous plafond", type: "number" },
       { key: "heatingType", label: "Type de chauffage", type: "text" },
       { key: "hotWaterProduction", label: "Production eau chaude", type: "text" },
-      { key: "constructionYear", label: "Annee de construction", type: "number" },
-      { key: "condition", label: "Etat general", type: "select", options: FIELD_STATE_OPTIONS },
+      { key: "constructionYear", label: "Année de construction", type: "number" },
+      { key: "condition", label: "État général", type: "select", options: FIELD_STATE_OPTIONS },
       { key: "standing", label: "Standing", type: "select", options: FIELD_STANDING_OPTIONS },
     ],
   },
   {
     id: "amenities",
-    label: "Prestations & equipements",
+    label: "Prestations & équipements",
     fields: [
       { key: "elevator", label: "Ascenseur", type: "select", options: BOOL_OPTIONS },
       { key: "balcony", label: "Balcon", type: "select", options: BOOL_OPTIONS },
@@ -284,30 +283,30 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "homeAutomation", label: "Domotique", type: "select", options: BOOL_OPTIONS },
       { key: "intercom", label: "Interphone / visiophone", type: "select", options: BOOL_OPTIONS },
       { key: "digicode", label: "Digicode", type: "select", options: BOOL_OPTIONS },
-      { key: "electricGate", label: "Portail electrique", type: "select", options: BOOL_OPTIONS },
+      { key: "electricGate", label: "Portail électrique", type: "select", options: BOOL_OPTIONS },
       {
         key: "electricShutters",
-        label: "Volets roulants electriques",
+        label: "Volets roulants électriques",
         type: "select",
         options: BOOL_OPTIONS,
       },
-      { key: "fireplace", label: "Cheminee", type: "select", options: BOOL_OPTIONS },
+      { key: "fireplace", label: "Cheminée", type: "select", options: BOOL_OPTIONS },
       { key: "doubleGlazing", label: "Double vitrage", type: "select", options: BOOL_OPTIONS },
     ],
   },
   {
     id: "copropriete",
-    label: "Copropriete",
+    label: "Copropriété",
     fields: [
-      { key: "isCopropriete", label: "Bien en copropriete", type: "select", options: BOOL_OPTIONS },
+      { key: "isCopropriete", label: "Bien en copropriété", type: "select", options: BOOL_OPTIONS },
       { key: "lotsCount", label: "Nombre de lots", type: "number" },
       { key: "monthlyCharges", label: "Charges mensuelles", type: "number" },
-      { key: "ongoingProcedure", label: "Procedure en cours", type: "select", options: BOOL_OPTIONS },
+      { key: "ongoingProcedure", label: "Procédure en cours", type: "select", options: BOOL_OPTIONS },
       { key: "syndic", label: "Syndic", type: "text" },
       { key: "worksFund", label: "Fonds de travaux", type: "number" },
       {
         key: "coproRulesAvailable",
-        label: "Reglement de copro disponible",
+        label: "Règlement de copro disponible",
         type: "select",
         options: BOOL_OPTIONS,
       },
@@ -315,7 +314,7 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
   },
   {
     id: "finance",
-    label: "Informations financieres",
+    label: "Informations financières",
     fields: [
       { key: "salePriceTtc", label: "Prix de vente TTC", type: "number" },
       {
@@ -327,31 +326,31 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "feesAmount", label: "Montant honoraires", type: "number" },
       { key: "netSellerPrice", label: "Prix net vendeur", type: "number" },
       { key: "notaryFees", label: "Frais notaire", type: "number" },
-      { key: "propertyTax", label: "Taxe fonciere", type: "number" },
+      { key: "propertyTax", label: "Taxe foncière", type: "number" },
       { key: "annualChargesEstimate", label: "Charges annuelles", type: "number" },
       { key: "isRental", label: "Location", type: "select", options: BOOL_OPTIONS },
       { key: "monthlyRent", label: "Loyer mensuel", type: "number" },
       { key: "rentalCharges", label: "Charges locatives", type: "number" },
-      { key: "securityDeposit", label: "Depot de garantie", type: "number" },
+      { key: "securityDeposit", label: "Dépôt de garantie", type: "number" },
       { key: "tenantFees", label: "Honoraires locataire", type: "number" },
       { key: "landlordFees", label: "Honoraires bailleur", type: "number" },
-      { key: "availability", label: "Disponibilite", type: "text" },
+      { key: "availability", label: "Disponibilité", type: "text" },
       { key: "leaseType", label: "Type de bail", type: "select", options: LEASE_TYPE_OPTIONS },
     ],
   },
   {
     id: "regulation",
-    label: "Donnees reglementaires",
+    label: "Données réglementaires",
     fields: [
-      { key: "dpeClass", label: "DPE (classe energie)", type: "select", options: DPE_CLASS_OPTIONS },
-      { key: "energyConsumption", label: "Consommation energetique", type: "number" },
+      { key: "dpeClass", label: "DPE (classe énergie)", type: "select", options: DPE_CLASS_OPTIONS },
+      { key: "energyConsumption", label: "Consommation énergétique", type: "number" },
       { key: "gesClass", label: "Classe GES", type: "select", options: DPE_CLASS_OPTIONS },
-      { key: "co2Emission", label: "Emissions CO2", type: "number" },
+      { key: "co2Emission", label: "Émissions CO2", type: "number" },
       { key: "dpeDate", label: "Date du DPE", type: "date" },
-      { key: "energyAuditRequired", label: "Audit energetique", type: "select", options: BOOL_OPTIONS },
+      { key: "energyAuditRequired", label: "Audit énergétique", type: "select", options: BOOL_OPTIONS },
       { key: "asbestos", label: "Amiante", type: "select", options: BOOL_OPTIONS },
       { key: "lead", label: "Plomb", type: "select", options: BOOL_OPTIONS },
-      { key: "electricity", label: "Electricite", type: "select", options: BOOL_OPTIONS },
+      { key: "electricity", label: "Électricité", type: "select", options: BOOL_OPTIONS },
       { key: "gas", label: "Gaz", type: "select", options: BOOL_OPTIONS },
       { key: "riskStatement", label: "ERP", type: "select", options: BOOL_OPTIONS },
     ],
@@ -362,12 +361,12 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
     fields: [
       { key: "shortDescription", label: "Description courte", type: "textarea" },
       { key: "longDescription", label: "Description longue", type: "textarea" },
-      { key: "keywords", label: "Mots-cles", type: "text" },
+      { key: "keywords", label: "Mots-clés", type: "text" },
       { key: "marketingHook", label: "Accroche marketing", type: "text" },
       { key: "strengths", label: "Points forts", type: "textarea" },
       { key: "weaknesses", label: "Points faibles", type: "textarea" },
       { key: "mandateType", label: "Mandat", type: "select", options: MANDATE_TYPE_OPTIONS },
-      { key: "mandateStartDate", label: "Date de debut de mandat", type: "date" },
+      { key: "mandateStartDate", label: "Date de début de mandat", type: "date" },
       { key: "mandateEndDate", label: "Date de fin de mandat", type: "date" },
     ],
   },
@@ -394,7 +393,7 @@ export interface DocumentTabDefinition {
 export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
   {
     id: "identite_situation",
-    label: "Identite / situation",
+    label: "Identité / situation",
     typeDocuments: [
       "PIECE_IDENTITE",
       "LIVRET_FAMILLE",
@@ -402,7 +401,7 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
       "JUGEMENT_DIVORCE",
     ],
     expected: [
-      "Piece d'identite",
+      "Pièce d'identité",
       "Livret de famille",
       "Contrat de mariage / PACS",
       "Jugement de divorce",
@@ -410,7 +409,7 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
   },
   {
     id: "propriete",
-    label: "Propriete",
+    label: "Propriété",
     typeDocuments: [
       "TITRE_PROPRIETE",
       "ATTESTATION_NOTARIALE",
@@ -418,17 +417,17 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
       "REFERENCE_CADASTRALE",
     ],
     expected: [
-      "Titre de propriete",
-      "Attestation notariee",
-      "Dernier avis de taxe fonciere",
-      "Reference cadastrale",
+      "Titre de propriété",
+      "Attestation notariée",
+      "Dernier avis de taxe foncière",
+      "Référence cadastrale",
     ],
   },
   {
     id: "mandat",
     label: "Mandat",
-    typeDocuments: ["MANDAT_VENTE_SIGNE", "BON_VISITE", "OFFRE_ACHAT_SIGNEE"],
-    expected: ["Mandat de vente signe", "Bon de visite", "Offre d'achat signee"],
+    typeDocuments: ["MANDAT_VENTE_SIGNE", "OFFRE_ACHAT_SIGNEE"],
+    expected: ["Mandat de vente signé", "Offre d'achat signée"],
   },
   {
     id: "technique",
@@ -448,7 +447,7 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
       "DPE",
       "Amiante",
       "Plomb",
-      "Electricite",
+      "Électricité",
       "Gaz",
       "Termites",
       "ERP",
@@ -458,7 +457,7 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
   },
   {
     id: "copropriete",
-    label: "Documents copropriete",
+    label: "Documents copropriété",
     typeDocuments: [
       "REGLEMENT_COPROPRIETE",
       "ETAT_DESCRIPTIF_DIVISION",
@@ -470,14 +469,14 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
       "ETAT_DATE",
     ],
     expected: [
-      "Reglement de copropriete",
-      "Etat descriptif de division",
-      "Proces-verbaux d'assemblee generale",
+      "Règlement de copropriété",
+      "État descriptif de division",
+      "Procès-verbaux d'assemblée générale",
       "Montant des charges",
       "Carnet d'entretien",
-      "Fiche synthetique",
-      "Pre-etat date",
-      "Etat date",
+      "Fiche synthétique",
+      "Pré-état daté",
+      "État daté",
     ],
   },
   {
@@ -493,16 +492,16 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
     ],
     expected: [
       "Photos HD",
-      "Video / visite virtuelle",
+      "Vidéo / visite virtuelle",
       "Plan du bien",
-      "Annonce immobiliere",
+      "Annonce immobilière",
       "Affiche vitrine",
       "Reporting vendeur",
     ],
   },
   {
     id: "offre",
-    label: "Documents lies a l'offre",
+    label: "Documents liés à l'offre",
     typeDocuments: [
       "OFFRE_ACHAT_SIGNEE",
       "SIMULATION_FINANCEMENT",
@@ -510,9 +509,9 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
       "ACCORD_PRINCIPE_BANCAIRE",
     ],
     expected: [
-      "Offre d'achat ecrite",
+      "Offre d'achat écrite",
       "Simulation de financement",
-      "Attestation de capacite d'emprunt",
+      "Attestation de capacité d'emprunt",
       "Accord de principe bancaire",
     ],
   },
@@ -531,23 +530,23 @@ export const DOCUMENT_TABS: readonly DocumentTabDefinition[] = [
     expected: [
       "Compromis / promesse",
       "Annexes au compromis",
-      "Preuve de sequestre",
-      "Courrier de retractation",
-      "Levee des conditions suspensives",
+      "Preuve de séquestre",
+      "Courrier de rétractation",
+      "Levée des conditions suspensives",
       "Acte authentique",
-      "Decompte notaire",
+      "Décompte notaire",
     ],
   },
   {
     id: "acquereur",
-    label: "Documents cote acquereur",
+    label: "Documents côté acquéreur",
     typeDocuments: ["PIECE_IDENTITE"],
     expected: [
-      "Piece d'identite",
+      "Pièce d'identité",
       "Justificatifs de domicile",
       "Situation matrimoniale",
       "Plan de financement",
-      "Offre de pret",
+      "Offre de prêt",
     ],
   },
 ];

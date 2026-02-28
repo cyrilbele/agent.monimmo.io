@@ -24,10 +24,12 @@ Objectifs principaux:
 2. Maintenir compatibilite API/OpenAPI/Zod.
 3. Ajouter/mettre a jour les tests avec les changements backend.
 4. toujours faire les tests et maintenir un coverage de 80%
+5. pour le front end, ne rien stocker dans le localStorage, toujours persister dans le back-end
 
 ## Regles pour la UI
 
 Ne pas afficher les identifiants techniques, cela ne parle pas à l utilisateur
+Attention à respecter les accents en français dans les textes affichés
 
 ## Lancer chaque piece
 

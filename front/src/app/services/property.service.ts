@@ -13,6 +13,7 @@ import type {
   PropertyRiskResponse,
   PropertyVisitCreateRequest,
   PropertyVisitListResponse,
+  PropertyVisitPatchRequest,
   PropertyVisitResponse,
   PropertyResponse,
   PropertyStatus,
@@ -107,6 +108,19 @@ export class PropertyService {
         body: payload,
       },
     );
+  }
+
+  getVisitById(visitId: string): Promise<PropertyVisitResponse> {
+    return this.api.request<PropertyVisitResponse>("GET", `/visits/${encodeURIComponent(visitId)}`);
+  }
+
+  patchVisitById(
+    visitId: string,
+    payload: PropertyVisitPatchRequest,
+  ): Promise<PropertyVisitResponse> {
+    return this.api.request<PropertyVisitResponse>("PATCH", `/visits/${encodeURIComponent(visitId)}`, {
+      body: payload,
+    });
   }
 
   getRisks(propertyId: string): Promise<PropertyRiskResponse> {

@@ -1,17 +1,25 @@
 <section class="flex h-full min-h-0 flex-col" aria-label="Pipeline">
   @if (error()) {
-    <p class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="status" aria-live="polite">
+    <p
+      class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+      role="status"
+      aria-live="polite"
+    >
       {{ error() }}
     </p>
   }
 
   @if (loading()) {
-    <p class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700" role="status" aria-live="polite">
+    <p
+      class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700"
+      role="status"
+      aria-live="polite"
+    >
       Chargement du pipeline...
     </p>
   } @else {
-    <div class="kanban-horizontal-scroll min-h-0 flex-1 overflow-y-hidden pb-3">
-      <div class="flex h-full min-w-max items-stretch gap-4 pr-2">
+    <div class="kanban-horizontal-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-3 lg:overflow-y-hidden lg:overflow-x-scroll">
+      <div class="flex min-w-0 flex-col gap-3 lg:h-full lg:min-w-max lg:flex-row lg:items-stretch lg:gap-4 lg:pr-2">
         @for (status of columns; track status) {
           <article
             [class]="columnDropClass(status)"
@@ -21,24 +29,36 @@
             (drop)="onColumnDrop(status, $event)"
           >
             <header class="mb-3 flex items-center justify-between">
-              <h3 [id]="'column-' + status" class="text-xl font-semibold text-slate-900">{{ statusLabels[status] }}</h3>
-              <span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+              <h3 [id]="'column-' + status" class="text-xl font-semibold text-slate-900">
+                {{ statusLabels[status] }}
+              </h3>
+              <span
+                class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700"
+              >
                 {{ columnItems(status).length }}
               </span>
             </header>
 
             @if (columnItems(status).length === 0) {
-              <div class="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-400">
+              <div
+                class="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-sm text-slate-400 lg:flex lg:min-h-0 lg:flex-1 lg:items-center lg:justify-center lg:p-6"
+              >
                 Déposez un bien ici
               </div>
             } @else {
-              <div class="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              <div class="min-h-0 flex-1 space-y-3 lg:overflow-y-auto lg:pr-1">
                 @for (property of columnItems(status); track trackByProperty($index, property)) {
                   <article
-                    class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md"
+                    class="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
                     draggable="true"
                     (dragstart)="onCardDragStart(property, $event)"
                     (dragend)="onCardDragEnd()"
+                    (click)="openProperty(property.id)"
+                    (keydown.enter)="openPropertyFromKeyboard(property.id, $event)"
+                    (keydown.space)="openPropertyFromKeyboard(property.id, $event)"
+                    role="link"
+                    tabindex="0"
+                    [attr.aria-label]="'Ouvrir le bien ' + property.title"
                     [class.opacity-60]="updatingPropertyId() === property.id"
                   >
                     @if (propertyImageUrl(property.id); as imageUrl) {
@@ -51,19 +71,18 @@
                     }
 
                     <div class="mt-3">
-                      <a
-                        class="text-lg font-semibold leading-tight text-slate-900 transition hover:text-blue-700"
-                        [routerLink]="['/app/bien', property.id]"
-                        [attr.aria-label]="'Ouvrir le bien ' + property.title"
-                      >
+                      <p class="text-lg font-semibold leading-tight text-slate-900">
                         {{ property.title }}
-                      </a>
+                      </p>
 
-                      <p class="mt-1 text-sm text-slate-500">{{ property.city }}, France</p>
+                      <p class="mt-1 text-sm text-slate-500">{{ propertyLocationLabel(property) }}</p>
 
-                      <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                        <p class="text-xl font-bold text-slate-900">{{ formatPrice(resolveDisplayPrice(property)) }}</p>
-                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">Actif</span>
+                      <div
+                        class="mt-4 flex items-center justify-between border-t border-slate-100 pt-3"
+                      >
+                        <p class="text-xl font-bold text-slate-900">
+                          {{ formatPrice(resolveDisplayPrice(property)) }}
+                        </p>
                       </div>
                     </div>
                   </article>

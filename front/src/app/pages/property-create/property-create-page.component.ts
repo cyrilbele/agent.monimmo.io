@@ -49,7 +49,7 @@ export class PropertyCreatePageComponent implements OnInit {
     ownerEmail: [""],
   });
 
-  readonly submitLabel = computed(() => (this.pending() ? "Creation..." : "Creer le bien"));
+  readonly submitLabel = computed(() => (this.pending() ? "Création..." : "Créer le bien"));
   readonly ownerMode = signal<OwnerMode>(this.form.controls.ownerMode.value);
   readonly ownerAutocompleteId = "owner-client-autocomplete-input";
   readonly ownerAutocompleteListId = "owner-client-autocomplete-listbox";
@@ -88,7 +88,7 @@ export class PropertyCreatePageComponent implements OnInit {
       this.clients.set(response.items);
     } catch {
       this.feedback.set(
-        "Impossible de charger les clients existants. Vous pouvez creer un nouveau proprietaire.",
+        "Impossible de charger les clients existants. Vous pouvez créer un nouveau propriétaire.",
       );
     } finally {
       this.clientsLoading.set(false);
@@ -153,7 +153,7 @@ export class PropertyCreatePageComponent implements OnInit {
     }
 
     this.pending.set(true);
-    this.feedback.set("Creation du bien en cours...");
+    this.feedback.set("Création du bien en cours...");
 
     try {
       const ownerMode = this.ownerMode();
@@ -163,21 +163,21 @@ export class PropertyCreatePageComponent implements OnInit {
       const address = this.form.controls.address.value.trim();
 
        if (!title || !city || !postalCode || !address) {
-        this.feedback.set("Veuillez completer les champs obligatoires.");
+        this.feedback.set("Veuillez compléter les champs obligatoires.");
         return;
       }
 
       if (ownerMode === "existing") {
         const ownerLookup = this.form.controls.ownerLookup.value.trim();
         if (!ownerLookup) {
-          this.feedback.set("Veuillez completer les champs obligatoires.");
+          this.feedback.set("Veuillez compléter les champs obligatoires.");
           return;
         }
 
         const match = this.resolveSelectedOwnerClient();
 
         if (!match) {
-          this.feedback.set("Selectionnez un client existant dans la liste d'autocompletion.");
+          this.feedback.set("Sélectionnez un client existant dans la liste d'autocomplétion.");
           return;
         }
 
@@ -199,12 +199,12 @@ export class PropertyCreatePageComponent implements OnInit {
       const ownerEmail = this.form.controls.ownerEmail.value.trim().toLowerCase();
 
       if (!ownerFirstName || !ownerLastName || !ownerPhone || !ownerEmail) {
-        this.feedback.set("Veuillez completer les champs obligatoires.");
+        this.feedback.set("Veuillez compléter les champs obligatoires.");
         return;
       }
 
       if (!isEmailValid(ownerEmail)) {
-        this.feedback.set("L'email proprietaire est invalide.");
+        this.feedback.set("L'email propriétaire est invalide.");
         return;
       }
 
@@ -223,7 +223,7 @@ export class PropertyCreatePageComponent implements OnInit {
 
       await this.router.navigate(["/app/bien", created.id]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Creation impossible.";
+      const message = error instanceof Error ? error.message : "Création impossible.";
       this.feedback.set(message);
     } finally {
       this.pending.set(false);

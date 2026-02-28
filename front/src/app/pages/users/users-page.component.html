@@ -23,7 +23,7 @@
           class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
           (click)="loadUsers()"
         >
-          Rafraichir
+          Rafraîchir
         </button>
       </div>
     </div>
@@ -48,7 +48,7 @@
           <tr>
             <th class="px-4 py-3">Nom</th>
             <th class="px-4 py-3">Email</th>
-            <th class="px-4 py-3">Telephone</th>
+            <th class="px-4 py-3">Téléphone</th>
             <th class="px-4 py-3">Liens biens</th>
           </tr>
         </thead>
@@ -65,7 +65,7 @@
                 <p class="mt-1 text-xs text-slate-500">{{ accountTypeLabel(user.accountType) }}</p>
               </td>
               <td class="px-4 py-3 text-slate-700">{{ displayValue(user.email) }}</td>
-              <td class="px-4 py-3 text-slate-700">{{ user.phone || "Non renseigne" }}</td>
+              <td class="px-4 py-3 text-slate-700">{{ user.phone || "Non renseigné" }}</td>
               <td class="px-4 py-3">
                 @if (user.linkedProperties.length === 0) {
                   <span class="text-slate-500">Aucun lien</span>
@@ -141,12 +141,12 @@
           </div>
 
           <p class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            Au moins un email ou un telephone est obligatoire.
+            Au moins un email ou un téléphone est obligatoire.
           </p>
 
           <div class="grid gap-3 sm:grid-cols-2">
             <div>
-              <label class="field-label" for="create-user-first-name">Prenom</label>
+              <label class="field-label" for="create-user-first-name">Prénom</label>
               <input
                 id="create-user-first-name"
                 class="field-input"
@@ -173,7 +173,7 @@
               />
             </div>
             <div>
-              <label class="field-label" for="create-user-phone">Telephone</label>
+              <label class="field-label" for="create-user-phone">Téléphone</label>
               <input
                 id="create-user-phone"
                 class="field-input"
@@ -207,6 +207,16 @@
                 type="text"
                 formControlName="city"
               />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="field-label" for="create-user-personal-notes">Notes personnelles</label>
+              <textarea
+                id="create-user-personal-notes"
+                class="field-input"
+                rows="4"
+                formControlName="personalNotes"
+                placeholder="Notes internes sur ce contact..."
+              ></textarea>
             </div>
           </div>
 

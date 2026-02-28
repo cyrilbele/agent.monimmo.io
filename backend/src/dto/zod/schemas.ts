@@ -35,6 +35,7 @@ export const AccountUserResponseSchema = z.object({
   address: z.string().nullable(),
   postalCode: z.string().nullable(),
   city: z.string().nullable(),
+  personalNotes: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -67,6 +68,7 @@ export const UserCreateRequestSchema = z
     address: z.string().nullable().optional(),
     postalCode: z.string().nullable().optional(),
     city: z.string().nullable().optional(),
+    personalNotes: z.string().nullable().optional(),
     accountType: AccountTypeSchema.default("CLIENT"),
   })
   .superRefine((value, context) => {
@@ -90,6 +92,7 @@ export const UserPatchRequestSchema = z.object({
   address: z.string().nullable().optional(),
   postalCode: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
+  personalNotes: z.string().nullable().optional(),
   accountType: AccountTypeSchema.optional(),
 });
 
@@ -189,6 +192,7 @@ export const PropertyPatchRequestSchema = z.object({
   address: z.string().optional(),
   price: z.number().optional(),
   details: PropertyDetailsSchema.optional(),
+  hiddenExpectedDocumentKeys: z.array(z.string()).optional(),
 });
 
 export const PropertyResponseSchema = z.object({
@@ -199,6 +203,7 @@ export const PropertyResponseSchema = z.object({
   address: z.string().nullable(),
   price: z.number().nullable(),
   details: PropertyDetailsSchema,
+  hiddenExpectedDocumentKeys: z.array(z.string()),
   status: PropertyStatusSchema,
   orgId: z.string(),
   createdAt: z.iso.datetime(),
@@ -259,6 +264,11 @@ export const PropertyVisitCreateRequestSchema = z.object({
   endsAt: z.iso.datetime(),
 });
 
+export const PropertyVisitPatchRequestSchema = z.object({
+  compteRendu: z.string().nullable().optional(),
+  bonDeVisiteFileId: z.string().nullable().optional(),
+});
+
 export const PropertyVisitResponseSchema = z.object({
   id: z.string(),
   propertyId: z.string(),
@@ -270,6 +280,9 @@ export const PropertyVisitResponseSchema = z.object({
   prospectPhone: z.string().nullable(),
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime(),
+  compteRendu: z.string().nullable(),
+  bonDeVisiteFileId: z.string().nullable(),
+  bonDeVisiteFileName: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -405,7 +418,6 @@ export const TypeDocumentSchema = z.enum([
   "TAXE_FONCIERE",
   "REFERENCE_CADASTRALE",
   "MANDAT_VENTE_SIGNE",
-  "BON_VISITE",
   "OFFRE_ACHAT_SIGNEE",
   "DPE",
   "AMIANTE",
@@ -446,7 +458,7 @@ export const FileStatusSchema = z.enum(["UPLOADED", "CLASSIFIED", "REVIEW_REQUIR
 
 export const FileUploadRequestSchema = z.object({
   propertyId: z.string(),
-  typeDocument: TypeDocumentSchema,
+  typeDocument: TypeDocumentSchema.optional(),
   fileName: z.string(),
   mimeType: z.string(),
   size: z.number().int(),
@@ -627,6 +639,7 @@ export const DtoSchemaMap = {
   PropertyProspectResponse: PropertyProspectResponseSchema,
   PropertyProspectListResponse: PropertyProspectListResponseSchema,
   PropertyVisitCreateRequest: PropertyVisitCreateRequestSchema,
+  PropertyVisitPatchRequest: PropertyVisitPatchRequestSchema,
   PropertyVisitResponse: PropertyVisitResponseSchema,
   PropertyVisitListResponse: PropertyVisitListResponseSchema,
   PropertyRiskStatus: PropertyRiskStatusSchema,

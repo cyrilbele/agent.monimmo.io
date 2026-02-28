@@ -11,7 +11,6 @@ const expectedTypes = [
   "TAXE_FONCIERE",
   "REFERENCE_CADASTRALE",
   "MANDAT_VENTE_SIGNE",
-  "BON_VISITE",
   "OFFRE_ACHAT_SIGNEE",
   "DPE",
   "AMIANTE",

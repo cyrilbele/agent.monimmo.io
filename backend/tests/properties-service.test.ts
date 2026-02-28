@@ -45,6 +45,7 @@ describe("propertiesService", () => {
     expect(created.id).toBeDefined();
     expect(created.orgId).toBe("org_demo");
     expect(created.status).toBe("PROSPECTION");
+    expect(created.hiddenExpectedDocumentKeys).toEqual([]);
 
     const loaded = await propertiesService.getById({
       orgId: "org_demo",
@@ -116,9 +117,11 @@ describe("propertiesService", () => {
       id: created.id,
       data: {
         title: "Service Patch Modifié",
+        hiddenExpectedDocumentKeys: ["mandat::MANDAT_VENTE_SIGNE"],
       },
     });
     expect(patched.title).toBe("Service Patch Modifié");
+    expect(patched.hiddenExpectedDocumentKeys).toEqual(["mandat::MANDAT_VENTE_SIGNE"]);
 
     const statusUpdated = await propertiesService.updateStatus({
       orgId: "org_demo",

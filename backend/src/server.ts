@@ -13,6 +13,7 @@ import {
   PropertyPatchRequestSchema,
   PropertyParticipantCreateRequestSchema,
   PropertyProspectCreateRequestSchema,
+  PropertyVisitPatchRequestSchema,
   PropertyVisitCreateRequestSchema,
   PropertyStatusUpdateRequestSchema,
   ReviewQueueResolveRequestSchema,
@@ -404,6 +405,30 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           to: url.searchParams.get("to") ?? undefined,
         });
         return withCors(request, json(response, { status: 200 }));
+      }
+
+      const visitByIdMatch = url.pathname.match(/^\/visits\/([^/]+)$/);
+      if (visitByIdMatch) {
+        const visitId = decodeURIComponent(visitByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = await propertiesService.getVisitById({
+            orgId: user.orgId,
+            id: visitId,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(PropertyVisitPatchRequestSchema);
+          const response = await propertiesService.patchVisitById({
+            orgId: user.orgId,
+            id: visitId,
+            data: payload,
+          });
+          return withCors(request, json(response, { status: 200 }));
+        }
       }
 
       if (request.method === "GET" && url.pathname === "/files") {

@@ -7,7 +7,7 @@ import {
   inject,
   signal,
 } from "@angular/core";
-import { RouterLink } from "@angular/router";
+import { Router } from "@angular/router";
 
 import type { PropertyResponse, PropertyStatus } from "../../core/api.models";
 import {
@@ -22,7 +22,7 @@ type PropertiesByStatusMap = Record<PropertyStatus, PropertyResponse[]>;
 
 @Component({
   selector: "app-kanban-page",
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule],
   templateUrl: "./kanban-page.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -39,6 +39,7 @@ export class KanbanPageComponent implements OnInit {
 
   private readonly propertyService = inject(PropertyService);
   private readonly fileService = inject(FileService);
+  private readonly router = inject(Router);
 
   readonly columns = PROPERTY_FLOW_STATUSES;
   readonly availableStatuses = PROPERTY_STATUSES;
@@ -67,7 +68,7 @@ export class KanbanPageComponent implements OnInit {
   columnDropClass(status: PropertyStatus): string {
     const isDropTarget = this.dropTargetStatus() === status;
     const base =
-      "flex h-full w-[320px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-3 transition";
+      "flex w-full flex-col rounded-2xl border border-slate-200 bg-slate-50 p-3 transition lg:h-full lg:w-[320px] lg:shrink-0";
 
     if (isDropTarget) {
       return `${base} ring-2 ring-blue-300 border-blue-300 bg-blue-50/70`;
@@ -155,6 +156,19 @@ export class KanbanPageComponent implements OnInit {
     this.resetDragState();
   }
 
+  openProperty(propertyId: string): void {
+    if (this.draggingPropertyId()) {
+      return;
+    }
+
+    void this.router.navigate(["/app/bien", propertyId]);
+  }
+
+  openPropertyFromKeyboard(propertyId: string, event: Event): void {
+    event.preventDefault();
+    this.openProperty(propertyId);
+  }
+
   private async movePropertyToStatus(
     propertyId: string,
     nextStatus: PropertyStatus,
@@ -180,6 +194,25 @@ export class KanbanPageComponent implements OnInit {
     }
 
     return `${(price / 1000).toFixed(price >= 1000000 ? 1 : 0)}k€`;
+  }
+
+  propertyLocationLabel(property: PropertyResponse): string {
+    const address = property.address?.trim();
+    const city = property.city?.trim();
+
+    if (address && city) {
+      return `${address}, ${city}`;
+    }
+
+    if (address) {
+      return address;
+    }
+
+    if (city) {
+      return city;
+    }
+
+    return "Adresse non renseignée";
   }
 
   trackByProperty(_index: number, property: PropertyResponse): string {

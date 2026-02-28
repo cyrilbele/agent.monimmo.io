@@ -35,6 +35,7 @@ type CreateUserInput = {
     address?: string | null;
     postalCode?: string | null;
     city?: string | null;
+    personalNotes?: string | null;
     accountType: AccountType;
   };
 };
@@ -50,6 +51,7 @@ type PatchUserInput = {
     address?: string | null;
     postalCode?: string | null;
     city?: string | null;
+    personalNotes?: string | null;
     accountType?: AccountType;
   };
 };
@@ -123,6 +125,7 @@ const toAccountUserResponse = (row: UserRow) => ({
   address: row.address,
   postalCode: row.postalCode,
   city: row.city,
+  personalNotes: row.personalNotes,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
@@ -308,6 +311,7 @@ export const usersService = {
       address: normalizeOptionalString(input.data.address) ?? null,
       postalCode: normalizeOptionalString(input.data.postalCode) ?? null,
       city: normalizeOptionalString(input.data.city) ?? null,
+      personalNotes: normalizeOptionalString(input.data.personalNotes) ?? null,
       accountType: input.data.accountType,
       role: resolveRoleFromAccountType(input.data.accountType),
       passwordHash,
@@ -365,6 +369,7 @@ export const usersService = {
     const normalizedAddress = normalizeOptionalString(input.data.address);
     const normalizedPostalCode = normalizeOptionalString(input.data.postalCode);
     const normalizedCity = normalizeOptionalString(input.data.city);
+    const normalizedPersonalNotes = normalizeOptionalString(input.data.personalNotes);
     const nextAccountType = input.data.accountType ?? (existing.accountType as AccountType);
     const nextEmail = normalizedEmail === undefined ? existing.email : normalizedEmail;
     const nextPhone = normalizedPhone === undefined ? existing.phone : normalizedPhone;
@@ -394,6 +399,10 @@ export const usersService = {
         postalCode:
           normalizedPostalCode === undefined ? existing.postalCode : normalizedPostalCode,
         city: normalizedCity === undefined ? existing.city : normalizedCity,
+        personalNotes:
+          normalizedPersonalNotes === undefined
+            ? existing.personalNotes
+            : normalizedPersonalNotes,
         accountType: nextAccountType,
         role:
           input.data.accountType === undefined

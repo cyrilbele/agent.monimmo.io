@@ -44,6 +44,7 @@ describe("users endpoints", () => {
     expect(payload.items[0].orgId).toBe("org_demo");
     expect(typeof payload.items[0].email).toBe("string");
     expect("phone" in payload.items[0]).toBe(true);
+    expect("personalNotes" in payload.items[0]).toBe(true);
   });
 
   it("retourne le détail d'un utilisateur", async () => {
@@ -133,6 +134,7 @@ describe("users endpoints", () => {
           address: "24 rue de la Republique",
           postalCode: "69002",
           city: "Lyon",
+          personalNotes: "Contact prioritaire le soir.",
         }),
       }),
     );
@@ -144,6 +146,7 @@ describe("users endpoints", () => {
     expect(patchPayload.address).toBe("24 rue de la Republique");
     expect(patchPayload.postalCode).toBe("69002");
     expect(patchPayload.city).toBe("Lyon");
+    expect(patchPayload.personalNotes).toBe("Contact prioritaire le soir.");
   });
 
   it("cree un client avec telephone uniquement", async () => {
@@ -170,5 +173,6 @@ describe("users endpoints", () => {
     expect(payload.email).toBeNull();
     expect(payload.firstName).toBe("");
     expect(payload.lastName).toBe("");
+    expect(payload.personalNotes).toBeNull();
   });
 });

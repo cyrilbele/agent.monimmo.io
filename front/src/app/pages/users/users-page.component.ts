@@ -35,7 +35,7 @@ export class UsersPageComponent implements OnInit {
 
   readonly usersCount = computed(() => this.users().length);
   readonly createLabel = computed(() =>
-    this.createPending() ? "Creation..." : "Creer l'utilisateur",
+    this.createPending() ? "Création..." : "Créer l'utilisateur",
   );
 
   readonly createUserForm = this.formBuilder.nonNullable.group({
@@ -47,6 +47,7 @@ export class UsersPageComponent implements OnInit {
     address: [""],
     postalCode: [""],
     city: [""],
+    personalNotes: [""],
   });
 
   ngOnInit(): void {
@@ -78,6 +79,7 @@ export class UsersPageComponent implements OnInit {
       address: "",
       postalCode: "",
       city: "",
+      personalNotes: "",
     });
     this.createFeedback.set(null);
     this.createModalOpen.set(true);
@@ -110,12 +112,12 @@ export class UsersPageComponent implements OnInit {
 
     if (this.createUserForm.invalid) {
       this.createUserForm.markAllAsTouched();
-      this.createFeedback.set("Veuillez completer les champs obligatoires.");
+      this.createFeedback.set("Veuillez compléter les champs obligatoires.");
       return;
     }
 
     this.createPending.set(true);
-    this.createFeedback.set("Creation en cours...");
+    this.createFeedback.set("Création en cours...");
 
     try {
       const firstName = this.normalizeOptionalField(this.createUserForm.controls.firstName.value) ?? "";
@@ -124,7 +126,7 @@ export class UsersPageComponent implements OnInit {
       const phone = this.normalizeOptionalField(this.createUserForm.controls.phone.value);
 
       if (!email && !phone) {
-        this.createFeedback.set("Renseignez au moins un email ou un telephone.");
+        this.createFeedback.set("Renseignez au moins un email ou un téléphone.");
         return;
       }
 
@@ -142,6 +144,7 @@ export class UsersPageComponent implements OnInit {
         address: this.normalizeOptionalField(this.createUserForm.controls.address.value),
         postalCode: this.normalizeOptionalField(this.createUserForm.controls.postalCode.value),
         city: this.normalizeOptionalField(this.createUserForm.controls.city.value),
+        personalNotes: this.normalizeOptionalField(this.createUserForm.controls.personalNotes.value),
       };
 
       const created = await this.userService.create(payload);
@@ -150,7 +153,7 @@ export class UsersPageComponent implements OnInit {
       );
       this.createModalOpen.set(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Creation impossible.";
+      const message = error instanceof Error ? error.message : "Création impossible.";
       this.createFeedback.set(message);
     } finally {
       this.createPending.set(false);
@@ -192,7 +195,7 @@ export class UsersPageComponent implements OnInit {
   relationLabel(relationRole: string): string {
     switch (relationRole) {
       case "OWNER":
-        return "Proprietaire";
+        return "Propriétaire";
       case "PROSPECT":
       case "ACHETEUR":
         return "Prospect";
@@ -204,7 +207,7 @@ export class UsersPageComponent implements OnInit {
   }
 
   displayValue(value: string | null): string {
-    return value && value.trim() ? value : "Non renseigne";
+    return value && value.trim() ? value : "Non renseigné";
   }
 
   private normalizeOptionalField(value: string): string | null {

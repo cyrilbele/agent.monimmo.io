@@ -18,7 +18,9 @@ import { ActivatedRoute, RouterLink } from "@angular/router";
 import type {
   AccountUserDetailResponse,
   AccountUserLinkedPropertyResponse,
+  PropertyVisitResponse,
 } from "../../core/api.models";
+import { PropertyService } from "../../services/property.service";
 import { isEmailValid } from "../../core/auth-helpers";
 import { UserService } from "../../services/user.service";
 
@@ -30,7 +32,17 @@ type UserFormGroup = FormGroup<{
   address: FormControl<string>;
   postalCode: FormControl<string>;
   city: FormControl<string>;
+  personalNotes: FormControl<string>;
 }>;
+
+type VisitedObjectSummary = {
+  propertyId: string;
+  propertyTitle: string;
+  latestVisitId: string;
+  latestStartsAt: string;
+  latestEndsAt: string;
+  visitsCount: number;
+};
 
 @Component({
   selector: "app-user-detail-page",
@@ -41,6 +53,7 @@ type UserFormGroup = FormGroup<{
 export class UserDetailPageComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly userService = inject(UserService);
+  private readonly propertyService = inject(PropertyService);
   private readonly formBuilder = inject(FormBuilder);
 
   readonly userId = this.route.snapshot.paramMap.get("id") ?? "";
@@ -50,6 +63,9 @@ export class UserDetailPageComponent implements OnInit {
   readonly editing = signal(false);
   readonly savePending = signal(false);
   readonly feedback = signal<string | null>(null);
+  readonly userVisits = signal<PropertyVisitResponse[]>([]);
+  readonly visitsLoading = signal(false);
+  readonly visitsError = signal<string | null>(null);
 
   readonly form: UserFormGroup = this.formBuilder.nonNullable.group({
     firstName: [""],
@@ -59,10 +75,49 @@ export class UserDetailPageComponent implements OnInit {
     address: [""],
     postalCode: [""],
     city: [""],
+    personalNotes: [""],
   });
 
   readonly linkedProperties = computed<AccountUserLinkedPropertyResponse[]>(() => {
     return this.user()?.linkedProperties ?? [];
+  });
+
+  readonly visitedObjects = computed<VisitedObjectSummary[]>(() => {
+    const grouped = new Map<string, VisitedObjectSummary>();
+
+    for (const visit of this.userVisits()) {
+      const current = grouped.get(visit.propertyId);
+      if (!current) {
+        grouped.set(visit.propertyId, {
+          propertyId: visit.propertyId,
+          propertyTitle: visit.propertyTitle,
+          latestVisitId: visit.id,
+          latestStartsAt: visit.startsAt,
+          latestEndsAt: visit.endsAt,
+          visitsCount: 1,
+        });
+        continue;
+      }
+
+      const nextCount = current.visitsCount + 1;
+      if (visit.startsAt > current.latestStartsAt) {
+        grouped.set(visit.propertyId, {
+          propertyId: visit.propertyId,
+          propertyTitle: visit.propertyTitle,
+          latestVisitId: visit.id,
+          latestStartsAt: visit.startsAt,
+          latestEndsAt: visit.endsAt,
+          visitsCount: nextCount,
+        });
+      } else {
+        grouped.set(visit.propertyId, {
+          ...current,
+          visitsCount: nextCount,
+        });
+      }
+    }
+
+    return [...grouped.values()].sort((a, b) => b.latestStartsAt.localeCompare(a.latestStartsAt));
   });
 
   ngOnInit(): void {
@@ -78,11 +133,14 @@ export class UserDetailPageComponent implements OnInit {
   async loadUser(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.userVisits.set([]);
+    this.visitsError.set(null);
 
     try {
       const user = await this.userService.getById(this.userId);
       this.user.set(user);
       this.patchForm(user);
+      void this.loadUserVisits();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Chargement impossible.";
       this.error.set(message);
@@ -114,7 +172,7 @@ export class UserDetailPageComponent implements OnInit {
     }
 
     this.savePending.set(true);
-    this.feedback.set("Mise a jour en cours...");
+    this.feedback.set("Mise à jour en cours...");
 
     const firstName = this.form.controls.firstName.value.trim();
     const lastName = this.form.controls.lastName.value.trim();
@@ -122,7 +180,7 @@ export class UserDetailPageComponent implements OnInit {
     const phone = this.normalizeEmptyAsNull(this.form.controls.phone.value);
 
     if (!email && !phone) {
-      this.feedback.set("Renseignez au moins un email ou un telephone.");
+      this.feedback.set("Renseignez au moins un email ou un téléphone.");
       this.savePending.set(false);
       return;
     }
@@ -142,14 +200,15 @@ export class UserDetailPageComponent implements OnInit {
         address: this.normalizeEmptyAsNull(this.form.controls.address.value),
         postalCode: this.normalizeEmptyAsNull(this.form.controls.postalCode.value),
         city: this.normalizeEmptyAsNull(this.form.controls.city.value),
+        personalNotes: this.normalizeEmptyAsNull(this.form.controls.personalNotes.value),
       });
 
       this.user.set(updated);
       this.patchForm(updated);
       this.editing.set(false);
-      this.feedback.set("Informations utilisateur mises a jour.");
+      this.feedback.set("Informations utilisateur mises à jour.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise a jour impossible.";
+      const message = error instanceof Error ? error.message : "Mise à jour impossible.";
       this.feedback.set(message);
     } finally {
       this.savePending.set(false);
@@ -157,7 +216,7 @@ export class UserDetailPageComponent implements OnInit {
   }
 
   displayValue(value: string | null): string {
-    return value && value.trim() ? value : "Non renseigne";
+    return value && value.trim() ? value : "Non renseigné";
   }
 
   displayUserName(user: AccountUserDetailResponse): string {
@@ -193,7 +252,7 @@ export class UserDetailPageComponent implements OnInit {
   relationLabel(role: string): string {
     switch (role) {
       case "OWNER":
-        return "Proprietaire";
+        return "Propriétaire";
       case "PROSPECT":
       case "ACHETEUR":
         return "Prospect";
@@ -201,6 +260,29 @@ export class UserDetailPageComponent implements OnInit {
         return "Vendeur";
       default:
         return role;
+    }
+  }
+
+  statusLabel(status: string): string {
+    switch (status) {
+      case "PROSPECTION":
+        return "Prospection";
+      case "MANDAT_SIGNE":
+        return "Mandat signé";
+      case "EN_DIFFUSION":
+        return "En diffusion";
+      case "VISITES":
+        return "Visites";
+      case "OFFRES":
+        return "Offres";
+      case "COMPROMIS":
+        return "Compromis";
+      case "VENDU":
+        return "Vendu";
+      case "ARCHIVE":
+        return "Archivé";
+      default:
+        return status;
     }
   }
 
@@ -213,11 +295,32 @@ export class UserDetailPageComponent implements OnInit {
       address: user.address ?? "",
       postalCode: user.postalCode ?? "",
       city: user.city ?? "",
+      personalNotes: user.personalNotes ?? "",
     });
   }
 
   private normalizeEmptyAsNull(value: string): string | null {
     const trimmed = value.trim();
     return trimmed ? trimmed : null;
+  }
+
+  private async loadUserVisits(): Promise<void> {
+    this.visitsLoading.set(true);
+    this.visitsError.set(null);
+
+    try {
+      const response = await this.propertyService.listCalendarVisits();
+      const filtered = response.items
+        .filter((visit) => visit.prospectUserId === this.userId)
+        .slice()
+        .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+      this.userVisits.set(filtered);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Chargement des visites impossible.";
+      this.visitsError.set(message);
+      this.userVisits.set([]);
+    } finally {
+      this.visitsLoading.set(false);
+    }
   }
 }
