@@ -1,0 +1,1 @@
+ALTER TABLE `properties` ADD `hidden_expected_document_keys` text DEFAULT '[]' NOT NULL;

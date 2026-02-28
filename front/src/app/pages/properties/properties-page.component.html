@@ -1,0 +1,65 @@
+<section class="space-y-4" aria-labelledby="properties-title">
+  <header class="panel p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Portefeuille</p>
+        <h2 id="properties-title" class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+          Biens
+        </h2>
+        <p class="mt-1 text-sm text-slate-500">{{ propertiesCount() }} bien(s)</p>
+      </div>
+
+      <button
+        type="button"
+        class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+        (click)="loadProperties()"
+      >
+        Rafraîchir
+      </button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <p class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="status" aria-live="polite">
+      {{ error() }}
+    </p>
+  }
+
+  @if (loading()) {
+    <p class="panel p-4 text-sm text-slate-700" role="status" aria-live="polite">
+      Chargement des biens...
+    </p>
+  } @else if (sortedProperties().length === 0) {
+    <p class="panel p-4 text-sm text-slate-600">Aucun bien disponible.</p>
+  } @else {
+    <section class="panel overflow-x-auto p-0">
+      <table class="min-w-full border-collapse text-sm">
+        <thead class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+          <tr>
+            <th class="px-4 py-3">Lien</th>
+            <th class="px-4 py-3">Adresse</th>
+            <th class="px-4 py-3">Statut</th>
+            <th class="px-4 py-3 text-right">Prix de vente</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (property of sortedProperties(); track property.id) {
+            <tr class="border-t border-slate-200 align-top">
+              <td class="px-4 py-3">
+                <a
+                  [routerLink]="['/app/bien', property.id]"
+                  class="font-semibold text-slate-900 transition hover:text-blue-700"
+                >
+                  {{ property.title }}
+                </a>
+              </td>
+              <td class="px-4 py-3 text-slate-700">{{ displayAddress(property) }}</td>
+              <td class="px-4 py-3 text-slate-700">{{ statusLabel(property.status) }}</td>
+              <td class="px-4 py-3 text-right text-slate-700">{{ displaySalePrice(property) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+</section>
