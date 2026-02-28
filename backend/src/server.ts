@@ -29,6 +29,7 @@ import { filesService } from "./files/service";
 import { integrationsService } from "./integrations/service";
 import { messagesService } from "./messages/service";
 import { propertiesService } from "./properties/service";
+import { MARKET_PROPERTY_TYPES, type MarketPropertyType } from "./properties/dvf-client";
 import {
   enqueueFileAiJob,
   enqueueMessageAiJob,
@@ -224,6 +225,41 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         }
 
         return limit;
+      };
+
+      const parseBooleanQueryParam = (name: string): boolean | undefined => {
+        const raw = url.searchParams.get(name);
+        if (raw === null || raw === "") {
+          return undefined;
+        }
+
+        if (raw === "true") {
+          return true;
+        }
+
+        if (raw === "false") {
+          return false;
+        }
+
+        throw new HttpError(400, "INVALID_QUERY_PARAM", `Le parametre ${name} est invalide`);
+      };
+
+      const parseComparablePropertyTypeParam = (): MarketPropertyType | undefined => {
+        const raw = url.searchParams.get("propertyType");
+        if (!raw) {
+          return undefined;
+        }
+
+        const normalized = raw.trim().toUpperCase();
+        if (!MARKET_PROPERTY_TYPES.includes(normalized as MarketPropertyType)) {
+          throw new HttpError(
+            400,
+            "INVALID_PROPERTY_TYPE",
+            "Le type de bien est invalide pour les comparables",
+          );
+        }
+
+        return normalized as MarketPropertyType;
       };
 
       if (request.method === "GET" && url.pathname === "/health") {
@@ -744,6 +780,19 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         const response = await propertiesService.getRisks({
           orgId: user.orgId,
           propertyId,
+        });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      const propertyComparablesMatch = url.pathname.match(/^\/properties\/([^/]+)\/comparables$/);
+      if (propertyComparablesMatch && request.method === "GET") {
+        const propertyId = decodeURIComponent(propertyComparablesMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await propertiesService.getComparables({
+          orgId: user.orgId,
+          propertyId,
+          propertyType: parseComparablePropertyTypeParam(),
+          forceRefresh: parseBooleanQueryParam("forceRefresh"),
         });
         return withCors(request, json(response, { status: 200 }));
       }

@@ -309,6 +309,83 @@ export const PropertyRiskResponseSchema = z.object({
   items: z.array(PropertyRiskItemResponseSchema),
 });
 
+export const ComparablePropertyTypeSchema = z.enum([
+  "APPARTEMENT",
+  "MAISON",
+  "IMMEUBLE",
+  "TERRAIN",
+  "LOCAL_COMMERCIAL",
+  "AUTRE",
+]);
+
+export const ComparablePricingPositionSchema = z.enum([
+  "UNDER_PRICED",
+  "NORMAL",
+  "OVER_PRICED",
+  "UNKNOWN",
+]);
+
+export const ComparableDataSourceSchema = z.enum(["CACHE", "LIVE"]);
+
+export const ComparableSearchCenterSchema = z.object({
+  latitude: z.number(),
+  longitude: z.number(),
+});
+
+export const ComparableSearchResponseSchema = z.object({
+  center: ComparableSearchCenterSchema,
+  finalRadiusM: z.number().int(),
+  radiiTried: z.array(z.number().int()),
+  targetCount: z.number().int(),
+  targetReached: z.boolean(),
+});
+
+export const ComparableSummaryResponseSchema = z.object({
+  count: z.number().int(),
+  medianPrice: z.number().nullable(),
+  medianPricePerM2: z.number().nullable(),
+  minPrice: z.number().nullable(),
+  maxPrice: z.number().nullable(),
+});
+
+export const ComparableSubjectResponseSchema = z.object({
+  surfaceM2: z.number().nullable(),
+  askingPrice: z.number().nullable(),
+  affinePriceAtSubjectSurface: z.number().nullable(),
+  predictedPrice: z.number().nullable(),
+  deviationPct: z.number().nullable(),
+  pricingPosition: ComparablePricingPositionSchema,
+});
+
+export const ComparableRegressionResponseSchema = z.object({
+  slope: z.number().nullable(),
+  intercept: z.number().nullable(),
+  r2: z.number().nullable(),
+  pointsUsed: z.number().int(),
+});
+
+export const ComparablePointResponseSchema = z.object({
+  saleDate: z.iso.datetime(),
+  surfaceM2: z.number(),
+  salePrice: z.number(),
+  pricePerM2: z.number(),
+  distanceM: z.number().nullable(),
+  city: z.string().nullable(),
+  postalCode: z.string().nullable(),
+});
+
+export const PropertyComparablesResponseSchema = z.object({
+  propertyId: z.string(),
+  propertyType: ComparablePropertyTypeSchema,
+  source: ComparableDataSourceSchema,
+  windowYears: z.number().int(),
+  search: ComparableSearchResponseSchema,
+  summary: ComparableSummaryResponseSchema,
+  subject: ComparableSubjectResponseSchema,
+  regression: ComparableRegressionResponseSchema,
+  points: z.array(ComparablePointResponseSchema),
+});
+
 export const PropertyParticipantResponseSchema = z.object({
   id: z.string(),
   propertyId: z.string(),
@@ -555,6 +632,16 @@ export const DtoSchemaMap = {
   PropertyRiskLocation: PropertyRiskLocationSchema,
   PropertyRiskItemResponse: PropertyRiskItemResponseSchema,
   PropertyRiskResponse: PropertyRiskResponseSchema,
+  ComparablePropertyType: ComparablePropertyTypeSchema,
+  ComparablePricingPosition: ComparablePricingPositionSchema,
+  ComparableDataSource: ComparableDataSourceSchema,
+  ComparableSearchCenter: ComparableSearchCenterSchema,
+  ComparableSearchResponse: ComparableSearchResponseSchema,
+  ComparableSummaryResponse: ComparableSummaryResponseSchema,
+  ComparableSubjectResponse: ComparableSubjectResponseSchema,
+  ComparableRegressionResponse: ComparableRegressionResponseSchema,
+  ComparablePointResponse: ComparablePointResponseSchema,
+  PropertyComparablesResponse: PropertyComparablesResponseSchema,
   TypeDocument: TypeDocumentSchema,
   FileStatus: FileStatusSchema,
   FileUploadRequest: FileUploadRequestSchema,

@@ -1,3 +1,5 @@
+import { externalFetch } from "../http/external-fetch";
+
 type FetchLike = typeof fetch;
 
 export type PropertyCoordinates = {
@@ -55,10 +57,13 @@ const fetchJson = async (fetchImpl: FetchLike, url: string): Promise<unknown> =>
   const timeoutHandle = setTimeout(() => controller.abort(), GEOCODING_TIMEOUT_MS);
 
   try {
-    const response = await fetchImpl(url, {
+    const response = await externalFetch({
+      service: "geocoding",
+      url,
       method: "GET",
       headers: { accept: "application/json" },
       signal: controller.signal,
+      fetchImpl,
     });
 
     if (!response.ok) {

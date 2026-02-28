@@ -276,6 +276,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/properties/{id}/comparables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPropertyComparables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/visits": {
         parameters: {
             query?: never;
@@ -903,6 +919,65 @@ export interface components {
             message: string | null;
             location: components["schemas"]["PropertyRiskLocation"];
             items: components["schemas"]["PropertyRiskItemResponse"][];
+        };
+        /** @enum {string} */
+        ComparablePropertyType: "APPARTEMENT" | "MAISON" | "IMMEUBLE" | "TERRAIN" | "LOCAL_COMMERCIAL" | "AUTRE";
+        /** @enum {string} */
+        ComparablePricingPosition: "UNDER_PRICED" | "NORMAL" | "OVER_PRICED" | "UNKNOWN";
+        /** @enum {string} */
+        ComparableDataSource: "CACHE" | "LIVE";
+        ComparableSearchCenter: {
+            latitude: number;
+            longitude: number;
+        };
+        ComparableSearchResponse: {
+            center: components["schemas"]["ComparableSearchCenter"];
+            finalRadiusM: number;
+            radiiTried: number[];
+            targetCount: number;
+            targetReached: boolean;
+        };
+        ComparableSummaryResponse: {
+            count: number;
+            medianPrice: number | null;
+            medianPricePerM2: number | null;
+            minPrice: number | null;
+            maxPrice: number | null;
+        };
+        ComparableSubjectResponse: {
+            surfaceM2: number | null;
+            askingPrice: number | null;
+            affinePriceAtSubjectSurface: number | null;
+            predictedPrice: number | null;
+            deviationPct: number | null;
+            pricingPosition: components["schemas"]["ComparablePricingPosition"];
+        };
+        ComparableRegressionResponse: {
+            slope: number | null;
+            intercept: number | null;
+            r2: number | null;
+            pointsUsed: number;
+        };
+        ComparablePointResponse: {
+            /** Format: date-time */
+            saleDate: string;
+            surfaceM2: number;
+            salePrice: number;
+            pricePerM2: number;
+            distanceM: number | null;
+            city: string | null;
+            postalCode: string | null;
+        };
+        PropertyComparablesResponse: {
+            propertyId: string;
+            propertyType: components["schemas"]["ComparablePropertyType"];
+            source: components["schemas"]["ComparableDataSource"];
+            windowYears: number;
+            search: components["schemas"]["ComparableSearchResponse"];
+            summary: components["schemas"]["ComparableSummaryResponse"];
+            subject: components["schemas"]["ComparableSubjectResponse"];
+            regression: components["schemas"]["ComparableRegressionResponse"];
+            points: components["schemas"]["ComparablePointResponse"][];
         };
         /** @enum {string} */
         TypeDocument: "PIECE_IDENTITE" | "LIVRET_FAMILLE" | "CONTRAT_MARIAGE_PACS" | "JUGEMENT_DIVORCE" | "TITRE_PROPRIETE" | "ATTESTATION_NOTARIALE" | "TAXE_FONCIERE" | "REFERENCE_CADASTRALE" | "MANDAT_VENTE_SIGNE" | "BON_VISITE" | "OFFRE_ACHAT_SIGNEE" | "DPE" | "AMIANTE" | "PLOMB" | "ELECTRICITE" | "GAZ" | "TERMITES" | "ERP_ETAT_RISQUES" | "ASSAINISSEMENT" | "LOI_CARREZ" | "REGLEMENT_COPROPRIETE" | "ETAT_DESCRIPTIF_DIVISION" | "PV_AG_3_DERNIERES_ANNEES" | "MONTANT_CHARGES" | "CARNET_ENTRETIEN" | "FICHE_SYNTHETIQUE" | "PRE_ETAT_DATE" | "ETAT_DATE" | "PHOTOS_HD" | "VIDEO_VISITE" | "PLAN_BIEN" | "ANNONCE_IMMOBILIERE" | "AFFICHE_VITRINE" | "REPORTING_VENDEUR" | "SIMULATION_FINANCEMENT" | "ATTESTATION_CAPACITE_EMPRUNT" | "ACCORD_PRINCIPE_BANCAIRE" | "COMPROMIS_OU_PROMESSE" | "ANNEXES_COMPROMIS" | "PREUVE_SEQUESTRE" | "COURRIER_RETRACTATION" | "LEVEE_CONDITIONS_SUSPENSIVES" | "ACTE_AUTHENTIQUE" | "DECOMPTE_NOTAIRE";
@@ -1663,6 +1738,58 @@ export interface operations {
             };
             /** @description Bien introuvable. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPropertyComparables: {
+        parameters: {
+            query?: {
+                propertyType?: components["schemas"]["ComparablePropertyType"];
+                forceRefresh?: boolean;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ventes comparables DVF pour le bien. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyComparablesResponse"];
+                };
+            };
+            /** @description Paramètres invalides. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Source DVF indisponible. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

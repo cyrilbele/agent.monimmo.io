@@ -9,12 +9,14 @@ import type {
   PropertyProspectCreateRequest,
   PropertyProspectListResponse,
   PropertyProspectResponse,
+  PropertyComparablesResponse,
   PropertyRiskResponse,
   PropertyVisitCreateRequest,
   PropertyVisitListResponse,
   PropertyVisitResponse,
   PropertyResponse,
   PropertyStatus,
+  ComparablePropertyType,
 } from "../core/api.models";
 import { ApiClientService } from "../core/api-client.service";
 
@@ -111,6 +113,22 @@ export class PropertyService {
     return this.api.request<PropertyRiskResponse>(
       "GET",
       `/properties/${encodeURIComponent(propertyId)}/risks`,
+    );
+  }
+
+  getComparables(
+    propertyId: string,
+    options?: { propertyType?: ComparablePropertyType; forceRefresh?: boolean },
+  ): Promise<PropertyComparablesResponse> {
+    return this.api.request<PropertyComparablesResponse>(
+      "GET",
+      `/properties/${encodeURIComponent(propertyId)}/comparables`,
+      {
+        params: {
+          propertyType: options?.propertyType,
+          forceRefresh: options?.forceRefresh,
+        },
+      },
     );
   }
 

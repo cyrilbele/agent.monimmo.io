@@ -151,12 +151,6 @@ export class PropertyCreatePageComponent implements OnInit {
       return;
     }
 
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      this.feedback.set("Veuillez completer les champs obligatoires.");
-      return;
-    }
-
     this.pending.set(true);
     this.feedback.set("Creation du bien en cours...");
 
@@ -167,7 +161,18 @@ export class PropertyCreatePageComponent implements OnInit {
       const postalCode = this.form.controls.postalCode.value.trim();
       const address = this.form.controls.address.value.trim();
 
+       if (!title || !city || !postalCode || !address) {
+        this.feedback.set("Veuillez completer les champs obligatoires.");
+        return;
+      }
+
       if (ownerMode === "existing") {
+        const ownerLookup = this.form.controls.ownerLookup.value.trim();
+        if (!ownerLookup) {
+          this.feedback.set("Veuillez completer les champs obligatoires.");
+          return;
+        }
+
         const match = this.resolveSelectedOwnerClient();
 
         if (!match) {
@@ -187,7 +192,16 @@ export class PropertyCreatePageComponent implements OnInit {
         return;
       }
 
+      const ownerFirstName = this.form.controls.ownerFirstName.value.trim();
+      const ownerLastName = this.form.controls.ownerLastName.value.trim();
+      const ownerPhone = this.form.controls.ownerPhone.value.trim();
       const ownerEmail = this.form.controls.ownerEmail.value.trim().toLowerCase();
+
+      if (!ownerFirstName || !ownerLastName || !ownerPhone || !ownerEmail) {
+        this.feedback.set("Veuillez completer les champs obligatoires.");
+        return;
+      }
+
       if (!isEmailValid(ownerEmail)) {
         this.feedback.set("L'email proprietaire est invalide.");
         return;
@@ -199,9 +213,9 @@ export class PropertyCreatePageComponent implements OnInit {
         postalCode,
         address,
         owner: {
-          firstName: this.form.controls.ownerFirstName.value.trim(),
-          lastName: this.form.controls.ownerLastName.value.trim(),
-          phone: this.form.controls.ownerPhone.value.trim(),
+          firstName: ownerFirstName,
+          lastName: ownerLastName,
+          phone: ownerPhone,
           email: ownerEmail,
         },
       });

@@ -260,6 +260,69 @@ export const integrations = sqliteTable(
   }),
 );
 
+export const marketDvfTransactions = sqliteTable(
+  "market_dvf_transactions",
+  {
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    sourceRowHash: text("source_row_hash").notNull(),
+    saleDate: integer("sale_date", { mode: "timestamp_ms" }).notNull(),
+    salePrice: integer("sale_price").notNull(),
+    surfaceM2: real("surface_m2").notNull(),
+    builtSurfaceM2: real("built_surface_m2"),
+    landSurfaceM2: real("land_surface_m2"),
+    propertyType: text("property_type").notNull(),
+    longitude: real("longitude"),
+    latitude: real("latitude"),
+    postalCode: text("postal_code"),
+    city: text("city"),
+    inseeCode: text("insee_code"),
+    rawPayload: text("raw_payload").notNull(),
+    fetchedAt: integer("fetched_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    sourceRowHashUnique: uniqueIndex("market_dvf_transactions_source_row_hash_unique").on(
+      table.sourceRowHash,
+    ),
+    saleDateIdx: index("market_dvf_transactions_sale_date_idx").on(table.saleDate),
+    propertyTypeSaleDateIdx: index("market_dvf_transactions_property_type_sale_date_idx").on(
+      table.propertyType,
+      table.saleDate,
+    ),
+  }),
+);
+
+export const marketDvfQueryCache = sqliteTable(
+  "market_dvf_query_cache",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    propertyId: text("property_id")
+      .notNull()
+      .references(() => properties.id),
+    cacheKey: text("cache_key").notNull(),
+    querySignature: text("query_signature").notNull(),
+    finalRadiusM: integer("final_radius_m").notNull(),
+    comparablesCount: integer("comparables_count").notNull(),
+    targetReached: integer("target_reached", { mode: "boolean" }).notNull(),
+    responseJson: text("response_json").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    cacheKeyUnique: uniqueIndex("market_dvf_query_cache_cache_key_unique").on(table.cacheKey),
+    orgPropertyIdx: index("market_dvf_query_cache_org_property_idx").on(
+      table.orgId,
+      table.propertyId,
+    ),
+    expiresAtIdx: index("market_dvf_query_cache_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
 export const calendarEvents = sqliteTable(
   "calendar_events",
   {

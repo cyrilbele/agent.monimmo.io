@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "../db/client";
 import {
+  marketDvfQueryCache,
+  marketDvfTransactions,
   properties,
   propertyParties,
   propertyTimelineEvents,
@@ -9,6 +12,12 @@ import {
   users,
 } from "../db/schema";
 import { HttpError } from "../http/errors";
+import {
+  DvfClientError,
+  MARKET_PROPERTY_TYPES,
+  fetchOpenDataComparables,
+  type MarketPropertyType,
+} from "./dvf-client";
 import { findCoordinatesForAddress, type PropertyCoordinates } from "./geocoding";
 import { getPropertyRisks, type PropertyRisksResponse } from "./georisques";
 
@@ -33,6 +42,87 @@ type OwnerContactInput = {
 type ProspectContactInput = OwnerContactInput;
 
 type PropertyDetailsInput = Record<string, unknown>;
+
+const COMPARABLE_WINDOW_YEARS = 10;
+const COMPARABLE_TARGET_COUNT = 100;
+const COMPARABLE_RADIUS_STEPS = [1000, 2000, 3000, 5000, 7000, 10000] as const;
+const COMPARABLE_PRICE_TOLERANCE = 0.1;
+const COMPARABLE_OUTLIER_SURFACE_FACTOR = 3;
+const COMPARABLE_OUTLIER_PRICE_FACTOR = 2;
+const COMPARABLE_CACHE_VERSION = "dvf-open-v3-outlier-filtering";
+
+const toDvfUnavailableDetails = (error: unknown): Record<string, unknown> => {
+  if (error instanceof DvfClientError) {
+    return {
+      kind: error.kind,
+      message: error.message,
+      ...error.details,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+    };
+  }
+
+  return {
+    message: "unknown_error",
+    raw: String(error),
+  };
+};
+
+export type ComparablePricingPosition = "UNDER_PRICED" | "NORMAL" | "OVER_PRICED" | "UNKNOWN";
+
+type ComparablePoint = {
+  saleDate: string;
+  surfaceM2: number;
+  salePrice: number;
+  pricePerM2: number;
+  distanceM: number | null;
+  city: string | null;
+  postalCode: string | null;
+};
+
+export type PropertyComparablesResponse = {
+  propertyId: string;
+  propertyType: MarketPropertyType;
+  source: "CACHE" | "LIVE";
+  windowYears: number;
+  search: {
+    center: {
+      latitude: number;
+      longitude: number;
+    };
+    finalRadiusM: number;
+    radiiTried: number[];
+    targetCount: number;
+    targetReached: boolean;
+  };
+  summary: {
+    count: number;
+    medianPrice: number | null;
+    medianPricePerM2: number | null;
+    minPrice: number | null;
+    maxPrice: number | null;
+  };
+  subject: {
+    surfaceM2: number | null;
+    askingPrice: number | null;
+    affinePriceAtSubjectSurface: number | null;
+    predictedPrice: number | null;
+    deviationPct: number | null;
+    pricingPosition: ComparablePricingPosition;
+  };
+  regression: {
+    slope: number | null;
+    intercept: number | null;
+    r2: number | null;
+    pointsUsed: number;
+  };
+  points: ComparablePoint[];
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -179,6 +269,360 @@ const parseIsoDateTime = (
   }
 
   return parsed;
+};
+
+const normalizeMarketPropertyType = (value: unknown): MarketPropertyType | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim().toUpperCase();
+  return MARKET_PROPERTY_TYPES.includes(trimmed as MarketPropertyType)
+    ? (trimmed as MarketPropertyType)
+    : null;
+};
+
+const getGeneralDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const general = details.general;
+  if (!isRecord(general)) {
+    return {};
+  }
+
+  return general;
+};
+
+const getCharacteristicsDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const characteristics = details.characteristics;
+  if (!isRecord(characteristics)) {
+    return {};
+  }
+
+  return characteristics;
+};
+
+const getFinanceDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const finance = details.finance;
+  if (!isRecord(finance)) {
+    return {};
+  }
+
+  return finance;
+};
+
+const resolvePropertyTypeFromDetails = (details: PropertyDetailsInput): MarketPropertyType | null => {
+  const general = getGeneralDetails(details);
+  const fromGeneral = normalizeMarketPropertyType(general.propertyType);
+  if (fromGeneral) {
+    return fromGeneral;
+  }
+
+  return normalizeMarketPropertyType(details.propertyType);
+};
+
+const resolveSubjectSurface = (
+  details: PropertyDetailsInput,
+  propertyType: MarketPropertyType,
+): number | null => {
+  const characteristics = getCharacteristicsDetails(details);
+
+  const livingArea = toFiniteNumber(characteristics.livingArea);
+  const carrezArea = toFiniteNumber(characteristics.carrezArea);
+  const landArea = toFiniteNumber(characteristics.landArea);
+
+  if (propertyType === "TERRAIN") {
+    return landArea ?? carrezArea ?? livingArea;
+  }
+
+  return carrezArea ?? livingArea ?? landArea;
+};
+
+const resolveSubjectAskingPrice = (
+  property: PropertyRow,
+  details: PropertyDetailsInput,
+): number | null => {
+  if (typeof property.price === "number" && Number.isFinite(property.price) && property.price > 0) {
+    return property.price;
+  }
+
+  const finance = getFinanceDetails(details);
+  const salePriceTtc = toFiniteNumber(finance.salePriceTtc);
+  return salePriceTtc && salePriceTtc > 0 ? Math.round(salePriceTtc) : null;
+};
+
+const toCacheTtlDays = (): number => {
+  const raw = process.env.DF_CACHE_TTL_DAYS;
+  const parsed = raw ? Number(raw) : 30;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 30;
+  }
+
+  return Math.round(parsed);
+};
+
+const formatComparableNumber = (value: number): number => Number(value.toFixed(2));
+
+const computeMedian = (values: number[]): number | null => {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 0) {
+    return formatComparableNumber((sorted[mid - 1] + sorted[mid]) / 2);
+  }
+
+  return formatComparableNumber(sorted[mid]);
+};
+
+const toRadians = (value: number): number => (value * Math.PI) / 180;
+
+const haversineDistanceMeters = (input: {
+  fromLat: number;
+  fromLon: number;
+  toLat: number;
+  toLon: number;
+}): number => {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(input.toLat - input.fromLat);
+  const dLon = toRadians(input.toLon - input.fromLon);
+  const lat1 = toRadians(input.fromLat);
+  const lat2 = toRadians(input.toLat);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusMeters * c;
+};
+
+const computeRegression = (
+  points: Array<{ surfaceM2: number; salePrice: number }>,
+): {
+  slope: number | null;
+  intercept: number | null;
+  r2: number | null;
+  pointsUsed: number;
+} => {
+  const valid = points.filter(
+    (point) =>
+      Number.isFinite(point.surfaceM2) &&
+      Number.isFinite(point.salePrice) &&
+      point.surfaceM2 > 0 &&
+      point.salePrice > 0,
+  );
+
+  if (valid.length < 2) {
+    return {
+      slope: null,
+      intercept: null,
+      r2: null,
+      pointsUsed: valid.length,
+    };
+  }
+
+  const n = valid.length;
+  const sumX = valid.reduce((sum, point) => sum + point.surfaceM2, 0);
+  const sumY = valid.reduce((sum, point) => sum + point.salePrice, 0);
+  const sumXY = valid.reduce((sum, point) => sum + point.surfaceM2 * point.salePrice, 0);
+  const sumXX = valid.reduce((sum, point) => sum + point.surfaceM2 * point.surfaceM2, 0);
+  const denominator = n * sumXX - sumX * sumX;
+
+  if (denominator === 0) {
+    return {
+      slope: null,
+      intercept: null,
+      r2: null,
+      pointsUsed: valid.length,
+    };
+  }
+
+  const slope = (n * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / n;
+
+  const meanY = sumY / n;
+  const totalVariance = valid.reduce((sum, point) => {
+    const diff = point.salePrice - meanY;
+    return sum + diff * diff;
+  }, 0);
+
+  const residualVariance = valid.reduce((sum, point) => {
+    const predicted = slope * point.surfaceM2 + intercept;
+    const diff = point.salePrice - predicted;
+    return sum + diff * diff;
+  }, 0);
+
+  const r2 = totalVariance === 0 ? 1 : 1 - residualVariance / totalVariance;
+
+  return {
+    slope: formatComparableNumber(slope),
+    intercept: formatComparableNumber(intercept),
+    r2: formatComparableNumber(r2),
+    pointsUsed: valid.length,
+  };
+};
+
+const computeAffinePrice = (input: {
+  surfaceM2: number | null;
+  slope: number | null;
+  intercept: number | null;
+}): number | null => {
+  if (
+    input.surfaceM2 === null ||
+    input.slope === null ||
+    input.intercept === null ||
+    !Number.isFinite(input.surfaceM2) ||
+    !Number.isFinite(input.slope) ||
+    !Number.isFinite(input.intercept) ||
+    input.surfaceM2 <= 0
+  ) {
+    return null;
+  }
+
+  const predicted = input.slope * input.surfaceM2 + input.intercept;
+  if (!Number.isFinite(predicted) || predicted <= 0) {
+    return null;
+  }
+
+  return formatComparableNumber(predicted);
+};
+
+const removeComparableOutliers = (input: {
+  points: ComparablePoint[];
+  subjectSurfaceM2: number | null;
+}): ComparablePoint[] => {
+  if (
+    input.subjectSurfaceM2 === null ||
+    !Number.isFinite(input.subjectSurfaceM2) ||
+    input.subjectSurfaceM2 <= 0
+  ) {
+    return input.points;
+  }
+
+  const maxSurfaceM2 = input.subjectSurfaceM2 * COMPARABLE_OUTLIER_SURFACE_FACTOR;
+  const baselinePoints = input.points.filter((point) => point.surfaceM2 <= maxSurfaceM2);
+  const baselineRegression = computeRegression(
+    baselinePoints.map((point) => ({
+      surfaceM2: point.surfaceM2,
+      salePrice: point.salePrice,
+    })),
+  );
+
+  if (
+    baselineRegression.slope === null ||
+    baselineRegression.intercept === null ||
+    !Number.isFinite(baselineRegression.slope) ||
+    !Number.isFinite(baselineRegression.intercept)
+  ) {
+    return input.points;
+  }
+
+  return input.points.filter((point) => {
+    if (point.surfaceM2 <= maxSurfaceM2) {
+      return true;
+    }
+
+    const affinePrice = computeAffinePrice({
+      surfaceM2: point.surfaceM2,
+      slope: baselineRegression.slope,
+      intercept: baselineRegression.intercept,
+    });
+
+    if (affinePrice === null) {
+      return true;
+    }
+
+    return point.salePrice <= affinePrice * COMPARABLE_OUTLIER_PRICE_FACTOR;
+  });
+};
+
+const resolvePricingPosition = (input: {
+  askingPrice: number | null;
+  predictedPrice: number | null;
+}): {
+  deviationPct: number | null;
+  pricingPosition: ComparablePricingPosition;
+} => {
+  if (
+    typeof input.askingPrice !== "number" ||
+    !Number.isFinite(input.askingPrice) ||
+    input.askingPrice <= 0 ||
+    typeof input.predictedPrice !== "number" ||
+    !Number.isFinite(input.predictedPrice) ||
+    input.predictedPrice <= 0
+  ) {
+    return {
+      deviationPct: null,
+      pricingPosition: "UNKNOWN",
+    };
+  }
+
+  const deviation = (input.askingPrice - input.predictedPrice) / input.predictedPrice;
+  const roundedPct = formatComparableNumber(deviation * 100);
+
+  if (deviation < -COMPARABLE_PRICE_TOLERANCE) {
+    return {
+      deviationPct: roundedPct,
+      pricingPosition: "UNDER_PRICED",
+    };
+  }
+
+  if (deviation > COMPARABLE_PRICE_TOLERANCE) {
+    return {
+      deviationPct: roundedPct,
+      pricingPosition: "OVER_PRICED",
+    };
+  }
+
+  return {
+    deviationPct: roundedPct,
+    pricingPosition: "NORMAL",
+  };
+};
+
+const createComparableCacheKey = (input: {
+  orgId: string;
+  propertyId: string;
+  propertyType: MarketPropertyType;
+  latitude: number;
+  longitude: number;
+}): {
+  cacheKey: string;
+  signature: string;
+} => {
+  const signaturePayload = {
+    cacheVersion: COMPARABLE_CACHE_VERSION,
+    orgId: input.orgId,
+    propertyId: input.propertyId,
+    propertyType: input.propertyType,
+    windowYears: COMPARABLE_WINDOW_YEARS,
+    radiusSteps: COMPARABLE_RADIUS_STEPS,
+    targetCount: COMPARABLE_TARGET_COUNT,
+    center: {
+      latitude: formatComparableNumber(input.latitude),
+      longitude: formatComparableNumber(input.longitude),
+    },
+  };
+
+  const signature = JSON.stringify(signaturePayload);
+  const cacheKey = createHash("sha256").update(signature).digest("hex");
+  return { cacheKey, signature };
+};
+
+const parseCachedComparables = (rawJson: string): PropertyComparablesResponse | null => {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!isRecord(parsed) || !Array.isArray(parsed.points)) {
+      return null;
+    }
+
+    return parsed as PropertyComparablesResponse;
+  } catch {
+    return null;
+  }
 };
 
 export const propertiesService = {
@@ -1001,6 +1445,296 @@ export const propertiesService = {
       role: input.role,
       createdAt: createdAt.toISOString(),
     };
+  },
+
+  async getComparables(input: {
+    orgId: string;
+    propertyId: string;
+    propertyType?: MarketPropertyType;
+    forceRefresh?: boolean;
+  }): Promise<PropertyComparablesResponse> {
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!property) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const details = parseDetails(property.details);
+
+    const resolvedPropertyType = input.propertyType ?? resolvePropertyTypeFromDetails(details);
+    if (!resolvedPropertyType) {
+      throw new HttpError(
+        400,
+        "PROPERTY_TYPE_REQUIRED",
+        "Le type de bien est requis pour recuperer les comparables",
+      );
+    }
+
+    const locationDetails = getLocationDetails(details);
+    let latitude = toFiniteNumber(locationDetails.gpsLat);
+    let longitude = toFiniteNumber(locationDetails.gpsLng);
+
+    if ((latitude === null || longitude === null) && property.address) {
+      const geocoded = await findCoordinatesForAddress({
+        address: property.address,
+        postalCode: property.postalCode,
+        city: property.city,
+      });
+
+      latitude = geocoded?.latitude ?? null;
+      longitude = geocoded?.longitude ?? null;
+    }
+
+    if (latitude === null || longitude === null) {
+      throw new HttpError(
+        400,
+        "PROPERTY_COORDINATES_REQUIRED",
+        "Coordonnees GPS manquantes pour recuperer les comparables",
+      );
+    }
+
+    const { cacheKey, signature } = createComparableCacheKey({
+      orgId: input.orgId,
+      propertyId: input.propertyId,
+      propertyType: resolvedPropertyType,
+      latitude,
+      longitude,
+    });
+
+    const now = new Date();
+
+    if (!input.forceRefresh) {
+      const cached = await db.query.marketDvfQueryCache.findFirst({
+        where: and(
+          eq(marketDvfQueryCache.orgId, input.orgId),
+          eq(marketDvfQueryCache.propertyId, input.propertyId),
+          eq(marketDvfQueryCache.cacheKey, cacheKey),
+          gt(marketDvfQueryCache.expiresAt, now),
+        ),
+      });
+
+      if (cached) {
+        const parsed = parseCachedComparables(cached.responseJson);
+        if (parsed) {
+          return {
+            ...parsed,
+            source: "CACHE",
+          };
+        }
+      }
+    }
+
+    const toDate = new Date();
+    const fromDate = new Date(toDate);
+    fromDate.setFullYear(toDate.getFullYear() - COMPARABLE_WINDOW_YEARS);
+
+    const transactionsByHash = new Map<string, Awaited<ReturnType<typeof fetchOpenDataComparables>>[number]>();
+    const radiiTried: number[] = [];
+    let finalRadiusM: number = COMPARABLE_RADIUS_STEPS[0];
+    let lastFetchError: unknown = null;
+
+    for (const radiusM of COMPARABLE_RADIUS_STEPS) {
+      finalRadiusM = radiusM;
+      radiiTried.push(radiusM);
+
+      let fetched: Awaited<ReturnType<typeof fetchOpenDataComparables>> = [];
+      try {
+        fetched = await fetchOpenDataComparables({
+          latitude,
+          longitude,
+          radiusM,
+          propertyType: resolvedPropertyType,
+          fromDate,
+          toDate,
+          limit: 500,
+        });
+      } catch (error) {
+        lastFetchError = error;
+        if (transactionsByHash.size === 0) {
+          throw new HttpError(
+            502,
+            "DVF_UNAVAILABLE",
+            "La source DVF est temporairement indisponible",
+            toDvfUnavailableDetails(error),
+          );
+        }
+
+        break;
+      }
+
+      const inWindow = fetched.filter(
+        (row) => row.saleDate.getTime() >= fromDate.getTime() && row.saleDate.getTime() <= toDate.getTime(),
+      );
+
+      if (inWindow.length > 0) {
+        await db
+          .insert(marketDvfTransactions)
+          .values(
+            inWindow.map((row) => ({
+              id: crypto.randomUUID(),
+              source: row.source,
+              sourceRowHash: row.sourceRowHash,
+              saleDate: row.saleDate,
+              salePrice: row.salePrice,
+              surfaceM2: row.surfaceM2,
+              builtSurfaceM2: row.builtSurfaceM2,
+              landSurfaceM2: row.landSurfaceM2,
+              propertyType: row.propertyType,
+              longitude: row.longitude,
+              latitude: row.latitude,
+              postalCode: row.postalCode,
+              city: row.city,
+              inseeCode: row.inseeCode,
+              rawPayload: JSON.stringify(row.rawPayload),
+              fetchedAt: now,
+              createdAt: now,
+            })),
+          )
+          .onConflictDoNothing({
+            target: marketDvfTransactions.sourceRowHash,
+          });
+      }
+
+      for (const row of inWindow) {
+        transactionsByHash.set(row.sourceRowHash, row);
+      }
+
+      if (transactionsByHash.size >= COMPARABLE_TARGET_COUNT) {
+        break;
+      }
+    }
+
+    if (transactionsByHash.size === 0 && lastFetchError) {
+      throw new HttpError(
+        502,
+        "DVF_UNAVAILABLE",
+        "La source DVF est temporairement indisponible",
+        toDvfUnavailableDetails(lastFetchError),
+      );
+    }
+
+    const rawPoints = Array.from(transactionsByHash.values())
+      .sort((a, b) => b.saleDate.getTime() - a.saleDate.getTime())
+      .map((row) => {
+        const distanceM =
+          typeof row.latitude === "number" &&
+          Number.isFinite(row.latitude) &&
+          typeof row.longitude === "number" &&
+          Number.isFinite(row.longitude)
+            ? formatComparableNumber(
+                haversineDistanceMeters({
+                  fromLat: latitude,
+                  fromLon: longitude,
+                  toLat: row.latitude,
+                  toLon: row.longitude,
+                }),
+              )
+            : null;
+
+        return {
+          saleDate: row.saleDate.toISOString(),
+          surfaceM2: formatComparableNumber(row.surfaceM2),
+          salePrice: row.salePrice,
+          pricePerM2: formatComparableNumber(row.salePrice / row.surfaceM2),
+          distanceM,
+          city: row.city,
+          postalCode: row.postalCode,
+        };
+      });
+
+    const subjectSurfaceM2 = resolveSubjectSurface(details, resolvedPropertyType);
+    const askingPrice = resolveSubjectAskingPrice(property, details);
+    const points = removeComparableOutliers({
+      points: rawPoints,
+      subjectSurfaceM2,
+    });
+
+    const priceValues = points.map((point) => point.salePrice);
+    const pricePerM2Values = points.map((point) => point.pricePerM2);
+    const regression = computeRegression(
+      points.map((point) => ({ surfaceM2: point.surfaceM2, salePrice: point.salePrice })),
+    );
+
+    const predictedPrice = computeAffinePrice({
+      surfaceM2: subjectSurfaceM2,
+      slope: regression.slope,
+      intercept: regression.intercept,
+    });
+    const affinePriceAtSubjectSurface = askingPrice !== null ? predictedPrice : null;
+    const pricing = resolvePricingPosition({
+      askingPrice,
+      predictedPrice,
+    });
+
+    const response: PropertyComparablesResponse = {
+      propertyId: property.id,
+      propertyType: resolvedPropertyType,
+      source: "LIVE",
+      windowYears: COMPARABLE_WINDOW_YEARS,
+      search: {
+        center: {
+          latitude: formatComparableNumber(latitude),
+          longitude: formatComparableNumber(longitude),
+        },
+        finalRadiusM,
+        radiiTried,
+        targetCount: COMPARABLE_TARGET_COUNT,
+        targetReached: points.length >= COMPARABLE_TARGET_COUNT,
+      },
+      summary: {
+        count: points.length,
+        medianPrice: computeMedian(priceValues),
+        medianPricePerM2: computeMedian(pricePerM2Values),
+        minPrice: priceValues.length > 0 ? Math.min(...priceValues) : null,
+        maxPrice: priceValues.length > 0 ? Math.max(...priceValues) : null,
+      },
+      subject: {
+        surfaceM2: subjectSurfaceM2 ? formatComparableNumber(subjectSurfaceM2) : null,
+        askingPrice,
+        affinePriceAtSubjectSurface,
+        predictedPrice,
+        deviationPct: pricing.deviationPct,
+        pricingPosition: pricing.pricingPosition,
+      },
+      regression,
+      points,
+    };
+
+    const expiresAt = new Date(now.getTime() + toCacheTtlDays() * 24 * 60 * 60 * 1000);
+    await db
+      .insert(marketDvfQueryCache)
+      .values({
+        id: crypto.randomUUID(),
+        orgId: input.orgId,
+        propertyId: input.propertyId,
+        cacheKey,
+        querySignature: signature,
+        finalRadiusM,
+        comparablesCount: points.length,
+        targetReached: points.length >= COMPARABLE_TARGET_COUNT,
+        responseJson: JSON.stringify(response),
+        expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: marketDvfQueryCache.cacheKey,
+        set: {
+          orgId: input.orgId,
+          propertyId: input.propertyId,
+          querySignature: signature,
+          finalRadiusM,
+          comparablesCount: points.length,
+          targetReached: points.length >= COMPARABLE_TARGET_COUNT,
+          responseJson: JSON.stringify(response),
+          expiresAt,
+          updatedAt: now,
+        },
+      });
+
+    return response;
   },
 
   async getRisks(input: { orgId: string; propertyId: string }): Promise<PropertyRisksResponse> {

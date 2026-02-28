@@ -2,8 +2,10 @@ import { CommonModule } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   OnDestroy,
   OnInit,
+  ViewChild,
   computed,
   inject,
   signal,
@@ -19,6 +21,9 @@ import { ActivatedRoute, RouterLink } from "@angular/router";
 
 import type {
   AccountUserResponse,
+  ComparablePropertyType,
+  ComparableRegressionResponse,
+  PropertyComparablesResponse,
   FileResponse,
   MessageResponse,
   PropertyPatchRequest,
@@ -45,6 +50,18 @@ import { MessageService } from "../../services/message.service";
 import { PropertyService } from "../../services/property.service";
 import { UserService } from "../../services/user.service";
 import { VocalService } from "../../services/vocal.service";
+import {
+  computeComparablesRegression,
+  resolveComparablePricingLabel,
+} from "./property-comparables.utils";
+import {
+  Chart,
+  registerables,
+  type ChartDataset,
+  type ScatterDataPoint,
+} from "chart.js";
+
+Chart.register(...registerables);
 
 type MainTabId =
   | "property"
@@ -52,6 +69,7 @@ type MainTabId =
   | "prospects"
   | "visits"
   | "messages"
+  | "comparables"
   | "risks";
 type ProspectMode = "existing" | "new";
 type VisitProspectMode = "existing" | "new";
@@ -60,6 +78,14 @@ type CategoryForm = FormGroup<CategoryControls>;
 type CategoryForms = Record<PropertyDetailsCategoryId, CategoryForm>;
 
 const DEFAULT_TYPE_DOCUMENT: TypeDocument = "PIECE_IDENTITE";
+const COMPARABLE_TYPE_OPTIONS: Array<{ value: ComparablePropertyType; label: string }> = [
+  { value: "APPARTEMENT", label: "Appartement" },
+  { value: "MAISON", label: "Maison" },
+  { value: "IMMEUBLE", label: "Immeuble" },
+  { value: "TERRAIN", label: "Terrain" },
+  { value: "LOCAL_COMMERCIAL", label: "Local commercial" },
+  { value: "AUTRE", label: "Autre" },
+];
 
 @Component({
   selector: "app-property-detail-page",
@@ -88,7 +114,25 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly risks = signal<PropertyRiskResponse | null>(null);
   readonly risksLoading = signal(false);
   readonly risksError = signal<string | null>(null);
+  readonly comparables = signal<PropertyComparablesResponse | null>(null);
+  readonly comparablesLoading = signal(false);
+  readonly comparablesError = signal<string | null>(null);
+  readonly selectedComparableType = signal<ComparablePropertyType>("APPARTEMENT");
+  readonly localRegression = signal<ComparableRegressionResponse | null>(null);
   readonly clients = signal<AccountUserResponse[]>([]);
+  private comparablesChart: Chart<"scatter", ScatterDataPoint[]> | null = null;
+  private comparablesChartCanvas: HTMLCanvasElement | null = null;
+
+  @ViewChild("comparablesChartCanvas")
+  set comparablesChartCanvasRef(value: ElementRef<HTMLCanvasElement> | undefined) {
+    this.comparablesChartCanvas = value?.nativeElement ?? null;
+    if (!this.comparablesChartCanvas) {
+      this.destroyComparablesChart();
+      return;
+    }
+
+    this.renderComparablesChart();
+  }
 
   readonly activeMainTab = signal<MainTabId>("property");
   readonly activePropertyCategory = signal<PropertyDetailsCategoryId>(
@@ -124,6 +168,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly visitSuggestionsOpen = signal(false);
 
   readonly statusLabels = STATUS_LABELS;
+  readonly comparableTypeOptions = COMPARABLE_TYPE_OPTIONS;
 
   readonly propertyCategories = PROPERTY_DETAILS_CATEGORIES;
   readonly documentTabs = DOCUMENT_TABS;
@@ -275,6 +320,26 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       .slice()
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
   );
+  readonly comparablesChartDomains = computed(() => {
+    const response = this.comparables();
+    if (!response || response.points.length === 0) {
+      return null;
+    }
+
+    const xValues = response.points.map((point) => point.surfaceM2);
+    const yValues = response.points.map((point) => point.salePrice);
+
+    return {
+      xDomain: {
+        min: this.roundComparable(Math.min(...xValues)),
+        max: this.roundComparable(Math.max(...xValues)),
+      },
+      yDomain: {
+        min: this.roundComparable(Math.min(...yValues)),
+        max: this.roundComparable(Math.max(...yValues)),
+      },
+    };
+  });
 
   private mediaRecorder: MediaRecorder | null = null;
   private mediaStream: MediaStream | null = null;
@@ -293,6 +358,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyComparablesChart();
     this.stopRecorderTracks();
   }
 
@@ -302,6 +368,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.risks.set(null);
     this.risksError.set(null);
     this.risksLoading.set(false);
+    this.comparables.set(null);
+    this.comparablesError.set(null);
+    this.comparablesLoading.set(false);
+    this.localRegression.set(null);
+    this.destroyComparablesChart();
 
     try {
       const [property, messagesResponse, filesResponse, prospectsResponse, visitsResponse] =
@@ -318,6 +389,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.files.set(filesResponse.items);
       this.prospects.set(prospectsResponse.items);
       this.visits.set(visitsResponse.items);
+      this.selectedComparableType.set(this.resolveComparableTypeFromProperty(property));
       this.categoryForms.set(this.createCategoryForms(property));
       void this.loadPropertyRisks();
     } catch (error) {
@@ -330,6 +402,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   setMainTab(tab: MainTabId): void {
     this.activeMainTab.set(tab);
+
+    if (tab === "comparables" && !this.comparables() && !this.comparablesLoading()) {
+      void this.loadPropertyComparables();
+    }
   }
 
   isMainTabActive(tab: MainTabId): boolean {
@@ -1145,6 +1221,248 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
   }
 
+  async loadPropertyComparables(forceRefresh = false): Promise<void> {
+    if (this.comparablesLoading()) {
+      return;
+    }
+
+    this.comparablesLoading.set(true);
+    this.comparablesError.set(null);
+
+    try {
+      const response = await this.propertyService.getComparables(this.propertyId, {
+        propertyType: this.selectedComparableType(),
+        forceRefresh,
+      });
+      this.comparables.set(response);
+      this.localRegression.set(
+        computeComparablesRegression(
+          response.points.map((point) => ({
+            surfaceM2: point.surfaceM2,
+            salePrice: point.salePrice,
+          })),
+        ),
+      );
+      this.renderComparablesChart();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Chargement des comparables impossible.";
+      this.comparablesError.set(message);
+    } finally {
+      this.comparablesLoading.set(false);
+    }
+  }
+
+  async refreshComparables(): Promise<void> {
+    await this.loadPropertyComparables(true);
+  }
+
+  onComparableTypeChange(rawType: string): void {
+    const normalized = rawType.trim().toUpperCase();
+    const option = this.comparableTypeOptions.find((item) => item.value === normalized);
+    if (!option) {
+      return;
+    }
+
+    this.selectedComparableType.set(option.value);
+    this.comparables.set(null);
+    this.localRegression.set(null);
+    this.destroyComparablesChart();
+    if (this.isMainTabActive("comparables")) {
+      void this.loadPropertyComparables();
+    }
+  }
+
+  comparablePricingLabel(value: PropertyComparablesResponse["subject"]["pricingPosition"]): string {
+    return resolveComparablePricingLabel(value);
+  }
+
+  private renderComparablesChart(): void {
+    const response = this.comparables();
+    if (!response || response.points.length === 0 || !this.comparablesChartCanvas) {
+      this.destroyComparablesChart();
+      return;
+    }
+
+    let context: CanvasRenderingContext2D | null = null;
+    try {
+      context = this.comparablesChartCanvas.getContext("2d");
+    } catch {
+      context = null;
+    }
+
+    if (!context) {
+      this.destroyComparablesChart();
+      return;
+    }
+
+    const comparablePoints = response.points
+      .filter(
+        (point) =>
+          Number.isFinite(point.surfaceM2) &&
+          Number.isFinite(point.salePrice) &&
+          point.surfaceM2 > 0 &&
+          point.salePrice > 0,
+      )
+      .map((point) => ({
+        x: point.surfaceM2,
+        y: point.salePrice,
+      }));
+
+    if (comparablePoints.length === 0) {
+      this.destroyComparablesChart();
+      return;
+    }
+
+    const regression = this.localRegression() ?? response.regression;
+    const xValues = comparablePoints.map((point) => point.x);
+    const yValues = comparablePoints.map((point) => point.y);
+
+    let minX = Math.min(...xValues);
+    let maxX = Math.max(...xValues);
+    let minY = Math.min(...yValues);
+    let maxY = Math.max(...yValues);
+
+    if (minX === maxX) {
+      minX -= 1;
+      maxX += 1;
+    }
+
+    const xPadding = Math.max((maxX - minX) * 0.05, 1);
+    minX -= xPadding;
+    maxX += xPadding;
+
+    const datasets: ChartDataset<"scatter", ScatterDataPoint[]>[] = [
+      {
+        label: "Comparables",
+        data: comparablePoints,
+        showLine: false,
+        pointRadius: 4,
+        pointHoverRadius: 5,
+        pointBackgroundColor: "#0f172a",
+      },
+    ];
+
+    if (
+      regression.slope !== null &&
+      Number.isFinite(regression.slope) &&
+      regression.intercept !== null &&
+      Number.isFinite(regression.intercept)
+    ) {
+      const yAtMin = regression.slope * minX + regression.intercept;
+      const yAtMax = regression.slope * maxX + regression.intercept;
+
+      if (Number.isFinite(yAtMin) && Number.isFinite(yAtMax)) {
+        minY = Math.min(minY, yAtMin, yAtMax);
+        maxY = Math.max(maxY, yAtMin, yAtMax);
+        datasets.push({
+          label: "Droite affine",
+          data: [
+            { x: minX, y: yAtMin },
+            { x: maxX, y: yAtMax },
+          ],
+          showLine: true,
+          borderColor: "#0ea5e9",
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          fill: false,
+        });
+      }
+    }
+
+    if (minY === maxY) {
+      minY -= 1;
+      maxY += 1;
+    }
+
+    const yPadding = Math.max((maxY - minY) * 0.05, 1000);
+    minY -= yPadding;
+    maxY += yPadding;
+
+    this.destroyComparablesChart();
+    this.comparablesChart = new Chart<"scatter", ScatterDataPoint[]>(context, {
+      type: "scatter",
+      data: {
+        datasets,
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        parsing: false,
+        scales: {
+          x: {
+            type: "linear",
+            min: this.roundComparable(minX),
+            max: this.roundComparable(maxX),
+            title: {
+              display: true,
+              text: "Surface (m²)",
+            },
+          },
+          y: {
+            type: "linear",
+            min: this.roundComparable(minY),
+            max: this.roundComparable(maxY),
+            title: {
+              display: true,
+              text: "Prix (€)",
+            },
+          },
+        },
+        plugins: {
+          legend: {
+            display: true,
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const raw = context.raw as ScatterDataPoint | undefined;
+                const surface = typeof raw?.x === "number" ? raw.x : null;
+                const price = typeof raw?.y === "number" ? raw.y : null;
+
+                if (surface === null || price === null) {
+                  return context.dataset.label ?? "";
+                }
+
+                const formattedSurface = new Intl.NumberFormat("fr-FR", {
+                  maximumFractionDigits: 0,
+                }).format(surface);
+                const formattedPrice = new Intl.NumberFormat("fr-FR", {
+                  maximumFractionDigits: 0,
+                }).format(price);
+                return `${context.dataset.label ?? "Point"}: ${formattedSurface} m² / ${formattedPrice} €`;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  private destroyComparablesChart(): void {
+    if (!this.comparablesChart) {
+      return;
+    }
+
+    this.comparablesChart.destroy();
+    this.comparablesChart = null;
+  }
+
+  private roundComparable(value: number): number {
+    return Number(value.toFixed(2));
+  }
+
+  private resolveComparableTypeFromProperty(property: PropertyResponse): ComparablePropertyType {
+    const details = property.details ?? {};
+    const general = this.isRecord(details["general"]) ? details["general"] : {};
+    const rawType = typeof general["propertyType"] === "string" ? general["propertyType"] : "";
+    const normalized = rawType.trim().toUpperCase();
+    const match = this.comparableTypeOptions.find((option) => option.value === normalized);
+    return match?.value ?? "APPARTEMENT";
+  }
+
   private applyProspectLookupValue(lookup: string): void {
     this.prospectForm.controls.existingLookup.setValue(lookup);
     const match = this.findClientFromLookup(lookup);
@@ -1335,6 +1653,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     return rawCategory as Record<string, unknown>;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private toControlValue(rawValue: unknown, field: PropertyDetailsFieldDefinition): string {

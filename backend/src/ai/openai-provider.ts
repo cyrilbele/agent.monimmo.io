@@ -1,4 +1,5 @@
 import { MockAIProvider } from "./mock-provider";
+import { externalFetch } from "../http/external-fetch";
 import type {
   AIProvider,
   ClassifyFileInput,
@@ -163,7 +164,9 @@ export class OpenAIProvider implements AIProvider {
       }),
     );
 
-    const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+    const response = await externalFetch({
+      service: "openai",
+      url: `${this.baseUrl}/audio/transcriptions`,
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -291,7 +294,9 @@ export class OpenAIProvider implements AIProvider {
   }
 
   private async requestJsonText(promptLines: string[]): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/responses`, {
+    const response = await externalFetch({
+      service: "openai",
+      url: `${this.baseUrl}/responses`,
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

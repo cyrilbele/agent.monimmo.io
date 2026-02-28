@@ -99,6 +99,13 @@
       "when": 1772277600000,
       "tag": "0013_smart_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1772281200000,
+      "tag": "0014_equal_nebula",
+      "breakpoints": true
     }
   ]
 }

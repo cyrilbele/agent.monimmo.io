@@ -244,6 +244,79 @@ export interface PropertyRiskResponse {
   items: PropertyRiskItemResponse[];
 }
 
+export type ComparablePropertyType =
+  | "APPARTEMENT"
+  | "MAISON"
+  | "IMMEUBLE"
+  | "TERRAIN"
+  | "LOCAL_COMMERCIAL"
+  | "AUTRE";
+
+export type ComparablePricingPosition =
+  | "UNDER_PRICED"
+  | "NORMAL"
+  | "OVER_PRICED"
+  | "UNKNOWN";
+
+export interface ComparableSearchCenter {
+  latitude: number;
+  longitude: number;
+}
+
+export interface ComparableSearchResponse {
+  center: ComparableSearchCenter;
+  finalRadiusM: number;
+  radiiTried: number[];
+  targetCount: number;
+  targetReached: boolean;
+}
+
+export interface ComparableSummaryResponse {
+  count: number;
+  medianPrice: number | null;
+  medianPricePerM2: number | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+}
+
+export interface ComparableSubjectResponse {
+  surfaceM2: number | null;
+  askingPrice: number | null;
+  affinePriceAtSubjectSurface: number | null;
+  predictedPrice: number | null;
+  deviationPct: number | null;
+  pricingPosition: ComparablePricingPosition;
+}
+
+export interface ComparableRegressionResponse {
+  slope: number | null;
+  intercept: number | null;
+  r2: number | null;
+  pointsUsed: number;
+}
+
+export interface ComparablePointResponse {
+  saleDate: string;
+  surfaceM2: number;
+  salePrice: number;
+  pricePerM2: number;
+  distanceM: number | null;
+  city: string | null;
+  postalCode: string | null;
+}
+
+export interface PropertyComparablesResponse {
+  propertyId: string;
+  propertyType: ComparablePropertyType;
+  source: "CACHE" | "LIVE";
+  windowYears: number;
+  search: ComparableSearchResponse;
+  summary: ComparableSummaryResponse;
+  subject: ComparableSubjectResponse;
+  regression: ComparableRegressionResponse;
+  points: ComparablePointResponse[];
+}
+
 export type TypeDocument =
   | "PIECE_IDENTITE"
   | "LIVRET_FAMILLE"

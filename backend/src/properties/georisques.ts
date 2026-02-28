@@ -1,3 +1,5 @@
+import { externalFetch } from "../http/external-fetch";
+
 type PropertyLocationInput = {
   address: string | null;
   postalCode: string;
@@ -155,12 +157,15 @@ const fetchJson = async (fetchImpl: FetchLike, url: string): Promise<unknown> =>
   const timeoutHandle = setTimeout(() => controller.abort(), GEO_API_TIMEOUT_MS);
 
   try {
-    const response = await fetchImpl(url, {
+    const response = await externalFetch({
+      service: "georisques",
+      url,
       method: "GET",
       headers: {
         accept: "application/json",
       },
       signal: controller.signal,
+      fetchImpl,
     });
 
     if (!response.ok) {
