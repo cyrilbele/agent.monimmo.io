@@ -50,7 +50,7 @@ export class PropertyCreatePageComponent implements OnInit {
   });
 
   readonly submitLabel = computed(() => (this.pending() ? "Creation..." : "Creer le bien"));
-  readonly ownerMode = computed(() => this.form.controls.ownerMode.value);
+  readonly ownerMode = signal<OwnerMode>(this.form.controls.ownerMode.value);
   readonly ownerAutocompleteId = "owner-client-autocomplete-input";
   readonly ownerAutocompleteListId = "owner-client-autocomplete-listbox";
   readonly filteredOwnerClients = computed(() => {
@@ -96,6 +96,7 @@ export class PropertyCreatePageComponent implements OnInit {
   }
 
   setOwnerMode(mode: OwnerMode): void {
+    this.ownerMode.set(mode);
     this.form.controls.ownerMode.setValue(mode);
     this.form.controls.ownerUserId.setValue("");
     this.ownerSuggestionsOpen.set(false);

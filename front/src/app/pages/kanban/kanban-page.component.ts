@@ -15,6 +15,7 @@ import {
   PROPERTY_STATUSES,
   STATUS_LABELS,
 } from "../../core/constants";
+import { FileService } from "../../services/file.service";
 import { PropertyService } from "../../services/property.service";
 
 type PropertiesByStatusMap = Record<PropertyStatus, PropertyResponse[]>;
@@ -29,6 +30,7 @@ export class KanbanPageComponent implements OnInit {
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly properties = signal<PropertyResponse[]>([]);
+  readonly propertyImageUrls = signal<Record<string, string | null>>({});
   readonly updatingPropertyId = signal<string | null>(null);
 
   readonly draggingPropertyId = signal<string | null>(null);
@@ -36,6 +38,7 @@ export class KanbanPageComponent implements OnInit {
   readonly dropTargetStatus = signal<PropertyStatus | null>(null);
 
   private readonly propertyService = inject(PropertyService);
+  private readonly fileService = inject(FileService);
 
   readonly columns = PROPERTY_FLOW_STATUSES;
   readonly availableStatuses = PROPERTY_STATUSES;
@@ -80,6 +83,7 @@ export class KanbanPageComponent implements OnInit {
     try {
       const response = await this.propertyService.list(100);
       this.properties.set(response.items);
+      await this.loadPropertyImages(response.items);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Chargement impossible.";
       this.error.set(message);
@@ -182,9 +186,91 @@ export class KanbanPageComponent implements OnInit {
     return property.id;
   }
 
+  propertyImageUrl(propertyId: string): string | null {
+    return this.propertyImageUrls()[propertyId] ?? null;
+  }
+
+  resolveDisplayPrice(property: PropertyResponse): number | null {
+    if (typeof property.price === "number" && Number.isFinite(property.price) && property.price > 0) {
+      return property.price;
+    }
+
+    if (!this.isRecord(property.details)) {
+      return null;
+    }
+
+    const finance = this.isRecord(property.details["finance"]) ? property.details["finance"] : null;
+    if (!finance) {
+      return null;
+    }
+
+    return this.parsePositiveNumber(finance["salePriceTtc"]);
+  }
+
   private resetDragState(): void {
     this.draggingPropertyId.set(null);
     this.draggingFromStatus.set(null);
     this.dropTargetStatus.set(null);
+  }
+
+  private async loadPropertyImages(properties: PropertyResponse[]): Promise<void> {
+    const entries = await Promise.all(
+      properties.map(async (property) => {
+        const imageUrl = await this.resolvePropertyImageUrl(property.id);
+        return [property.id, imageUrl] as const;
+      }),
+    );
+
+    this.propertyImageUrls.set(Object.fromEntries(entries));
+  }
+
+  private async resolvePropertyImageUrl(propertyId: string): Promise<string | null> {
+    try {
+      const files = await this.fileService.listByProperty(propertyId, 100);
+      const photo = files.items
+        .filter((file) => file.typeDocument === "PHOTOS_HD")
+        .slice()
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      if (!photo) {
+        return null;
+      }
+
+      const download = await this.fileService.getDownloadUrl(photo.id);
+      return download.url;
+    } catch {
+      return null;
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  private parsePositiveNumber(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      const compact = value
+        .trim()
+        .replace(/\s+/g, "")
+        .replace(/\u00A0/g, "")
+        .replace(/\u202F/g, "")
+        .replace(/€/g, "");
+      if (!compact) {
+        return null;
+      }
+
+      const hasComma = compact.includes(",");
+      const hasDot = compact.includes(".");
+      const normalized = hasComma && hasDot ? compact.replace(/\./g, "").replace(",", ".") : compact.replace(",", ".");
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return null;
   }
 }

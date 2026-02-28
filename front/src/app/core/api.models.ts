@@ -298,6 +298,7 @@ export interface ComparableRegressionResponse {
 export interface ComparablePointResponse {
   saleDate: string;
   surfaceM2: number;
+  landSurfaceM2: number | null;
   salePrice: number;
   pricePerM2: number;
   distanceM: number | null;

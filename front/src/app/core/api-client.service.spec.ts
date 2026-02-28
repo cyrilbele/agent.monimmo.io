@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACCESS_TOKEN_STORAGE_KEY } from "./constants";
+import {
+  ACCESS_TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
+  SESSION_EMAIL_STORAGE_KEY,
+} from "./constants";
 import { ApiClientService } from "./api-client.service";
 
 describe("ApiClientService", () => {
@@ -121,6 +125,34 @@ describe("ApiClientService", () => {
     const service = new ApiClientService();
 
     await expect(service.request("GET", "/boom")).rejects.toThrow("Boom explicite");
+  });
+
+  it("redirige vers login si l'API renvoie 'Token invalide'", async () => {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, "refresh_demo");
+    localStorage.setItem(SESSION_EMAIL_STORAGE_KEY, "agent@demo.test");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ message: "Token invalide" }), {
+        status: 401,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }),
+    );
+
+    const service = new ApiClientService();
+    const redirectSpy = vi
+      .spyOn(
+        service as unknown as {
+          redirectToLogin: () => void;
+        },
+        "redirectToLogin",
+      )
+      .mockImplementation(() => undefined);
+
+    await expect(service.request("GET", "/secure")).rejects.toThrow("Token invalide");
+    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SESSION_EMAIL_STORAGE_KEY)).toBeNull();
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
   });
 
   it("retombe sur le message HTTP générique si la réponse erreur n'est pas JSON", async () => {

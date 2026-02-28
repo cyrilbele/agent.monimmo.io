@@ -22,7 +22,6 @@ import { ActivatedRoute, RouterLink } from "@angular/router";
 import type {
   AccountUserResponse,
   ComparablePropertyType,
-  ComparableRegressionResponse,
   PropertyComparablesResponse,
   FileResponse,
   MessageResponse,
@@ -46,6 +45,11 @@ import {
   type PropertyDetailsFieldDefinition,
 } from "../../core/constants";
 import { FileService } from "../../services/file.service";
+import {
+  InseeCityService,
+  type InseeCityIndicators,
+} from "../../services/insee-city.service";
+import { AppSettingsService } from "../../services/app-settings.service";
 import { MessageService } from "../../services/message.service";
 import { PropertyService } from "../../services/property.service";
 import { UserService } from "../../services/user.service";
@@ -69,15 +73,37 @@ type MainTabId =
   | "prospects"
   | "visits"
   | "messages"
-  | "comparables"
-  | "risks";
+  | "valuation";
 type ProspectMode = "existing" | "new";
 type VisitProspectMode = "existing" | "new";
 type CategoryControls = Record<string, FormControl<string>>;
 type CategoryForm = FormGroup<CategoryControls>;
 type CategoryForms = Record<PropertyDetailsCategoryId, CategoryForm>;
+type ComparableScatterPoint = ScatterDataPoint & {
+  saleDate?: string;
+  landSurfaceM2?: number | null;
+  city?: string | null;
+  postalCode?: string | null;
+  distanceM?: number | null;
+};
+type RentalProfitabilityResult = {
+  irrPct: number | null;
+  reason: string | null;
+  initialInvestment: number | null;
+  annualNetCashflow: number | null;
+  purchasePrice: number | null;
+  notaryFeePct: number;
+  notaryFeeAmount: number | null;
+  annualPropertyTax: number;
+  annualCoproFees: number;
+  monthlyRent: number | null;
+  holdingYears: number | null;
+  resalePrice: number | null;
+};
 
 const DEFAULT_TYPE_DOCUMENT: TypeDocument = "PIECE_IDENTITE";
+const FRONT_COMPARABLE_PRICE_TOLERANCE = 0.1;
+const SALES_PAGE_SIZE = 10;
 const COMPARABLE_TYPE_OPTIONS: Array<{ value: ComparablePropertyType; label: string }> = [
   { value: "APPARTEMENT", label: "Appartement" },
   { value: "MAISON", label: "Maison" },
@@ -91,12 +117,15 @@ const COMPARABLE_TYPE_OPTIONS: Array<{ value: ComparablePropertyType; label: str
   selector: "app-property-detail-page",
   imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: "./property-detail-page.component.html",
+  styleUrls: ["./property-detail-page.component.css"],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private readonly formBuilder = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly propertyService = inject(PropertyService);
+  private readonly inseeCityService = inject(InseeCityService);
+  private readonly appSettingsService = inject(AppSettingsService);
   private readonly messageService = inject(MessageService);
   private readonly fileService = inject(FileService);
   private readonly userService = inject(UserService);
@@ -117,10 +146,25 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly comparables = signal<PropertyComparablesResponse | null>(null);
   readonly comparablesLoading = signal(false);
   readonly comparablesError = signal<string | null>(null);
-  readonly selectedComparableType = signal<ComparablePropertyType>("APPARTEMENT");
-  readonly localRegression = signal<ComparableRegressionResponse | null>(null);
+  readonly inseeIndicators = signal<InseeCityIndicators | null>(null);
+  readonly inseeLoading = signal(false);
+  readonly inseeError = signal<string | null>(null);
+  readonly comparableRadiusFilterM = signal<number | null>(null);
+  readonly comparableSurfaceMinM2 = signal<number | null>(null);
+  readonly comparableSurfaceMaxM2 = signal<number | null>(null);
+  readonly comparableTerrainMinM2 = signal<number | null>(null);
+  readonly comparableTerrainMaxM2 = signal<number | null>(null);
+  readonly rentalMonthlyRent = signal<number | null>(null);
+  readonly rentalHoldingYears = signal<number | null>(10);
+  readonly rentalResalePrice = signal<number | null>(null);
+  readonly latestSimilarRadiusFilterM = signal<number | null>(null);
+  readonly latestSimilarSurfaceMinM2 = signal<number | null>(null);
+  readonly latestSimilarSurfaceMaxM2 = signal<number | null>(null);
+  readonly latestSimilarTerrainMinM2 = signal<number | null>(null);
+  readonly latestSimilarTerrainMaxM2 = signal<number | null>(null);
+  readonly salesPage = signal(1);
   readonly clients = signal<AccountUserResponse[]>([]);
-  private comparablesChart: Chart<"scatter", ScatterDataPoint[]> | null = null;
+  private comparablesChart: Chart<"scatter", ComparableScatterPoint[]> | null = null;
   private comparablesChartCanvas: HTMLCanvasElement | null = null;
 
   @ViewChild("comparablesChartCanvas")
@@ -168,7 +212,6 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly visitSuggestionsOpen = signal(false);
 
   readonly statusLabels = STATUS_LABELS;
-  readonly comparableTypeOptions = COMPARABLE_TYPE_OPTIONS;
 
   readonly propertyCategories = PROPERTY_DETAILS_CATEGORIES;
   readonly documentTabs = DOCUMENT_TABS;
@@ -320,23 +363,615 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       .slice()
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
   );
-  readonly comparablesChartDomains = computed(() => {
+  readonly comparableTargetSurfaceM2 = computed(() => {
     const response = this.comparables();
-    if (!response || response.points.length === 0) {
+    if (!response) {
       return null;
     }
 
-    const xValues = response.points.map((point) => point.surfaceM2);
-    const yValues = response.points.map((point) => point.salePrice);
+    return this.resolveComparableTargetSurfaceM2(response);
+  });
+  readonly comparableTargetLandSurfaceM2 = computed(() => {
+    const response = this.comparables();
+    if (!response || response.propertyType !== "MAISON") {
+      return null;
+    }
+
+    return this.resolveComparableTargetLandSurfaceM2();
+  });
+  readonly comparablesRadiusDomain = computed(() => {
+    const response = this.comparables();
+    if (!response) {
+      return null;
+    }
+
+    const distances = response.points
+      .map((point) => point.distanceM)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+
+    if (distances.length > 0) {
+      return {
+        min: 0,
+        max: this.roundComparable(Math.max(...distances)),
+      };
+    }
+
+    if (Number.isFinite(response.search.finalRadiusM) && response.search.finalRadiusM > 0) {
+      return {
+        min: 0,
+        max: this.roundComparable(response.search.finalRadiusM),
+      };
+    }
+
+    return null;
+  });
+  readonly comparablesSurfaceDomain = computed(() => {
+    const response = this.comparables();
+    if (!response) {
+      return null;
+    }
+
+    return this.resolveComparablesSurfaceDomain(response);
+  });
+  readonly comparablesSurfaceSlider = computed(() => {
+    const domain = this.comparablesSurfaceDomain();
+    if (!domain) {
+      return null;
+    }
+
+    const currentMinRaw = this.comparableSurfaceMinM2() ?? domain.min;
+    const currentMaxRaw = this.comparableSurfaceMaxM2() ?? domain.max;
+    const currentMin = Math.min(Math.max(currentMinRaw, domain.min), domain.max);
+    const currentMax = Math.max(Math.min(currentMaxRaw, domain.max), domain.min);
+    const clampedMin = Math.min(currentMin, currentMax);
+    const clampedMax = Math.max(currentMin, currentMax);
+    const span = Math.max(domain.max - domain.min, 1);
+    const minPercent = ((clampedMin - domain.min) / span) * 100;
+    const maxPercent = ((clampedMax - domain.min) / span) * 100;
+
+    return {
+      min: domain.min,
+      max: domain.max,
+      currentMin: clampedMin,
+      currentMax: clampedMax,
+      minPercent: this.roundComparable(minPercent),
+      maxPercent: this.roundComparable(maxPercent),
+      rangePercent: this.roundComparable(Math.max(maxPercent - minPercent, 0)),
+    };
+  });
+  readonly comparablesTerrainDomain = computed(() => {
+    const response = this.comparables();
+    if (!response || response.propertyType !== "MAISON" || response.points.length === 0) {
+      return null;
+    }
+
+    const terrains = response.points
+      .map((point) => point.landSurfaceM2)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+
+    if (terrains.length === 0) {
+      return null;
+    }
+
+    return {
+      min: this.roundComparable(Math.min(...terrains)),
+      max: this.roundComparable(Math.max(...terrains)),
+    };
+  });
+  readonly comparablesTerrainSlider = computed(() => {
+    const domain = this.comparablesTerrainDomain();
+    if (!domain) {
+      return null;
+    }
+
+    const currentMinRaw = this.comparableTerrainMinM2() ?? domain.min;
+    const currentMaxRaw = this.comparableTerrainMaxM2() ?? domain.max;
+    const currentMin = Math.min(Math.max(currentMinRaw, domain.min), domain.max);
+    const currentMax = Math.max(Math.min(currentMaxRaw, domain.max), domain.min);
+    const clampedMin = Math.min(currentMin, currentMax);
+    const clampedMax = Math.max(currentMin, currentMax);
+    const span = Math.max(domain.max - domain.min, 1);
+    const minPercent = ((clampedMin - domain.min) / span) * 100;
+    const maxPercent = ((clampedMax - domain.min) / span) * 100;
+
+    return {
+      min: domain.min,
+      max: domain.max,
+      currentMin: clampedMin,
+      currentMax: clampedMax,
+      minPercent: this.roundComparable(minPercent),
+      maxPercent: this.roundComparable(maxPercent),
+      rangePercent: this.roundComparable(Math.max(maxPercent - minPercent, 0)),
+    };
+  });
+  readonly filteredComparablePoints = computed(() => {
+    const response = this.comparables();
+    if (!response) {
+      return [];
+    }
+
+    const surfaceDomain = this.comparablesSurfaceDomain();
+    const surfaceMin = this.comparableSurfaceMinM2() ?? surfaceDomain?.min ?? null;
+    const surfaceMax = this.comparableSurfaceMaxM2() ?? surfaceDomain?.max ?? null;
+    const terrainMin = this.comparableTerrainMinM2();
+    const terrainMax = this.comparableTerrainMaxM2();
+
+    return response.points.filter((point) => {
+      if (
+        !Number.isFinite(point.surfaceM2) ||
+        !Number.isFinite(point.salePrice) ||
+        point.surfaceM2 <= 0 ||
+        point.salePrice <= 0
+      ) {
+        return false;
+      }
+
+      if (surfaceMin !== null && point.surfaceM2 < surfaceMin) {
+        return false;
+      }
+
+      if (surfaceMax !== null && point.surfaceM2 > surfaceMax) {
+        return false;
+      }
+
+      if (response.propertyType === "MAISON" && terrainMin !== null && terrainMax !== null) {
+        if (
+          typeof point.landSurfaceM2 !== "number" ||
+          !Number.isFinite(point.landSurfaceM2) ||
+          point.landSurfaceM2 < terrainMin ||
+          point.landSurfaceM2 > terrainMax
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  });
+  readonly filteredComparableSalesSorted = computed(() =>
+    this.filteredComparablePoints()
+      .map((point) => ({
+        point,
+        saleTimestamp: this.parseComparableSaleTimestamp(point.saleDate) ?? Number.NEGATIVE_INFINITY,
+      }))
+      .sort((a, b) => b.saleTimestamp - a.saleTimestamp)
+      .map((entry) => entry.point),
+  );
+  readonly salesPagination = computed(() => {
+    const total = this.filteredComparableSalesSorted().length;
+    const pageSize = SALES_PAGE_SIZE;
+    const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+    const requestedPage = this.salesPage();
+    const page = Math.min(Math.max(requestedPage, 1), totalPages);
+    const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+    const to = total === 0 ? 0 : Math.min(page * pageSize, total);
+
+    return {
+      total,
+      pageSize,
+      totalPages,
+      page,
+      from,
+      to,
+    };
+  });
+  readonly paginatedComparableSales = computed(() => {
+    const sales = this.filteredComparableSalesSorted();
+    const pagination = this.salesPagination();
+    const offset = (pagination.page - 1) * pagination.pageSize;
+    return sales.slice(offset, offset + pagination.pageSize);
+  });
+  readonly comparablesDisplayedSummary = computed(() => {
+    const points = this.filteredComparablePoints();
+    const prices = points.map((point) => point.salePrice);
+    const pricePerM2Values = points.map((point) => point.pricePerM2);
+
+    return {
+      count: points.length,
+      medianPrice: this.computeMedian(prices),
+      medianPricePerM2: this.computeMedian(pricePerM2Values),
+      minPrice: prices.length > 0 ? Math.min(...prices) : null,
+      maxPrice: prices.length > 0 ? Math.max(...prices) : null,
+    };
+  });
+  readonly comparablesFrontRegression = computed(() =>
+    computeComparablesRegression(
+      this.filteredComparablePoints().map((point) => ({
+        surfaceM2: point.surfaceM2,
+        salePrice: point.salePrice,
+      })),
+    ),
+  );
+  readonly comparablesFrontPricing = computed(() => {
+    const response = this.comparables();
+    if (!response) {
+      return null;
+    }
+
+    const askingPrice = response.subject.askingPrice;
+    const regression = this.comparablesFrontRegression();
+    const predictedPrice = this.computePredictedComparablePrice({
+      surfaceM2: response.subject.surfaceM2,
+      slope: regression.slope,
+      intercept: regression.intercept,
+    });
+
+    if (
+      typeof askingPrice !== "number" ||
+      !Number.isFinite(askingPrice) ||
+      askingPrice <= 0 ||
+      predictedPrice === null
+    ) {
+      return {
+        predictedPrice,
+        deviationPct: null,
+        pricingPosition: "UNKNOWN" as const,
+      };
+    }
+
+    const deviation = (askingPrice - predictedPrice) / predictedPrice;
+    const deviationPct = this.roundComparable(deviation * 100);
+
+    if (deviation < -FRONT_COMPARABLE_PRICE_TOLERANCE) {
+      return {
+        predictedPrice,
+        deviationPct,
+        pricingPosition: "UNDER_PRICED" as const,
+      };
+    }
+
+    if (deviation > FRONT_COMPARABLE_PRICE_TOLERANCE) {
+      return {
+        predictedPrice,
+        deviationPct,
+        pricingPosition: "OVER_PRICED" as const,
+      };
+    }
+
+    return {
+      predictedPrice,
+      deviationPct,
+      pricingPosition: "NORMAL" as const,
+    };
+  });
+  readonly rentalProfitability = computed<RentalProfitabilityResult>(() => {
+    const monthlyRent = this.rentalMonthlyRent();
+    const holdingYears = this.rentalHoldingYears();
+    const resalePrice = this.rentalResalePrice();
+    const purchasePrice = this.resolveRentalPurchasePrice();
+    const notaryFeePct = this.appSettingsService.notaryFeePct();
+    const annualPropertyTax = this.resolveRentalAnnualPropertyTax();
+    const annualCoproFees = this.resolveRentalAnnualCoproFees();
+    const notaryFeeAmount =
+      purchasePrice === null
+        ? null
+        : this.roundComparable((purchasePrice * notaryFeePct) / 100);
+
+    if (purchasePrice === null) {
+      return {
+        irrPct: null,
+        reason: "Prix d'achat indisponible sur ce bien.",
+        initialInvestment: null,
+        annualNetCashflow: null,
+        purchasePrice,
+        notaryFeePct,
+        notaryFeeAmount,
+        annualPropertyTax,
+        annualCoproFees,
+        monthlyRent,
+        holdingYears,
+        resalePrice,
+      };
+    }
+
+    if (
+      monthlyRent === null ||
+      monthlyRent < 0 ||
+      holdingYears === null ||
+      holdingYears < 1 ||
+      resalePrice === null ||
+      resalePrice <= 0
+    ) {
+      return {
+        irrPct: null,
+        reason: "Renseignez loyer mensuel, duree de retention et prix de revente.",
+        initialInvestment: null,
+        annualNetCashflow: null,
+        purchasePrice,
+        notaryFeePct,
+        notaryFeeAmount,
+        annualPropertyTax,
+        annualCoproFees,
+        monthlyRent,
+        holdingYears,
+        resalePrice,
+      };
+    }
+
+    const annualNetCashflow = monthlyRent * 12 - annualPropertyTax - annualCoproFees;
+    const initialInvestment = purchasePrice + (notaryFeeAmount ?? 0);
+    const cashflows: number[] = [-initialInvestment];
+
+    for (let year = 1; year <= holdingYears; year += 1) {
+      const yearlyCashflow = year === holdingYears ? annualNetCashflow + resalePrice : annualNetCashflow;
+      cashflows.push(yearlyCashflow);
+    }
+
+    const irr = this.computeIrr(cashflows);
+    return {
+      irrPct: irr === null ? null : this.roundComparable(irr * 100),
+      reason: irr === null ? "TRI non calculable avec ces flux." : null,
+      initialInvestment: this.roundComparable(initialInvestment),
+      annualNetCashflow: this.roundComparable(annualNetCashflow),
+      purchasePrice,
+      notaryFeePct,
+      notaryFeeAmount,
+      annualPropertyTax,
+      annualCoproFees,
+      monthlyRent,
+      holdingYears,
+      resalePrice,
+    };
+  });
+  readonly inseeModule = computed(() => {
+    const indicators = this.inseeIndicators();
+    if (indicators) {
+      return indicators;
+    }
+
+    const riskLocation = this.risks()?.location;
+    const property = this.property();
+    return {
+      inseeCode: riskLocation?.inseeCode ?? null,
+      city: riskLocation?.city ?? property?.city ?? null,
+      postalCode: riskLocation?.postalCode ?? property?.postalCode ?? null,
+      populationCurrent: null,
+      populationCurrentYear: null,
+      populationGrowthPct: null,
+      populationGrowthAbs: null,
+      populationStartYear: null,
+      populationEndYear: null,
+      populationDensityPerKm2: null,
+      medianIncome: null,
+      medianIncomeYear: null,
+      ownersRatePct: null,
+      ownersRateYear: null,
+      ownersRateScope: null,
+      unemploymentRatePct: null,
+      unemploymentYear: null,
+      averageAge: null,
+      averageAgeYear: null,
+      povertyRatePct: null,
+      giniIndex: null,
+    };
+  });
+  readonly latestSimilarComparableSalesCriteria = computed(() => {
+    const response = this.comparables();
+    if (!response) {
+      return null;
+    }
+
+    const targetSurfaceM2 = this.resolveComparableTargetSurfaceM2(response);
+    if (targetSurfaceM2 === null) {
+      return null;
+    }
+
+    const minSurfaceM2 = this.roundComparable(targetSurfaceM2 * 0.95);
+    const maxSurfaceM2 = this.roundComparable(targetSurfaceM2 * 1.05);
+    const isHouse = response.propertyType === "MAISON";
+    const targetLandSurfaceM2 = isHouse ? this.resolveComparableTargetLandSurfaceM2() : null;
+
+    return {
+      isHouse,
+      targetSurfaceM2,
+      minSurfaceM2,
+      maxSurfaceM2,
+      targetLandSurfaceM2,
+      minLandSurfaceM2:
+        targetLandSurfaceM2 === null ? null : this.roundComparable(targetLandSurfaceM2 * 0.8),
+      maxLandSurfaceM2:
+        targetLandSurfaceM2 === null ? null : this.roundComparable(targetLandSurfaceM2 * 1.2),
+    };
+  });
+  readonly latestSimilarRadiusSlider = computed(() => {
+    const domain = this.comparablesRadiusDomain();
+    if (!domain) {
+      return null;
+    }
+
+    const currentRaw = this.latestSimilarRadiusFilterM() ?? domain.max;
+    const current = Math.min(Math.max(currentRaw, domain.min), domain.max);
+
+    return {
+      min: domain.min,
+      max: domain.max,
+      current: this.roundComparable(current),
+    };
+  });
+  readonly latestSimilarSurfaceSlider = computed(() => {
+    const domain = this.comparablesSurfaceDomain();
+    const criteria = this.latestSimilarComparableSalesCriteria();
+    if (!domain || !criteria) {
+      return null;
+    }
+
+    const defaultMin = Math.min(Math.max(criteria.minSurfaceM2, domain.min), domain.max);
+    const defaultMax = Math.max(Math.min(criteria.maxSurfaceM2, domain.max), domain.min);
+    const currentMinRaw = this.latestSimilarSurfaceMinM2() ?? defaultMin;
+    const currentMaxRaw = this.latestSimilarSurfaceMaxM2() ?? defaultMax;
+    const currentMin = Math.min(Math.max(currentMinRaw, domain.min), domain.max);
+    const currentMax = Math.max(Math.min(currentMaxRaw, domain.max), domain.min);
+    const clampedMin = Math.min(currentMin, currentMax);
+    const clampedMax = Math.max(currentMin, currentMax);
+    const span = Math.max(domain.max - domain.min, 1);
+    const minPercent = ((clampedMin - domain.min) / span) * 100;
+    const maxPercent = ((clampedMax - domain.min) / span) * 100;
+
+    return {
+      min: domain.min,
+      max: domain.max,
+      currentMin: clampedMin,
+      currentMax: clampedMax,
+      minPercent: this.roundComparable(minPercent),
+      maxPercent: this.roundComparable(maxPercent),
+      rangePercent: this.roundComparable(Math.max(maxPercent - minPercent, 0)),
+    };
+  });
+  readonly latestSimilarTerrainSlider = computed(() => {
+    const domain = this.comparablesTerrainDomain();
+    const criteria = this.latestSimilarComparableSalesCriteria();
+    if (!domain || !criteria || !criteria.isHouse || criteria.targetLandSurfaceM2 === null) {
+      return null;
+    }
+
+    const rawDefaultMin = criteria.minLandSurfaceM2;
+    const rawDefaultMax = criteria.maxLandSurfaceM2;
+    if (rawDefaultMin === null || rawDefaultMax === null) {
+      return null;
+    }
+
+    const defaultMin = Math.min(Math.max(rawDefaultMin, domain.min), domain.max);
+    const defaultMax = Math.max(Math.min(rawDefaultMax, domain.max), domain.min);
+    const currentMinRaw = this.latestSimilarTerrainMinM2() ?? defaultMin;
+    const currentMaxRaw = this.latestSimilarTerrainMaxM2() ?? defaultMax;
+    const currentMin = Math.min(Math.max(currentMinRaw, domain.min), domain.max);
+    const currentMax = Math.max(Math.min(currentMaxRaw, domain.max), domain.min);
+    const clampedMin = Math.min(currentMin, currentMax);
+    const clampedMax = Math.max(currentMin, currentMax);
+    const span = Math.max(domain.max - domain.min, 1);
+    const minPercent = ((clampedMin - domain.min) / span) * 100;
+    const maxPercent = ((clampedMax - domain.min) / span) * 100;
+
+    return {
+      min: domain.min,
+      max: domain.max,
+      currentMin: clampedMin,
+      currentMax: clampedMax,
+      minPercent: this.roundComparable(minPercent),
+      maxPercent: this.roundComparable(maxPercent),
+      rangePercent: this.roundComparable(Math.max(maxPercent - minPercent, 0)),
+    };
+  });
+  readonly latestSimilarComparableSales = computed(() => {
+    const response = this.comparables();
+    const criteria = this.latestSimilarComparableSalesCriteria();
+    const surfaceSlider = this.latestSimilarSurfaceSlider();
+    const terrainSlider = this.latestSimilarTerrainSlider();
+    if (!response || !criteria || !surfaceSlider) {
+      return [];
+    }
+
+    const surfaceMin = surfaceSlider.currentMin;
+    const surfaceMax = surfaceSlider.currentMax;
+    const terrainMin = terrainSlider?.currentMin ?? null;
+    const terrainMax = terrainSlider?.currentMax ?? null;
+
+    return response.points
+      .filter((point) => {
+        if (
+          !Number.isFinite(point.surfaceM2) ||
+          !Number.isFinite(point.salePrice) ||
+          !Number.isFinite(point.pricePerM2) ||
+          point.surfaceM2 <= 0 ||
+          point.salePrice <= 0
+        ) {
+          return false;
+        }
+
+        if (point.surfaceM2 < surfaceMin || point.surfaceM2 > surfaceMax) {
+          return false;
+        }
+
+        if (!criteria.isHouse || criteria.targetLandSurfaceM2 === null) {
+          return true;
+        }
+
+        if (
+          typeof point.landSurfaceM2 !== "number" ||
+          !Number.isFinite(point.landSurfaceM2) ||
+          point.landSurfaceM2 <= 0 ||
+          terrainMin === null ||
+          terrainMax === null
+        ) {
+          return false;
+        }
+
+        return point.landSurfaceM2 >= terrainMin && point.landSurfaceM2 <= terrainMax;
+      })
+      .map((point) => ({
+        point,
+        saleTimestamp: this.parseComparableSaleTimestamp(point.saleDate),
+      }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          point: PropertyComparablesResponse["points"][number];
+          saleTimestamp: number;
+        } => entry.saleTimestamp !== null,
+      )
+      .sort((a, b) => b.saleTimestamp - a.saleTimestamp)
+      .slice(0, 5)
+      .map((entry) => entry.point);
+  });
+  readonly comparablesChartDomains = computed(() => {
+    const points = this.filteredComparablePoints();
+    if (points.length === 0) {
+      return null;
+    }
+
+    const xValues = points.map((point) => point.surfaceM2);
+    const yValues = points.map((point) => point.salePrice);
+    const regression = this.comparablesFrontRegression();
+
+    let minX = Math.min(...xValues);
+    let maxX = Math.max(...xValues);
+    let minY = Math.min(...yValues);
+    let maxY = Math.max(...yValues);
+
+    if (
+      regression.slope !== null &&
+      Number.isFinite(regression.slope) &&
+      regression.intercept !== null &&
+      Number.isFinite(regression.intercept)
+    ) {
+      const yAtMinX = regression.slope * minX + regression.intercept;
+      const yAtMaxX = regression.slope * maxX + regression.intercept;
+      if (Number.isFinite(yAtMinX)) {
+        minY = Math.min(minY, yAtMinX);
+      }
+      if (Number.isFinite(yAtMaxX)) {
+        maxY = Math.max(maxY, yAtMaxX);
+      }
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+      return null;
+    }
+
+    if (minX === maxX) {
+      minX -= 1;
+      maxX += 1;
+    }
+
+    if (minY === maxY) {
+      minY -= 1000;
+      maxY += 1000;
+    }
+
+    const xSpan = Math.max(maxX - minX, 1);
+    const ySpan = Math.max(maxY - minY, 1000);
+    const xPadding = Math.max(xSpan * 0.05, 1);
+    const yPadding = Math.max(ySpan * 0.05, 1000);
 
     return {
       xDomain: {
-        min: this.roundComparable(Math.min(...xValues)),
-        max: this.roundComparable(Math.max(...xValues)),
+        min: this.roundComparable(minX - xPadding),
+        max: this.roundComparable(maxX + xPadding),
       },
       yDomain: {
-        min: this.roundComparable(Math.min(...yValues)),
-        max: this.roundComparable(Math.max(...yValues)),
+        min: this.roundComparable(minY - yPadding),
+        max: this.roundComparable(maxY + yPadding),
       },
     };
   });
@@ -371,7 +1006,23 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.comparables.set(null);
     this.comparablesError.set(null);
     this.comparablesLoading.set(false);
-    this.localRegression.set(null);
+    this.inseeIndicators.set(null);
+    this.inseeError.set(null);
+    this.inseeLoading.set(false);
+    this.comparableRadiusFilterM.set(null);
+    this.comparableSurfaceMinM2.set(null);
+    this.comparableSurfaceMaxM2.set(null);
+    this.comparableTerrainMinM2.set(null);
+    this.comparableTerrainMaxM2.set(null);
+    this.rentalMonthlyRent.set(null);
+    this.rentalHoldingYears.set(10);
+    this.rentalResalePrice.set(null);
+    this.latestSimilarRadiusFilterM.set(null);
+    this.latestSimilarSurfaceMinM2.set(null);
+    this.latestSimilarSurfaceMaxM2.set(null);
+    this.latestSimilarTerrainMinM2.set(null);
+    this.latestSimilarTerrainMaxM2.set(null);
+    this.salesPage.set(1);
     this.destroyComparablesChart();
 
     try {
@@ -385,11 +1036,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         ]);
 
       this.property.set(property);
+      this.initializeRentalProfitabilityInputs(property);
       this.messages.set(messagesResponse.items);
       this.files.set(filesResponse.items);
       this.prospects.set(prospectsResponse.items);
       this.visits.set(visitsResponse.items);
-      this.selectedComparableType.set(this.resolveComparableTypeFromProperty(property));
       this.categoryForms.set(this.createCategoryForms(property));
       void this.loadPropertyRisks();
     } catch (error) {
@@ -403,8 +1054,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   setMainTab(tab: MainTabId): void {
     this.activeMainTab.set(tab);
 
-    if (tab === "comparables" && !this.comparables() && !this.comparablesLoading()) {
-      void this.loadPropertyComparables();
+    if (tab === "valuation") {
+      if (!this.comparables() && !this.comparablesLoading()) {
+        void this.loadPropertyComparables();
+      }
+      if (!this.inseeIndicators() && !this.inseeLoading()) {
+        void this.loadInseeIndicators();
+      }
     }
   }
 
@@ -1212,6 +1868,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     try {
       const response = await this.propertyService.getRisks(this.propertyId);
       this.risks.set(response);
+      if (
+        this.activeMainTab() === "valuation" &&
+        !this.inseeIndicators() &&
+        !this.inseeLoading()
+      ) {
+        void this.loadInseeIndicators();
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Chargement des risques impossible.";
@@ -1221,7 +1884,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  async loadPropertyComparables(forceRefresh = false): Promise<void> {
+  async loadPropertyComparables(): Promise<void> {
     if (this.comparablesLoading()) {
       return;
     }
@@ -1230,19 +1893,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.comparablesError.set(null);
 
     try {
-      const response = await this.propertyService.getComparables(this.propertyId, {
-        propertyType: this.selectedComparableType(),
-        forceRefresh,
-      });
+      const property = this.property();
+      const propertyType = property ? this.resolveComparableTypeFromProperty(property) : undefined;
+      const response = await this.propertyService.getComparables(this.propertyId, { propertyType });
       this.comparables.set(response);
-      this.localRegression.set(
-        computeComparablesRegression(
-          response.points.map((point) => ({
-            surfaceM2: point.surfaceM2,
-            salePrice: point.salePrice,
-          })),
-        ),
-      );
+      this.initializeComparablesFilters(response);
       this.renderComparablesChart();
     } catch (error) {
       const message =
@@ -1253,24 +1908,299 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  async refreshComparables(): Promise<void> {
-    await this.loadPropertyComparables(true);
-  }
-
-  onComparableTypeChange(rawType: string): void {
-    const normalized = rawType.trim().toUpperCase();
-    const option = this.comparableTypeOptions.find((item) => item.value === normalized);
-    if (!option) {
+  async loadInseeIndicators(): Promise<void> {
+    if (this.inseeLoading()) {
       return;
     }
 
-    this.selectedComparableType.set(option.value);
-    this.comparables.set(null);
-    this.localRegression.set(null);
-    this.destroyComparablesChart();
-    if (this.isMainTabActive("comparables")) {
-      void this.loadPropertyComparables();
+    const property = this.property();
+    if (!property) {
+      return;
     }
+
+    this.inseeLoading.set(true);
+    this.inseeError.set(null);
+
+    try {
+      const response = await this.inseeCityService.getCityIndicators({
+        inseeCode: this.risks()?.location.inseeCode,
+        city: property.city,
+        postalCode: property.postalCode,
+      });
+      this.inseeIndicators.set(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Chargement des donnees INSEE impossible.";
+      this.inseeError.set(message);
+    } finally {
+      this.inseeLoading.set(false);
+    }
+  }
+
+  onRentalMonthlyRentChange(rawValue: string): void {
+    const parsed = this.parseOptionalNumber(rawValue);
+    if (parsed === null || parsed < 0) {
+      this.rentalMonthlyRent.set(null);
+      return;
+    }
+
+    this.rentalMonthlyRent.set(this.roundComparable(parsed));
+  }
+
+  onRentalHoldingYearsChange(rawValue: string): void {
+    const parsed = this.parseOptionalNumber(rawValue);
+    if (parsed === null || parsed < 1) {
+      this.rentalHoldingYears.set(null);
+      return;
+    }
+
+    this.rentalHoldingYears.set(Math.max(1, Math.floor(parsed)));
+  }
+
+  onRentalResalePriceChange(rawValue: string): void {
+    const parsed = this.parseOptionalNumber(rawValue);
+    if (parsed === null || parsed <= 0) {
+      this.rentalResalePrice.set(null);
+      return;
+    }
+
+    this.rentalResalePrice.set(this.roundComparable(parsed));
+  }
+
+  onComparableRadiusFilterChange(rawValue: string): void {
+    const domain = this.comparablesRadiusDomain();
+    if (!domain) {
+      this.comparableRadiusFilterM.set(null);
+      this.renderComparablesChart();
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    if (parsed === null) {
+      this.comparableRadiusFilterM.set(domain.max);
+      this.renderComparablesChart();
+      return;
+    }
+
+    const next = Math.min(Math.max(parsed, domain.min), domain.max);
+    this.comparableRadiusFilterM.set(this.roundComparable(next));
+    this.renderComparablesChart();
+  }
+
+  onComparableSurfaceMinChange(rawValue: string): void {
+    const domain = this.comparablesSurfaceDomain();
+    if (!domain) {
+      this.comparableSurfaceMinM2.set(null);
+      this.renderComparablesChart();
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMax = this.comparableSurfaceMaxM2() ?? domain.max;
+    if (parsed === null) {
+      this.comparableSurfaceMinM2.set(domain.min);
+      this.comparableSurfaceMaxM2.set(Math.max(currentMax, domain.min));
+      this.renderComparablesChart();
+      return;
+    }
+
+    const nextMin = this.roundComparable(Math.min(Math.max(parsed, domain.min), currentMax));
+    this.comparableSurfaceMinM2.set(nextMin);
+    this.comparableSurfaceMaxM2.set(Math.max(currentMax, nextMin));
+    this.renderComparablesChart();
+  }
+
+  onComparableSurfaceMaxChange(rawValue: string): void {
+    const domain = this.comparablesSurfaceDomain();
+    if (!domain) {
+      this.comparableSurfaceMaxM2.set(null);
+      this.renderComparablesChart();
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMin = this.comparableSurfaceMinM2() ?? domain.min;
+    if (parsed === null) {
+      this.comparableSurfaceMaxM2.set(domain.max);
+      this.comparableSurfaceMinM2.set(Math.min(currentMin, domain.max));
+      this.renderComparablesChart();
+      return;
+    }
+
+    const nextMax = this.roundComparable(Math.max(Math.min(parsed, domain.max), currentMin));
+    this.comparableSurfaceMaxM2.set(nextMax);
+    this.comparableSurfaceMinM2.set(Math.min(currentMin, nextMax));
+    this.renderComparablesChart();
+  }
+
+  onComparableTerrainMinChange(rawValue: string): void {
+    const domain = this.comparablesTerrainDomain();
+    if (!domain) {
+      this.comparableTerrainMinM2.set(null);
+      this.renderComparablesChart();
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMax = this.comparableTerrainMaxM2() ?? domain.max;
+    if (parsed === null) {
+      this.comparableTerrainMinM2.set(domain.min);
+      this.comparableTerrainMaxM2.set(Math.max(currentMax, domain.min));
+      this.renderComparablesChart();
+      return;
+    }
+
+    const nextMin = this.roundComparable(Math.min(Math.max(parsed, domain.min), currentMax));
+    this.comparableTerrainMinM2.set(nextMin);
+    this.comparableTerrainMaxM2.set(Math.max(currentMax, nextMin));
+    this.renderComparablesChart();
+  }
+
+  onComparableTerrainMaxChange(rawValue: string): void {
+    const domain = this.comparablesTerrainDomain();
+    if (!domain) {
+      this.comparableTerrainMaxM2.set(null);
+      this.renderComparablesChart();
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMin = this.comparableTerrainMinM2() ?? domain.min;
+    if (parsed === null) {
+      this.comparableTerrainMaxM2.set(domain.max);
+      this.comparableTerrainMinM2.set(Math.min(currentMin, domain.max));
+      this.renderComparablesChart();
+      return;
+    }
+
+    const nextMax = this.roundComparable(Math.max(Math.min(parsed, domain.max), currentMin));
+    this.comparableTerrainMaxM2.set(nextMax);
+    this.comparableTerrainMinM2.set(Math.min(currentMin, nextMax));
+    this.renderComparablesChart();
+  }
+
+  onLatestSimilarRadiusFilterChange(rawValue: string): void {
+    const domain = this.comparablesRadiusDomain();
+    if (!domain) {
+      this.latestSimilarRadiusFilterM.set(null);
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    if (parsed === null) {
+      this.latestSimilarRadiusFilterM.set(domain.max);
+      return;
+    }
+
+    const next = Math.min(Math.max(parsed, domain.min), domain.max);
+    this.latestSimilarRadiusFilterM.set(this.roundComparable(next));
+  }
+
+  onLatestSimilarSurfaceMinChange(rawValue: string): void {
+    const slider = this.latestSimilarSurfaceSlider();
+    if (!slider) {
+      this.latestSimilarSurfaceMinM2.set(null);
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMax = this.latestSimilarSurfaceMaxM2() ?? slider.currentMax;
+    if (parsed === null) {
+      this.latestSimilarSurfaceMinM2.set(slider.min);
+      this.latestSimilarSurfaceMaxM2.set(Math.max(currentMax, slider.min));
+      return;
+    }
+
+    const nextMin = this.roundComparable(Math.min(Math.max(parsed, slider.min), currentMax));
+    this.latestSimilarSurfaceMinM2.set(nextMin);
+    this.latestSimilarSurfaceMaxM2.set(Math.max(currentMax, nextMin));
+  }
+
+  onLatestSimilarSurfaceMaxChange(rawValue: string): void {
+    const slider = this.latestSimilarSurfaceSlider();
+    if (!slider) {
+      this.latestSimilarSurfaceMaxM2.set(null);
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMin = this.latestSimilarSurfaceMinM2() ?? slider.currentMin;
+    if (parsed === null) {
+      this.latestSimilarSurfaceMaxM2.set(slider.max);
+      this.latestSimilarSurfaceMinM2.set(Math.min(currentMin, slider.max));
+      return;
+    }
+
+    const nextMax = this.roundComparable(Math.max(Math.min(parsed, slider.max), currentMin));
+    this.latestSimilarSurfaceMaxM2.set(nextMax);
+    this.latestSimilarSurfaceMinM2.set(Math.min(currentMin, nextMax));
+  }
+
+  onLatestSimilarTerrainMinChange(rawValue: string): void {
+    const slider = this.latestSimilarTerrainSlider();
+    if (!slider) {
+      this.latestSimilarTerrainMinM2.set(null);
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMax = this.latestSimilarTerrainMaxM2() ?? slider.currentMax;
+    if (parsed === null) {
+      this.latestSimilarTerrainMinM2.set(slider.min);
+      this.latestSimilarTerrainMaxM2.set(Math.max(currentMax, slider.min));
+      return;
+    }
+
+    const nextMin = this.roundComparable(Math.min(Math.max(parsed, slider.min), currentMax));
+    this.latestSimilarTerrainMinM2.set(nextMin);
+    this.latestSimilarTerrainMaxM2.set(Math.max(currentMax, nextMin));
+  }
+
+  onLatestSimilarTerrainMaxChange(rawValue: string): void {
+    const slider = this.latestSimilarTerrainSlider();
+    if (!slider) {
+      this.latestSimilarTerrainMaxM2.set(null);
+      return;
+    }
+
+    const parsed = this.parseComparableFilterValue(rawValue);
+    const currentMin = this.latestSimilarTerrainMinM2() ?? slider.currentMin;
+    if (parsed === null) {
+      this.latestSimilarTerrainMaxM2.set(slider.max);
+      this.latestSimilarTerrainMinM2.set(Math.min(currentMin, slider.max));
+      return;
+    }
+
+    const nextMax = this.roundComparable(Math.max(Math.min(parsed, slider.max), currentMin));
+    this.latestSimilarTerrainMaxM2.set(nextMax);
+    this.latestSimilarTerrainMinM2.set(Math.min(currentMin, nextMax));
+  }
+
+  goToSalesPage(page: number): void {
+    const pagination = this.salesPagination();
+    const nextPage = Math.min(Math.max(Math.floor(page), 1), pagination.totalPages);
+    this.salesPage.set(nextPage);
+  }
+
+  goToPreviousSalesPage(): void {
+    this.goToSalesPage(this.salesPagination().page - 1);
+  }
+
+  goToNextSalesPage(): void {
+    this.goToSalesPage(this.salesPagination().page + 1);
+  }
+
+  sliderPercent(value: number | null, min: number, max: number): number | null {
+    if (value === null || !Number.isFinite(value)) {
+      return null;
+    }
+
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+      return 0;
+    }
+
+    const clamped = Math.min(Math.max(value, min), max);
+    return this.roundComparable(((clamped - min) / (max - min)) * 100);
   }
 
   comparablePricingLabel(value: PropertyComparablesResponse["subject"]["pricingPosition"]): string {
@@ -1279,7 +2209,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private renderComparablesChart(): void {
     const response = this.comparables();
-    if (!response || response.points.length === 0 || !this.comparablesChartCanvas) {
+    const chartDomains = this.comparablesChartDomains();
+    const filteredPoints = this.filteredComparablePoints();
+    if (!response || !chartDomains || filteredPoints.length === 0 || !this.comparablesChartCanvas) {
       this.destroyComparablesChart();
       return;
     }
@@ -1296,45 +2228,22 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const comparablePoints = response.points
-      .filter(
-        (point) =>
-          Number.isFinite(point.surfaceM2) &&
-          Number.isFinite(point.salePrice) &&
-          point.surfaceM2 > 0 &&
-          point.salePrice > 0,
-      )
-      .map((point) => ({
+    const comparablePoints: ComparableScatterPoint[] = filteredPoints.map((point) => ({
         x: point.surfaceM2,
         y: point.salePrice,
+        saleDate: point.saleDate,
+        landSurfaceM2: point.landSurfaceM2,
+        city: point.city,
+        postalCode: point.postalCode,
+        distanceM: point.distanceM,
       }));
 
-    if (comparablePoints.length === 0) {
-      this.destroyComparablesChart();
-      return;
-    }
-
-    const regression = this.localRegression() ?? response.regression;
-    const xValues = comparablePoints.map((point) => point.x);
-    const yValues = comparablePoints.map((point) => point.y);
-
-    let minX = Math.min(...xValues);
-    let maxX = Math.max(...xValues);
-    let minY = Math.min(...yValues);
-    let maxY = Math.max(...yValues);
-
-    if (minX === maxX) {
-      minX -= 1;
-      maxX += 1;
-    }
-
-    const xPadding = Math.max((maxX - minX) * 0.05, 1);
-    minX -= xPadding;
-    maxX += xPadding;
-
-    const datasets: ChartDataset<"scatter", ScatterDataPoint[]>[] = [
+    const regression = this.comparablesFrontRegression();
+    const minX = chartDomains.xDomain.min;
+    const maxX = chartDomains.xDomain.max;
+    const datasets: ChartDataset<"scatter", ComparableScatterPoint[]>[] = [
       {
-        label: "Comparables",
+        label: "Ventes",
         data: comparablePoints,
         showLine: false,
         pointRadius: 4,
@@ -1353,8 +2262,6 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       const yAtMax = regression.slope * maxX + regression.intercept;
 
       if (Number.isFinite(yAtMin) && Number.isFinite(yAtMax)) {
-        minY = Math.min(minY, yAtMin, yAtMax);
-        maxY = Math.max(maxY, yAtMin, yAtMax);
         datasets.push({
           label: "Droite affine",
           data: [
@@ -1371,17 +2278,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       }
     }
 
-    if (minY === maxY) {
-      minY -= 1;
-      maxY += 1;
-    }
-
-    const yPadding = Math.max((maxY - minY) * 0.05, 1000);
-    minY -= yPadding;
-    maxY += yPadding;
-
     this.destroyComparablesChart();
-    this.comparablesChart = new Chart<"scatter", ScatterDataPoint[]>(context, {
+    this.comparablesChart = new Chart<"scatter", ComparableScatterPoint[]>(context, {
       type: "scatter",
       data: {
         datasets,
@@ -1394,8 +2292,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         scales: {
           x: {
             type: "linear",
-            min: this.roundComparable(minX),
-            max: this.roundComparable(maxX),
+            min: chartDomains.xDomain.min,
+            max: chartDomains.xDomain.max,
             title: {
               display: true,
               text: "Surface (m²)",
@@ -1403,8 +2301,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
           },
           y: {
             type: "linear",
-            min: this.roundComparable(minY),
-            max: this.roundComparable(maxY),
+            min: chartDomains.yDomain.min,
+            max: chartDomains.yDomain.max,
             title: {
               display: true,
               text: "Prix (€)",
@@ -1416,14 +2314,17 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
             display: true,
           },
           tooltip: {
+            filter: (context) => context.dataset.label !== "Droite affine",
             callbacks: {
+              title: () => "",
               label: (context) => {
-                const raw = context.raw as ScatterDataPoint | undefined;
+                const raw = context.raw as ComparableScatterPoint | undefined;
                 const surface = typeof raw?.x === "number" ? raw.x : null;
                 const price = typeof raw?.y === "number" ? raw.y : null;
+                const lines: string[] = [];
 
                 if (surface === null || price === null) {
-                  return context.dataset.label ?? "";
+                  return lines;
                 }
 
                 const formattedSurface = new Intl.NumberFormat("fr-FR", {
@@ -1432,7 +2333,40 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
                 const formattedPrice = new Intl.NumberFormat("fr-FR", {
                   maximumFractionDigits: 0,
                 }).format(price);
-                return `${context.dataset.label ?? "Point"}: ${formattedSurface} m² / ${formattedPrice} €`;
+                lines.push(`Surface: ${formattedSurface} m²`);
+                lines.push(`Prix: ${formattedPrice} €`);
+
+                const saleDate = this.formatComparableSaleDate(raw?.saleDate);
+                if (saleDate) {
+                  lines.push(`Date de vente: ${saleDate}`);
+                }
+
+                if (
+                  response.propertyType === "MAISON" &&
+                  typeof raw?.landSurfaceM2 === "number" &&
+                  Number.isFinite(raw.landSurfaceM2)
+                ) {
+                  lines.push(
+                    `Surface terrain: ${new Intl.NumberFormat("fr-FR", {
+                      maximumFractionDigits: 0,
+                    }).format(raw.landSurfaceM2)} m²`,
+                  );
+                }
+
+                if (typeof raw?.distanceM === "number" && Number.isFinite(raw.distanceM)) {
+                  lines.push(
+                    `Distance: ${new Intl.NumberFormat("fr-FR", {
+                      maximumFractionDigits: 0,
+                    }).format(raw.distanceM)} m`,
+                  );
+                }
+
+                const cityLabel = [raw?.postalCode, raw?.city].filter(Boolean).join(" ");
+                if (cityLabel) {
+                  lines.push(`Commune: ${cityLabel}`);
+                }
+
+                return lines;
               },
             },
           },
@@ -1454,12 +2388,421 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return Number(value.toFixed(2));
   }
 
+  private parseComparableFilterValue(rawValue: string): number | null {
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  private computeMedian(values: number[]): number | null {
+    if (values.length === 0) {
+      return null;
+    }
+
+    const sorted = values
+      .filter((value) => Number.isFinite(value))
+      .slice()
+      .sort((a, b) => a - b);
+    if (sorted.length === 0) {
+      return null;
+    }
+
+    const middle = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+      return this.roundComparable((sorted[middle - 1] + sorted[middle]) / 2);
+    }
+
+    return this.roundComparable(sorted[middle]);
+  }
+
+  private computePredictedComparablePrice(input: {
+    surfaceM2: number | null;
+    slope: number | null;
+    intercept: number | null;
+  }): number | null {
+    if (
+      input.surfaceM2 === null ||
+      input.slope === null ||
+      input.intercept === null ||
+      !Number.isFinite(input.surfaceM2) ||
+      !Number.isFinite(input.slope) ||
+      !Number.isFinite(input.intercept) ||
+      input.surfaceM2 <= 0
+    ) {
+      return null;
+    }
+
+    const predictedPrice = input.slope * input.surfaceM2 + input.intercept;
+    if (!Number.isFinite(predictedPrice) || predictedPrice <= 0) {
+      return null;
+    }
+
+    return this.roundComparable(predictedPrice);
+  }
+
+  private initializeRentalProfitabilityInputs(property: PropertyResponse): void {
+    const financeDetails = this.getCategoryDetails(property, "finance");
+    const defaultMonthlyRent =
+      this.parsePositiveNumber(financeDetails["monthlyRent"]) ??
+      this.parsePositiveNumber(financeDetails["estimatedRentalValue"]);
+    const defaultResalePrice = this.resolveRentalPurchasePriceFromProperty(property);
+
+    this.rentalMonthlyRent.set(defaultMonthlyRent);
+    this.rentalHoldingYears.set(10);
+    this.rentalResalePrice.set(defaultResalePrice);
+  }
+
+  private resolveRentalPurchasePrice(): number | null {
+    const property = this.property();
+    if (!property) {
+      return null;
+    }
+
+    return this.resolveRentalPurchasePriceFromProperty(property);
+  }
+
+  private resolveRentalPurchasePriceFromProperty(property: PropertyResponse): number | null {
+    const directPrice = this.parsePositiveNumber(property.price);
+    if (directPrice !== null) {
+      return directPrice;
+    }
+
+    const financeDetails = this.getCategoryDetails(property, "finance");
+    const priceFromFinance =
+      this.parsePositiveNumber(financeDetails["salePriceTtc"]) ??
+      this.parsePositiveNumber(financeDetails["netSellerPrice"]);
+    if (priceFromFinance !== null) {
+      return priceFromFinance;
+    }
+
+    return this.parsePositiveNumber(this.comparables()?.subject.askingPrice);
+  }
+
+  private resolveRentalAnnualPropertyTax(): number {
+    const property = this.property();
+    if (!property) {
+      return 0;
+    }
+
+    const financeDetails = this.getCategoryDetails(property, "finance");
+    return this.parsePositiveNumber(financeDetails["propertyTax"]) ?? 0;
+  }
+
+  private resolveRentalAnnualCoproFees(): number {
+    const property = this.property();
+    if (!property) {
+      return 0;
+    }
+
+    const financeDetails = this.getCategoryDetails(property, "finance");
+    const annualChargesEstimate = this.parsePositiveNumber(financeDetails["annualChargesEstimate"]);
+    if (annualChargesEstimate !== null) {
+      return annualChargesEstimate;
+    }
+
+    const coproDetails = this.getCategoryDetails(property, "copropriete");
+    const monthlyCharges =
+      this.parsePositiveNumber(coproDetails["monthlyCharges"]) ??
+      this.parsePositiveNumber(financeDetails["rentalCharges"]);
+    if (monthlyCharges === null) {
+      return 0;
+    }
+
+    return this.roundComparable(monthlyCharges * 12);
+  }
+
+  private computeIrr(cashflows: number[]): number | null {
+    if (cashflows.length < 2) {
+      return null;
+    }
+
+    const hasPositive = cashflows.some((value) => value > 0);
+    const hasNegative = cashflows.some((value) => value < 0);
+    if (!hasPositive || !hasNegative) {
+      return null;
+    }
+
+    const npv = (rate: number): number => {
+      if (rate <= -1) {
+        return Number.NaN;
+      }
+
+      return cashflows.reduce((total, cashflow, yearIndex) => {
+        return total + cashflow / (1 + rate) ** yearIndex;
+      }, 0);
+    };
+
+    const minRate = -0.95;
+    const maxRate = 10;
+    const scanSteps = 400;
+    let lowerRate: number | null = null;
+    let upperRate: number | null = null;
+    let previousRate = minRate;
+    let previousNpv = npv(previousRate);
+    if (!Number.isFinite(previousNpv)) {
+      return null;
+    }
+
+    for (let step = 1; step <= scanSteps; step += 1) {
+      const currentRate = minRate + ((maxRate - minRate) * step) / scanSteps;
+      const currentNpv = npv(currentRate);
+      if (!Number.isFinite(currentNpv)) {
+        continue;
+      }
+
+      if (previousNpv === 0) {
+        return previousRate;
+      }
+
+      if (currentNpv === 0) {
+        return currentRate;
+      }
+
+      if (previousNpv * currentNpv < 0) {
+        lowerRate = previousRate;
+        upperRate = currentRate;
+        break;
+      }
+
+      previousRate = currentRate;
+      previousNpv = currentNpv;
+    }
+
+    if (lowerRate === null || upperRate === null) {
+      return null;
+    }
+
+    let low = lowerRate;
+    let high = upperRate;
+    let npvLow = npv(low);
+    if (!Number.isFinite(npvLow)) {
+      return null;
+    }
+
+    for (let iteration = 0; iteration < 80; iteration += 1) {
+      const mid = (low + high) / 2;
+      const npvMid = npv(mid);
+      if (!Number.isFinite(npvMid)) {
+        return null;
+      }
+
+      if (Math.abs(npvMid) < 1e-7) {
+        return mid;
+      }
+
+      if (npvLow * npvMid <= 0) {
+        high = mid;
+      } else {
+        low = mid;
+        npvLow = npvMid;
+      }
+    }
+
+    return (low + high) / 2;
+  }
+
+  private resolveComparableTargetSurfaceM2(response: PropertyComparablesResponse): number | null {
+    const subjectSurface = this.parsePositiveNumber(response.subject.surfaceM2);
+    if (subjectSurface !== null) {
+      return subjectSurface;
+    }
+
+    return this.readPropertyCharacteristicNumber("livingArea");
+  }
+
+  private resolveComparableTargetLandSurfaceM2(): number | null {
+    return this.readPropertyCharacteristicNumber("landArea");
+  }
+
+  private readPropertyCharacteristicNumber(fieldKey: string): number | null {
+    const property = this.property();
+    if (!property || !this.isRecord(property.details)) {
+      return null;
+    }
+
+    const details = property.details;
+    const characteristics = this.isRecord(details["characteristics"]) ? details["characteristics"] : null;
+    if (!characteristics) {
+      return null;
+    }
+
+    return this.parsePositiveNumber(characteristics[fieldKey]);
+  }
+
+  private parseOptionalNumber(rawValue: string): number | null {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const parsed = Number(trimmed.replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  private parsePositiveNumber(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      const parsed = Number(value.replace(",", "."));
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  private parseComparableSaleTimestamp(value: string | undefined): number | null {
+    if (!value) {
+      return null;
+    }
+
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
+  private resolveComparablesSurfaceDomain(
+    response: PropertyComparablesResponse,
+  ): { min: number; max: number } | null {
+    const surfaces = response.points
+      .map((point) => point.surfaceM2)
+      .filter((value): value is number => Number.isFinite(value) && value > 0);
+
+    if (surfaces.length === 0) {
+      return null;
+    }
+
+    const dataMin = Math.min(...surfaces);
+    const dataMax = Math.max(...surfaces);
+    let domainMin = dataMin;
+    let domainMax = dataMax;
+
+    const targetSurface = this.resolveComparableTargetSurfaceM2(response);
+    if (targetSurface !== null) {
+      const targetMin = targetSurface / 2;
+      const targetMax = targetSurface * 2;
+      const boundedMin = Math.max(dataMin, targetMin);
+      const boundedMax = Math.min(dataMax, targetMax);
+      if (boundedMin <= boundedMax) {
+        domainMin = boundedMin;
+        domainMax = boundedMax;
+      }
+    }
+
+    return {
+      min: this.roundComparable(domainMin),
+      max: this.roundComparable(domainMax),
+    };
+  }
+
+  private formatComparableSaleDate(value: string | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  }
+
+  private initializeComparablesFilters(response: PropertyComparablesResponse): void {
+    const radiusDomain = response.points
+      .map((point) => point.distanceM)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+    const radiusMax =
+      radiusDomain.length > 0
+        ? this.roundComparable(Math.max(...radiusDomain))
+        : Number.isFinite(response.search.finalRadiusM) && response.search.finalRadiusM > 0
+          ? this.roundComparable(response.search.finalRadiusM)
+          : null;
+    this.comparableRadiusFilterM.set(radiusMax);
+    this.latestSimilarRadiusFilterM.set(radiusMax);
+
+    const surfaceDomain = this.resolveComparablesSurfaceDomain(response);
+    if (surfaceDomain) {
+      this.comparableSurfaceMinM2.set(surfaceDomain.min);
+      this.comparableSurfaceMaxM2.set(surfaceDomain.max);
+
+      const targetSurfaceM2 = this.resolveComparableTargetSurfaceM2(response);
+      const rawLatestMin = targetSurfaceM2 === null ? surfaceDomain.min : targetSurfaceM2 * 0.95;
+      const rawLatestMax = targetSurfaceM2 === null ? surfaceDomain.max : targetSurfaceM2 * 1.05;
+      const latestMin = this.roundComparable(
+        Math.min(Math.max(rawLatestMin, surfaceDomain.min), surfaceDomain.max),
+      );
+      const latestMax = this.roundComparable(
+        Math.max(Math.min(rawLatestMax, surfaceDomain.max), latestMin),
+      );
+      this.latestSimilarSurfaceMinM2.set(latestMin);
+      this.latestSimilarSurfaceMaxM2.set(latestMax);
+    } else {
+      this.comparableSurfaceMinM2.set(null);
+      this.comparableSurfaceMaxM2.set(null);
+      this.latestSimilarSurfaceMinM2.set(null);
+      this.latestSimilarSurfaceMaxM2.set(null);
+    }
+
+    if (response.propertyType !== "MAISON") {
+      this.comparableTerrainMinM2.set(null);
+      this.comparableTerrainMaxM2.set(null);
+      this.latestSimilarTerrainMinM2.set(null);
+      this.latestSimilarTerrainMaxM2.set(null);
+      return;
+    }
+
+    const terrainValues = response.points
+      .map((point) => point.landSurfaceM2)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+
+    if (terrainValues.length === 0) {
+      this.comparableTerrainMinM2.set(null);
+      this.comparableTerrainMaxM2.set(null);
+      this.latestSimilarTerrainMinM2.set(null);
+      this.latestSimilarTerrainMaxM2.set(null);
+      return;
+    }
+
+    const terrainDomainMin = this.roundComparable(Math.min(...terrainValues));
+    const terrainDomainMax = this.roundComparable(Math.max(...terrainValues));
+    this.comparableTerrainMinM2.set(terrainDomainMin);
+    this.comparableTerrainMaxM2.set(terrainDomainMax);
+
+    const targetLandSurfaceM2 = this.resolveComparableTargetLandSurfaceM2();
+    const rawLatestTerrainMin =
+      targetLandSurfaceM2 === null ? terrainDomainMin : targetLandSurfaceM2 * 0.8;
+    const rawLatestTerrainMax =
+      targetLandSurfaceM2 === null ? terrainDomainMax : targetLandSurfaceM2 * 1.2;
+    const latestTerrainMin = this.roundComparable(
+      Math.min(Math.max(rawLatestTerrainMin, terrainDomainMin), terrainDomainMax),
+    );
+    const latestTerrainMax = this.roundComparable(
+      Math.max(Math.min(rawLatestTerrainMax, terrainDomainMax), latestTerrainMin),
+    );
+    this.latestSimilarTerrainMinM2.set(latestTerrainMin);
+    this.latestSimilarTerrainMaxM2.set(latestTerrainMax);
+  }
+
   private resolveComparableTypeFromProperty(property: PropertyResponse): ComparablePropertyType {
     const details = property.details ?? {};
     const general = this.isRecord(details["general"]) ? details["general"] : {};
     const rawType = typeof general["propertyType"] === "string" ? general["propertyType"] : "";
     const normalized = rawType.trim().toUpperCase();
-    const match = this.comparableTypeOptions.find((option) => option.value === normalized);
+    const match = COMPARABLE_TYPE_OPTIONS.find((option) => option.value === normalized);
     return match?.value ?? "APPARTEMENT";
   }
 

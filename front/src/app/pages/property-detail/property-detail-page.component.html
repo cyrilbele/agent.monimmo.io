@@ -13,11 +13,15 @@
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Fiche bien</p>
-            <h2 id="property-detail-title" class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+            <h2
+              id="property-detail-title"
+              class="mt-2 text-3xl font-semibold tracking-tight text-slate-900"
+            >
               {{ property.title }}
             </h2>
             <p class="mt-1 text-sm text-slate-500">
-              {{ property.address || "Adresse non renseignee" }}, {{ property.postalCode }} {{ property.city }}
+              {{ property.address || 'Adresse non renseignee' }}, {{ property.postalCode }}
+              {{ property.city }}
             </p>
           </div>
 
@@ -30,11 +34,18 @@
               Creer un vocal
             </button>
 
-            <a routerLink="/app/kanban" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+            <a
+              routerLink="/app/kanban"
+              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
               Retour pipeline
             </a>
 
-            <button type="button" class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white" disabled>
+            <button
+              type="button"
+              class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
+              disabled
+            >
               {{ statusLabels[property.status] }}
             </button>
 
@@ -74,13 +85,20 @@
         </div>
 
         @if (requestFeedback()) {
-          <p class="mt-4 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+          <p
+            class="mt-4 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+            role="status"
+            aria-live="polite"
+          >
             {{ requestFeedback() }}
           </p>
         }
       </header>
 
-      <nav class="panel flex flex-wrap items-center gap-2 p-3" aria-label="Sections du dossier bien">
+      <nav
+        class="panel flex flex-wrap items-center gap-2 p-3"
+        aria-label="Sections du dossier bien"
+      >
         <button
           type="button"
           class="rounded-xl px-3 py-2 text-sm font-semibold"
@@ -149,27 +167,14 @@
         <button
           type="button"
           class="rounded-xl px-3 py-2 text-sm font-semibold"
-          [class.bg-blue-600]="isMainTabActive('comparables')"
-          [class.text-white]="isMainTabActive('comparables')"
-          [class.bg-slate-100]="!isMainTabActive('comparables')"
-          [class.text-slate-700]="!isMainTabActive('comparables')"
-          [attr.aria-pressed]="isMainTabActive('comparables') ? 'true' : 'false'"
-          (click)="setMainTab('comparables')"
+          [class.bg-blue-600]="isMainTabActive('valuation')"
+          [class.text-white]="isMainTabActive('valuation')"
+          [class.bg-slate-100]="!isMainTabActive('valuation')"
+          [class.text-slate-700]="!isMainTabActive('valuation')"
+          [attr.aria-pressed]="isMainTabActive('valuation') ? 'true' : 'false'"
+          (click)="setMainTab('valuation')"
         >
-          Comparables
-        </button>
-
-        <button
-          type="button"
-          class="rounded-xl px-3 py-2 text-sm font-semibold"
-          [class.bg-blue-600]="isMainTabActive('risks')"
-          [class.text-white]="isMainTabActive('risks')"
-          [class.bg-slate-100]="!isMainTabActive('risks')"
-          [class.text-slate-700]="!isMainTabActive('risks')"
-          [attr.aria-pressed]="isMainTabActive('risks') ? 'true' : 'false'"
-          (click)="setMainTab('risks')"
-        >
-          Risques
+          Valorisation
         </button>
       </nav>
 
@@ -192,7 +197,9 @@
           </div>
 
           @if (activePropertyCategoryDefinition(); as category) {
-            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4">
+            <div
+              class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4"
+            >
               <h3 class="text-xl font-semibold text-slate-900">{{ category.label }}</h3>
 
               <div class="flex items-center gap-2">
@@ -220,7 +227,7 @@
                     [disabled]="patchPending()"
                     (click)="saveActivePropertyCategory()"
                   >
-                    {{ patchPending() ? "Enregistrement..." : "Enregistrer" }}
+                    {{ patchPending() ? 'Enregistrement...' : 'Enregistrer' }}
                   </button>
                 }
               </div>
@@ -231,16 +238,25 @@
                 @for (field of category.fields; track field.key) {
                   @if (isEditingActiveCategory() || hasFieldValue(category.id, field)) {
                     <article
-                      [class]="field.type === 'textarea' ? 'rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2' : 'rounded-xl border border-slate-200 bg-slate-50 p-3'"
+                      [class]="
+                        field.type === 'textarea'
+                          ? 'rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2'
+                          : 'rounded-xl border border-slate-200 bg-slate-50 p-3'
+                      "
                     >
-                      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{{ field.label }}</p>
+                      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        {{ field.label }}
+                      </p>
 
                       @if (isEditingActiveCategory()) {
                         @switch (field.type) {
-                          @case ("textarea") {
-                            <textarea class="field-input mt-2 min-h-24" [formControlName]="field.key"></textarea>
+                          @case ('textarea') {
+                            <textarea
+                              class="field-input mt-2 min-h-24"
+                              [formControlName]="field.key"
+                            ></textarea>
                           }
-                          @case ("select") {
+                          @case ('select') {
                             <select class="field-input mt-2" [formControlName]="field.key">
                               <option value="">Non renseigne</option>
                               @for (option of field.options ?? []; track option.value) {
@@ -248,15 +264,25 @@
                               }
                             </select>
                           }
-                          @case ("date") {
-                            <input class="field-input mt-2" type="date" [formControlName]="field.key" />
+                          @case ('date') {
+                            <input
+                              class="field-input mt-2"
+                              type="date"
+                              [formControlName]="field.key"
+                            />
                           }
                           @default {
-                            <input class="field-input mt-2" type="text" [formControlName]="field.key" />
+                            <input
+                              class="field-input mt-2"
+                              type="text"
+                              [formControlName]="field.key"
+                            />
                           }
                         }
                       } @else {
-                        <p class="mt-2 text-sm text-slate-900">{{ fieldDisplayValue(category.id, field) }}</p>
+                        <p class="mt-2 text-sm text-slate-900">
+                          {{ fieldDisplayValue(category.id, field) }}
+                        </p>
                       }
                     </article>
                   }
@@ -299,7 +325,9 @@
           @if (activeDocumentTabDefinition(); as tab) {
             <div class="grid gap-4 lg:grid-cols-2">
               <article class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Documents attendus</h4>
+                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Documents attendus
+                </h4>
                 <ul class="mt-3 space-y-2 text-sm text-slate-700">
                   @for (expectedItem of tab.expected; track expectedItem) {
                     <li class="flex items-start gap-2">
@@ -311,7 +339,9 @@
               </article>
 
               <article class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Documents uploades</h4>
+                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Documents uploades
+                </h4>
 
                 @if (documentsForActiveTab().length === 0) {
                   <p class="mt-3 text-sm text-slate-500">Aucun document dans cette categorie.</p>
@@ -321,7 +351,7 @@
                       <article class="rounded-lg border border-slate-200 bg-white p-3">
                         <p class="text-sm font-semibold text-slate-900">{{ file.fileName }}</p>
                         <p class="text-xs uppercase tracking-[0.1em] text-slate-500">
-                          {{ file.typeDocument || "Type inconnu" }} · {{ formatSize(file.size) }}
+                          {{ file.typeDocument || 'Type inconnu' }} · {{ formatSize(file.size) }}
                         </p>
                         <p class="mt-1 text-xs text-slate-500">Statut: {{ file.status }}</p>
                       </article>
@@ -333,7 +363,11 @@
           }
 
           @if (uploadFeedback()) {
-            <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+            <p
+              class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+              role="status"
+              aria-live="polite"
+            >
               {{ uploadFeedback() }}
             </p>
           }
@@ -354,7 +388,11 @@
           </div>
 
           @if (prospectFeedback()) {
-            <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+            <p
+              class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+              role="status"
+              aria-live="polite"
+            >
               {{ prospectFeedback() }}
             </p>
           }
@@ -364,7 +402,9 @@
           } @else {
             <section class="overflow-x-auto rounded-xl border border-slate-200">
               <table class="min-w-full border-collapse text-sm">
-                <thead class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                <thead
+                  class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600"
+                >
                   <tr>
                     <th class="px-4 py-3">Nom</th>
                     <th class="px-4 py-3">Email</th>
@@ -376,13 +416,24 @@
                   @for (prospect of prospects(); track prospect.id) {
                     <tr class="border-t border-slate-200 align-top">
                       <td class="px-4 py-3">
-                        <p class="font-semibold text-slate-900">{{ prospectDisplayName(prospect) }}</p>
-                        <p class="mt-1 text-xs text-slate-500">{{ prospectRelationLabel(prospect.relationRole) }}</p>
+                        <p class="font-semibold text-slate-900">
+                          {{ prospectDisplayName(prospect) }}
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500">
+                          {{ prospectRelationLabel(prospect.relationRole) }}
+                        </p>
                       </td>
-                      <td class="px-4 py-3 text-slate-700">{{ prospect.email || "Non renseigne" }}</td>
-                      <td class="px-4 py-3 text-slate-700">{{ prospect.phone || "Non renseigne" }}</td>
+                      <td class="px-4 py-3 text-slate-700">
+                        {{ prospect.email || 'Non renseigne' }}
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">
+                        {{ prospect.phone || 'Non renseigne' }}
+                      </td>
                       <td class="px-4 py-3">
-                        <a [routerLink]="['/app/utilisateurs', prospect.userId]" class="text-slate-800 transition hover:text-blue-700">
+                        <a
+                          [routerLink]="['/app/utilisateurs', prospect.userId]"
+                          class="text-slate-800 transition hover:text-blue-700"
+                        >
                           Voir utilisateur
                         </a>
                       </td>
@@ -413,7 +464,9 @@
           } @else {
             <section class="overflow-x-auto rounded-xl border border-slate-200">
               <table class="min-w-full border-collapse text-sm">
-                <thead class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                <thead
+                  class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600"
+                >
                   <tr>
                     <th class="px-4 py-3">Prospect</th>
                     <th class="px-4 py-3">Debut</th>
@@ -425,12 +478,18 @@
                   @for (visit of sortedVisits(); track visit.id) {
                     <tr class="border-t border-slate-200 align-top">
                       <td class="px-4 py-3">
-                        <p class="font-semibold text-slate-900">{{ visit.prospectFirstName }} {{ visit.prospectLastName }}</p>
-                        <p class="mt-1 text-xs text-slate-500">ID prospect: {{ visit.prospectUserId }}</p>
+                        <p class="font-semibold text-slate-900">
+                          {{ visit.prospectFirstName }} {{ visit.prospectLastName }}
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500">
+                          ID prospect: {{ visit.prospectUserId }}
+                        </p>
                       </td>
                       <td class="px-4 py-3 text-slate-700">{{ visit.startsAt | date: 'short' }}</td>
                       <td class="px-4 py-3 text-slate-700">{{ visit.endsAt | date: 'short' }}</td>
-                      <td class="px-4 py-3 text-slate-700">{{ visit.prospectEmail || visit.prospectPhone || "Non renseigne" }}</td>
+                      <td class="px-4 py-3 text-slate-700">
+                        {{ visit.prospectEmail || visit.prospectPhone || 'Non renseigne' }}
+                      </td>
                     </tr>
                   }
                 </tbody>
@@ -453,9 +512,13 @@
                   <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
                     {{ message.channel }} · {{ message.receivedAt | date: 'short' }}
                   </p>
-                  <p class="mt-1 font-semibold text-slate-900">{{ message.subject || "Sans objet" }}</p>
+                  <p class="mt-1 font-semibold text-slate-900">
+                    {{ message.subject || 'Sans objet' }}
+                  </p>
                   <p class="text-sm text-slate-600">{{ message.body }}</p>
-                  <p class="mt-1 text-xs font-semibold text-slate-500">IA: {{ message.aiStatus }}</p>
+                  <p class="mt-1 text-xs font-semibold text-slate-500">
+                    IA: {{ message.aiStatus }}
+                  </p>
                 </article>
               }
             </div>
@@ -463,36 +526,53 @@
         </section>
       }
 
-      @if (isMainTabActive('comparables')) {
+      @if (isMainTabActive('valuation')) {
         <section class="panel space-y-4 p-5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="text-xl font-semibold text-slate-900">Ventes comparables (DVF)</h3>
-            <div class="flex flex-wrap items-center gap-2">
-              <label class="text-sm font-semibold text-slate-700" for="comparables-type">Type de bien</label>
-              <select
-                id="comparables-type"
-                class="field-input min-w-52"
-                [value]="selectedComparableType()"
-                (change)="onComparableTypeChange($any($event.target).value)"
-              >
-                @for (option of comparableTypeOptions; track option.value) {
-                  <option [value]="option.value">{{ option.label }}</option>
-                }
-              </select>
-
-              <button
-                type="button"
-                class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                [disabled]="comparablesLoading()"
-                (click)="refreshComparables()"
-              >
-                {{ comparablesLoading() ? "Chargement..." : "Rafraichir" }}
-              </button>
+          <article class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Georisques
+              </h4>
+              @if (risks(); as risksResponse) {
+                <div class="flex flex-wrap items-center gap-2">
+                  @if (risksResponse.reportPdfUrl) {
+                    <a
+                      [href]="risksResponse.reportPdfUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      Ouvrir le rapport PDF
+                    </a>
+                  }
+                  <a
+                    [href]="risksResponse.georisquesUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Ouvrir Georisques
+                  </a>
+                </div>
+              }
             </div>
-          </div>
+
+            @if (risksLoading()) {
+              <p class="mt-3 text-sm text-slate-600">Chargement des risques...</p>
+            } @else if (risksError()) {
+              <p
+                class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              >
+                {{ risksError() }}
+              </p>
+            } @else if (risks()) {
+            } @else {
+              <p class="mt-3 text-sm text-slate-600">Les risques ne sont pas encore charges.</p>
+            }
+          </article>
 
           @if (comparablesLoading()) {
-            <p class="text-sm text-slate-600">Recherche des ventes comparables en cours...</p>
+            <p class="text-sm text-slate-600">Recherche des ventes en cours...</p>
           } @else if (comparablesError()) {
             <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {{ comparablesError() }}
@@ -500,193 +580,623 @@
           } @else if (comparables(); as comparablesResponse) {
             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Comparables</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ comparablesResponse.summary.count }}</p>
-              </article>
-              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Rayon final</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ comparablesResponse.search.finalRadiusM | number: "1.0-0" }} m</p>
-              </article>
-              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Mediane prix / m2</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Nb ventes
+                </p>
                 <p class="mt-2 text-2xl font-semibold text-slate-900">
-                  @if (comparablesResponse.summary.medianPricePerM2 !== null) {
-                    {{ comparablesResponse.summary.medianPricePerM2 | number: "1.0-0" }} €/m²
+                  {{ comparablesDisplayedSummary().count }}
+                </p>
+              </article>
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Mediane prix / m2
+                </p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">
+                  @if (comparablesDisplayedSummary().medianPricePerM2 !== null) {
+                    {{ comparablesDisplayedSummary().medianPricePerM2 | number: '1.0-0' }} €/m²
                   } @else {
                     N/A
                   }
                 </p>
               </article>
               <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Position prix</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Prix predit
+                </p>
                 <p class="mt-2 text-2xl font-semibold text-slate-900">
-                  {{ comparablePricingLabel(comparablesResponse.subject.pricingPosition) }}
+                  @if (comparablesFrontPricing(); as frontPricing) {
+                    @if (frontPricing.predictedPrice !== null) {
+                      {{ frontPricing.predictedPrice | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  } @else {
+                    N/A
+                  }
+                </p>
+              </article>
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Position prix
+                </p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">
+                  @if (comparablesFrontPricing(); as frontPricing) {
+                    {{ comparablePricingLabel(frontPricing.pricingPosition) }}
+                  } @else {
+                    N/A
+                  }
+                </p>
+                <p class="mt-3 text-sm text-slate-700">
+                  Prix demandé:
+                  <strong>
+                    @if (comparablesResponse.subject.askingPrice !== null) {
+                      {{ comparablesResponse.subject.askingPrice | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </strong>
+                </p>
+                <p class="text-sm text-slate-700">
+                  Ecart:
+                  <strong>
+                    @if (comparablesFrontPricing(); as frontPricing) {
+                      @if (frontPricing.deviationPct !== null) {
+                        {{ frontPricing.deviationPct | number: '1.0-1' }} %
+                      } @else {
+                        N/A
+                      }
+                    } @else {
+                      N/A
+                    }
+                  </strong>
                 </p>
               </article>
             </div>
 
-            <div class="grid gap-4 xl:grid-cols-2">
-              <article class="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Nuage surface/prix + droite affine
-                </h4>
-
-                @if (comparablesResponse.points.length > 0) {
-                  <div class="mt-3 h-[360px] w-full">
-                    <canvas #comparablesChartCanvas class="h-full w-full"></canvas>
+            <article class="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Filtres comparables
+              </h4>
+              <div class="mt-3 grid gap-4 lg:grid-cols-2">
+                @if (comparablesSurfaceSlider(); as surfaceSlider) {
+                  <div>
+                    <div class="flex items-center justify-between gap-2 text-sm text-slate-700">
+                      <span>Surface bien</span>
+                      <strong>
+                        {{ surfaceSlider.currentMin | number: '1.0-0' }} -
+                        {{ surfaceSlider.currentMax | number: '1.0-0' }} m²
+                      </strong>
+                    </div>
+                    <div class="dual-range mt-3">
+                      <div class="dual-range__track"></div>
+                      <div
+                        class="dual-range__selection"
+                        [style.left.%]="surfaceSlider.minPercent"
+                        [style.width.%]="surfaceSlider.rangePercent"
+                      ></div>
+                      <span
+                        class="range-marker"
+                        [class.range-marker--hidden]="
+                          sliderPercent(
+                            comparableTargetSurfaceM2(),
+                            surfaceSlider.min,
+                            surfaceSlider.max
+                          ) === null
+                        "
+                        [style.left.%]="
+                          sliderPercent(
+                            comparableTargetSurfaceM2(),
+                            surfaceSlider.min,
+                            surfaceSlider.max
+                          )
+                        "
+                        title="Position du bien"
+                        aria-hidden="true"
+                      ></span>
+                      <input
+                        class="dual-range__input dual-range__input--min"
+                        type="range"
+                        [min]="surfaceSlider.min"
+                        [max]="surfaceSlider.max"
+                        [step]="1"
+                        [value]="surfaceSlider.currentMin"
+                        (input)="onComparableSurfaceMinChange($any($event.target).value)"
+                      />
+                      <input
+                        class="dual-range__input dual-range__input--max"
+                        type="range"
+                        [min]="surfaceSlider.min"
+                        [max]="surfaceSlider.max"
+                        [step]="1"
+                        [value]="surfaceSlider.currentMax"
+                        (input)="onComparableSurfaceMaxChange($any($event.target).value)"
+                      />
+                    </div>
                   </div>
+                }
 
-                  @if (comparablesChartDomains(); as chartDomains) {
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                      <span>Surface min: {{ chartDomains.xDomain.min | number: "1.0-0" }} m²</span>
-                      <span>Surface max: {{ chartDomains.xDomain.max | number: "1.0-0" }} m²</span>
-                      <span>Prix min: {{ chartDomains.yDomain.min | number: "1.0-0" }} €</span>
-                      <span>Prix max: {{ chartDomains.yDomain.max | number: "1.0-0" }} €</span>
+                @if (comparablesResponse.propertyType === 'MAISON') {
+                  @if (comparablesTerrainSlider(); as terrainSlider) {
+                    <div>
+                      <div class="flex items-center justify-between gap-2 text-sm text-slate-700">
+                        <span>Surface terrain</span>
+                        <strong>
+                          {{ terrainSlider.currentMin | number: '1.0-0' }} -
+                          {{ terrainSlider.currentMax | number: '1.0-0' }} m²
+                        </strong>
+                      </div>
+                      <div class="dual-range mt-3">
+                        <div class="dual-range__track"></div>
+                        <div
+                          class="dual-range__selection"
+                          [style.left.%]="terrainSlider.minPercent"
+                          [style.width.%]="terrainSlider.rangePercent"
+                        ></div>
+                        <span
+                          class="range-marker"
+                          [class.range-marker--hidden]="
+                            sliderPercent(
+                              comparableTargetLandSurfaceM2(),
+                              terrainSlider.min,
+                              terrainSlider.max
+                            ) === null
+                          "
+                          [style.left.%]="
+                            sliderPercent(
+                              comparableTargetLandSurfaceM2(),
+                              terrainSlider.min,
+                              terrainSlider.max
+                            )
+                          "
+                          title="Position du bien"
+                          aria-hidden="true"
+                        ></span>
+                        <input
+                          class="dual-range__input dual-range__input--min"
+                          type="range"
+                          [min]="terrainSlider.min"
+                          [max]="terrainSlider.max"
+                          [step]="1"
+                          [value]="terrainSlider.currentMin"
+                          (input)="onComparableTerrainMinChange($any($event.target).value)"
+                        />
+                        <input
+                          class="dual-range__input dual-range__input--max"
+                          type="range"
+                          [min]="terrainSlider.min"
+                          [max]="terrainSlider.max"
+                          [step]="1"
+                          [value]="terrainSlider.currentMax"
+                          (input)="onComparableTerrainMaxChange($any($event.target).value)"
+                        />
+                      </div>
                     </div>
                   }
-                } @else {
-                  <p class="mt-3 text-sm text-slate-600">Aucun point comparable disponible.</p>
                 }
-              </article>
+              </div>
+            </article>
 
-              <article class="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Indicateurs</h4>
-                <div class="mt-3 space-y-2 text-sm text-slate-700">
-                  <p>
-                    Source réponse: <strong>{{ comparablesResponse.source }}</strong>
-                  </p>
-                  <p>
-                    Cible comparables: <strong>{{ comparablesResponse.search.targetCount }}</strong> · atteinte:
-                    <strong>{{ comparablesResponse.search.targetReached ? "oui" : "non" }}</strong>
-                  </p>
-                  <p>
-                    Prix demandé bien:
-                    <strong>
-                      @if (comparablesResponse.subject.askingPrice !== null) {
-                        {{ comparablesResponse.subject.askingPrice | number: "1.0-0" }} €
-                      } @else {
-                        N/A
-                      }
-                    </strong>
-                  </p>
-                  <p>
-                    Prix predit:
-                    <strong>
-                      @if (comparablesResponse.subject.predictedPrice !== null) {
-                        {{ comparablesResponse.subject.predictedPrice | number: "1.0-0" }} €
-                      } @else {
-                        N/A
-                      }
-                    </strong>
-                  </p>
-                  <p>
-                    Affine (surface bien):
-                    <strong>
-                      @if (comparablesResponse.subject.affinePriceAtSubjectSurface !== null) {
-                        {{ comparablesResponse.subject.affinePriceAtSubjectSurface | number: "1.0-0" }} €
-                      } @else {
-                        N/A
-                      }
-                    </strong>
-                  </p>
-                  <p>
-                    Ecart:
-                    <strong>
-                      @if (comparablesResponse.subject.deviationPct !== null) {
-                        {{ comparablesResponse.subject.deviationPct | number: "1.0-1" }} %
-                      } @else {
-                        N/A
-                      }
-                    </strong>
-                  </p>
-                  <p>
-                    Regression backend: pente
-                    <strong>
-                      @if (comparablesResponse.regression.slope !== null) {
-                        {{ comparablesResponse.regression.slope | number: "1.0-2" }}
-                      } @else {
-                        N/A
-                      }
-                    </strong>
-                    · r2
-                    <strong>
-                      @if (comparablesResponse.regression.r2 !== null) {
-                        {{ comparablesResponse.regression.r2 | number: "1.0-3" }}
-                      } @else {
-                        N/A
-                      }
-                    </strong>
-                  </p>
-                  @if (localRegression(); as frontRegression) {
-                    <p>
-                      Regression front: pente
-                      <strong>
-                        @if (frontRegression.slope !== null) {
-                          {{ frontRegression.slope | number: "1.0-2" }}
-                        } @else {
-                          N/A
-                        }
-                      </strong>
-                      · r2
-                      <strong>
-                        @if (frontRegression.r2 !== null) {
-                          {{ frontRegression.r2 | number: "1.0-3" }}
-                        } @else {
-                          N/A
-                        }
-                      </strong>
-                    </p>
-                  }
+            <article class="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Nuage surface/prix
+              </h4>
+
+              @if (filteredComparablePoints().length > 0) {
+                <div class="mt-3 h-[420px] w-full">
+                  <canvas #comparablesChartCanvas class="h-full w-full"></canvas>
                 </div>
-              </article>
-            </div>
+
+                @if (comparablesChartDomains(); as chartDomains) {
+                  <div
+                    class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600"
+                  >
+                    <span>Surface min: {{ chartDomains.xDomain.min | number: '1.0-0' }} m²</span>
+                    <span>Surface max: {{ chartDomains.xDomain.max | number: '1.0-0' }} m²</span>
+                    <span>Prix min: {{ chartDomains.yDomain.min | number: '1.0-0' }} €</span>
+                    <span>Prix max: {{ chartDomains.yDomain.max | number: '1.0-0' }} €</span>
+                  </div>
+                }
+              } @else {
+                <p class="mt-3 text-sm text-slate-600">
+                  Aucun point de vente disponible apres filtres.
+                </p>
+              }
+            </article>
+
+            <article class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Ventes
+                </h4>
+                @if (salesPagination(); as pagination) {
+                  <span class="text-xs text-slate-600">{{ pagination.total }} ventes</span>
+                }
+              </div>
+
+              @if (paginatedComparableSales().length > 0) {
+                <div class="mt-3 overflow-x-auto">
+                  <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-xs uppercase tracking-[0.08em] text-slate-500">
+                      <tr>
+                        <th class="px-3 py-2 text-left">Date de vente</th>
+                        <th class="px-3 py-2 text-left">Surface</th>
+                        @if (comparablesResponse.propertyType === 'MAISON') {
+                          <th class="px-3 py-2 text-left">Surface terrain</th>
+                        }
+                        <th class="px-3 py-2 text-left">Prix</th>
+                        <th class="px-3 py-2 text-left">Prix / m²</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                      @for (
+                        sale of paginatedComparableSales();
+                        track sale.saleDate + '-' + sale.salePrice + '-' + sale.surfaceM2
+                      ) {
+                        <tr>
+                          <td class="px-3 py-2 text-slate-700">
+                            @if (sale.saleDate) {
+                              {{ sale.saleDate | date: 'shortDate' }}
+                            } @else {
+                              N/A
+                            }
+                          </td>
+                          <td class="px-3 py-2 text-slate-700">
+                            {{ sale.surfaceM2 | number: '1.0-0' }} m²
+                          </td>
+                          @if (comparablesResponse.propertyType === 'MAISON') {
+                            <td class="px-3 py-2 text-slate-700">
+                              @if (sale.landSurfaceM2 !== null) {
+                                {{ sale.landSurfaceM2 | number: '1.0-0' }} m²
+                              } @else {
+                                N/A
+                              }
+                            </td>
+                          }
+                          <td class="px-3 py-2 font-semibold text-slate-900">
+                            {{ sale.salePrice | number: '1.0-0' }} €
+                          </td>
+                          <td class="px-3 py-2 text-slate-700">
+                            {{ sale.pricePerM2 | number: '1.0-0' }} €/m²
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+
+                @if (salesPagination(); as pagination) {
+                  @if (pagination.totalPages > 1) {
+                    <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <p class="text-xs text-slate-600">
+                        Affichage {{ pagination.from }} - {{ pagination.to }} sur
+                        {{ pagination.total }}
+                      </p>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          [disabled]="pagination.page <= 1"
+                          (click)="goToPreviousSalesPage()"
+                        >
+                          Precedent
+                        </button>
+                        <span class="text-xs text-slate-600"
+                          >Page {{ pagination.page }} / {{ pagination.totalPages }}</span
+                        >
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          [disabled]="pagination.page >= pagination.totalPages"
+                          (click)="goToNextSalesPage()"
+                        >
+                          Suivant
+                        </button>
+                      </div>
+                    </div>
+                  }
+                }
+              } @else {
+                <p class="mt-3 text-sm text-slate-600">Aucune vente disponible apres filtres.</p>
+              }
+            </article>
           } @else {
             <p class="text-sm text-slate-600">Aucune donnée comparable chargée.</p>
           }
-        </section>
-      }
 
-      @if (isMainTabActive('risks')) {
-        <section class="panel space-y-4 p-5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="text-xl font-semibold text-slate-900">Risques geographiques (Georisques)</h3>
-            @if (risks(); as risksResponse) {
-              <div class="flex flex-wrap items-center gap-2">
-                @if (risksResponse.reportPdfUrl) {
-                  <a
-                    [href]="risksResponse.reportPdfUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                  >
-                    Ouvrir le rapport PDF
-                  </a>
-                }
-                <a
-                  [href]="risksResponse.georisquesUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  Ouvrir Georisques
-                </a>
+          @if (rentalProfitability(); as rental) {
+            <article class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Rentabilite location (TRI)
+                </h4>
+                <p class="text-xs text-slate-600">
+                  Frais de notaire configures: {{ rental.notaryFeePct | number: '1.0-2' }} %
+                </p>
               </div>
-            }
-          </div>
 
-          @if (risksLoading()) {
-            <p class="text-sm text-slate-600">Chargement des risques...</p>
-          } @else if (risksError()) {
-            <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {{ risksError() }}
-            </p>
-          } @else if (risks()) {
-            <p class="text-sm text-slate-600">
-              Utilisez les liens ci-dessus pour consulter les informations Georisques.
-            </p>
-          } @else {
-            <p class="text-sm text-slate-600">Les risques ne sont pas encore charges.</p>
+              <div class="mt-3 grid gap-3 md:grid-cols-3">
+                <div>
+                  <label class="field-label" for="rental-monthly-rent">Loyer mensuel (€)</label>
+                  <input
+                    id="rental-monthly-rent"
+                    class="field-input"
+                    type="number"
+                    min="0"
+                    step="10"
+                    [value]="rental.monthlyRent ?? ''"
+                    (input)="onRentalMonthlyRentChange($any($event.target).value)"
+                  />
+                </div>
+                <div>
+                  <label class="field-label" for="rental-holding-years"
+                    >Duree de retention (annees)</label
+                  >
+                  <input
+                    id="rental-holding-years"
+                    class="field-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    [value]="rental.holdingYears ?? ''"
+                    (input)="onRentalHoldingYearsChange($any($event.target).value)"
+                  />
+                </div>
+                <div>
+                  <label class="field-label" for="rental-resale-price">Prix de revente (€)</label>
+                  <input
+                    id="rental-resale-price"
+                    class="field-input"
+                    type="number"
+                    min="1"
+                    step="1000"
+                    [value]="rental.resalePrice ?? ''"
+                    (input)="onRentalResalePriceChange($any($event.target).value)"
+                  />
+                </div>
+              </div>
+
+              <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">TRI</p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (rental.irrPct !== null) {
+                      {{ rental.irrPct | number: '1.0-2' }} %
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
+                    Investissement initial
+                  </p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (rental.initialInvestment !== null) {
+                      {{ rental.initialInvestment | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Achat:
+                    @if (rental.purchasePrice !== null) {
+                      {{ rental.purchasePrice | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Notaire:
+                    @if (rental.notaryFeeAmount !== null) {
+                      {{ rental.notaryFeeAmount | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Flux net annuel</p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (rental.annualNetCashflow !== null) {
+                      {{ rental.annualNetCashflow | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Taxe fonciere: {{ rental.annualPropertyTax | number: '1.0-0' }} €
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Frais copro: {{ rental.annualCoproFees | number: '1.0-0' }} €
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
+                    Hypothese de revente
+                  </p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (rental.resalePrice !== null) {
+                      {{ rental.resalePrice | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">Duree: {{ rental.holdingYears ?? 'N/A' }} ans</p>
+                  <p class="text-xs text-slate-600">
+                    Loyer: {{ (rental.monthlyRent ?? 0) | number: '1.0-0' }} €/mois
+                  </p>
+                </div>
+              </div>
+
+              @if (rental.reason) {
+                <p class="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  {{ rental.reason }}
+                </p>
+              }
+            </article>
           }
+
+          <article class="rounded-xl border border-slate-200 bg-white p-4">
+            <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Donnees INSEE
+            </h4>
+            @if (inseeLoading()) {
+              <p class="mt-3 text-sm text-slate-600">Chargement des donnees INSEE...</p>
+            } @else if (inseeError()) {
+              <p
+                class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              >
+                {{ inseeError() }}
+              </p>
+            } @else if (inseeModule(); as inseeData) {
+              <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Commune</p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    {{ inseeData.city || 'N/A' }}
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Code INSEE: {{ inseeData.inseeCode || 'N/A' }} · CP:
+                    {{ inseeData.postalCode || 'N/A' }}
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
+                    Evolution demographique
+                  </p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (inseeData.populationGrowthPct !== null) {
+                      {{ inseeData.populationGrowthPct | number: '1.0-1' }} %
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    @if (
+                      inseeData.populationStartYear !== null && inseeData.populationEndYear !== null
+                    ) {
+                      {{ inseeData.populationStartYear }} - {{ inseeData.populationEndYear }}
+                    } @else {
+                      Periode indisponible
+                    }
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
+                    Croissance population
+                  </p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (inseeData.populationGrowthAbs !== null) {
+                      {{ inseeData.populationGrowthAbs | number: '1.0-0' }} hab.
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Pop. actuelle:
+                    @if (inseeData.populationCurrent !== null) {
+                      {{ inseeData.populationCurrent | number: '1.0-0' }}
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Revenu median</p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (inseeData.medianIncome !== null) {
+                      {{ inseeData.medianIncome | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Annee: {{ inseeData.medianIncomeYear || 'N/A' }}
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
+                    Taux de proprietaires
+                  </p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (inseeData.ownersRatePct !== null) {
+                      {{ inseeData.ownersRatePct | number: '1.0-1' }} %
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    {{ inseeData.ownersRateScope || 'Zone indisponible' }} ·
+                    {{ inseeData.ownersRateYear || 'N/A' }}
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Taux de chomage</p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (inseeData.unemploymentRatePct !== null) {
+                      {{ inseeData.unemploymentRatePct | number: '1.0-1' }} %
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Annee: {{ inseeData.unemploymentYear || 'N/A' }}
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Age moyen</p>
+                  <p class="mt-1 text-base font-semibold text-slate-900">
+                    @if (inseeData.averageAge !== null) {
+                      {{ inseeData.averageAge | number: '1.0-1' }} ans
+                    } @else {
+                      N/A
+                    }
+                  </p>
+                  <p class="text-xs text-slate-600">
+                    Annee: {{ inseeData.averageAgeYear || 'N/A' }}
+                  </p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Autres criteres</p>
+                  <p class="text-sm text-slate-700">
+                    Densite:
+                    <strong>
+                      @if (inseeData.populationDensityPerKm2 !== null) {
+                        {{ inseeData.populationDensityPerKm2 | number: '1.0-0' }} hab./km²
+                      } @else {
+                        N/A
+                      }
+                    </strong>
+                  </p>
+                  <p class="text-sm text-slate-700">
+                    Pauvrete:
+                    <strong>
+                      @if (inseeData.povertyRatePct !== null) {
+                        {{ inseeData.povertyRatePct | number: '1.0-1' }} %
+                      } @else {
+                        N/A
+                      }
+                    </strong>
+                  </p>
+                  <p class="text-sm text-slate-700">
+                    Gini:
+                    <strong>
+                      @if (inseeData.giniIndex !== null) {
+                        {{ inseeData.giniIndex | number: '1.0-3' }}
+                      } @else {
+                        N/A
+                      }
+                    </strong>
+                  </p>
+                </div>
+              </div>
+              <p class="mt-3 text-xs text-slate-500">
+                Sources: geo.api.gouv.fr, OpenDataSoft (INSEE).
+              </p>
+            } @else {
+              <p class="mt-3 text-sm text-slate-600">Aucune donnee INSEE disponible.</p>
+            }
+          </article>
         </section>
       }
     </section>
@@ -701,7 +1211,9 @@
       >
         <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
           <div class="flex items-start justify-between gap-2">
-            <h3 id="vocal-modal-title" class="text-xl font-semibold text-slate-900">Creer un vocal</h3>
+            <h3 id="vocal-modal-title" class="text-xl font-semibold text-slate-900">
+              Creer un vocal
+            </h3>
             <button
               type="button"
               class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
@@ -713,8 +1225,11 @@
           </div>
 
           <div class="mt-4 space-y-3">
-            <p class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Enregistrement depuis votre micro puis envoi automatique au backend avec le lien vers ce bien.
+            <p
+              class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+            >
+              Enregistrement depuis votre micro puis envoi automatique au backend avec le lien vers
+              ce bien.
             </p>
 
             <div class="flex flex-wrap items-center gap-2">
@@ -754,7 +1269,11 @@
             }
 
             @if (vocalFeedback()) {
-              <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+              <p
+                class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                role="status"
+                aria-live="polite"
+              >
                 {{ vocalFeedback() }}
               </p>
             }
@@ -774,7 +1293,7 @@
                 [disabled]="vocalPending() || vocalRecording() || !recordedVocal()"
                 (click)="uploadVocalRecording()"
               >
-                {{ vocalPending() ? "Envoi..." : "Envoyer le vocal" }}
+                {{ vocalPending() ? 'Envoi...' : 'Envoyer le vocal' }}
               </button>
             </div>
           </div>
@@ -792,7 +1311,9 @@
       >
         <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
           <div class="flex items-start justify-between gap-2">
-            <h3 id="upload-modal-title" class="text-xl font-semibold text-slate-900">Ajouter un document</h3>
+            <h3 id="upload-modal-title" class="text-xl font-semibold text-slate-900">
+              Ajouter un document
+            </h3>
             <button
               type="button"
               class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
@@ -802,11 +1323,19 @@
             </button>
           </div>
 
-          <form class="mt-4 space-y-3" [formGroup]="uploadForm" (ngSubmit)="uploadFile()" novalidate>
+          <form
+            class="mt-4 space-y-3"
+            [formGroup]="uploadForm"
+            (ngSubmit)="uploadFile()"
+            novalidate
+          >
             <div>
               <label class="field-label" for="upload-type">Type de document</label>
               <select id="upload-type" class="field-input" formControlName="typeDocument">
-                @for (typeDocument of activeDocumentTabDefinition().typeDocuments; track typeDocument) {
+                @for (
+                  typeDocument of activeDocumentTabDefinition().typeDocuments;
+                  track typeDocument
+                ) {
                   <option [value]="typeDocument">{{ typeDocument }}</option>
                 }
               </select>
@@ -814,14 +1343,23 @@
 
             <div>
               <label class="field-label" for="upload-file">Fichier</label>
-              <input id="upload-file" class="field-input" type="file" (change)="onFileInputChange($event)" />
+              <input
+                id="upload-file"
+                class="field-input"
+                type="file"
+                (change)="onFileInputChange($event)"
+              />
               @if (selectedFileName()) {
                 <p class="mt-1 text-xs text-slate-500">{{ selectedFileName() }}</p>
               }
             </div>
 
             @if (uploadFeedback()) {
-              <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+              <p
+                class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                role="status"
+                aria-live="polite"
+              >
                 {{ uploadFeedback() }}
               </p>
             }
@@ -835,8 +1373,12 @@
                 Annuler
               </button>
 
-              <button class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" type="submit" [disabled]="uploadPending()">
-                {{ uploadPending() ? "Upload..." : "Ajouter" }}
+              <button
+                class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                type="submit"
+                [disabled]="uploadPending()"
+              >
+                {{ uploadPending() ? 'Upload...' : 'Ajouter' }}
               </button>
             </div>
           </form>
@@ -854,7 +1396,9 @@
       >
         <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
           <div class="flex items-start justify-between gap-2">
-            <h3 id="prospect-modal-title" class="text-xl font-semibold text-slate-900">Ajouter un prospect</h3>
+            <h3 id="prospect-modal-title" class="text-xl font-semibold text-slate-900">
+              Ajouter un prospect
+            </h3>
             <button
               type="button"
               class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
@@ -864,7 +1408,12 @@
             </button>
           </div>
 
-          <form class="mt-4 space-y-3" [formGroup]="prospectForm" (ngSubmit)="addProspect()" novalidate>
+          <form
+            class="mt-4 space-y-3"
+            [formGroup]="prospectForm"
+            (ngSubmit)="addProspect()"
+            novalidate
+          >
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -934,7 +1483,12 @@
                       tabindex="-1"
                     >
                       @for (client of filteredProspectClients(); track client.id) {
-                        <li role="option" [attr.aria-selected]="prospectForm.controls.userId.value === client.id ? 'true' : 'false'">
+                        <li
+                          role="option"
+                          [attr.aria-selected]="
+                            prospectForm.controls.userId.value === client.id ? 'true' : 'false'
+                          "
+                        >
                           <button
                             type="button"
                             class="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
@@ -958,37 +1512,76 @@
               <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label class="field-label" for="prospect-first-name">Prenom</label>
-                  <input id="prospect-first-name" class="field-input" type="text" formControlName="firstName" />
+                  <input
+                    id="prospect-first-name"
+                    class="field-input"
+                    type="text"
+                    formControlName="firstName"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="prospect-last-name">Nom</label>
-                  <input id="prospect-last-name" class="field-input" type="text" formControlName="lastName" />
+                  <input
+                    id="prospect-last-name"
+                    class="field-input"
+                    type="text"
+                    formControlName="lastName"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="prospect-phone">Telephone</label>
-                  <input id="prospect-phone" class="field-input" type="text" formControlName="phone" />
+                  <input
+                    id="prospect-phone"
+                    class="field-input"
+                    type="text"
+                    formControlName="phone"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="prospect-email">Email</label>
-                  <input id="prospect-email" class="field-input" type="email" formControlName="email" />
+                  <input
+                    id="prospect-email"
+                    class="field-input"
+                    type="email"
+                    formControlName="email"
+                  />
                 </div>
                 <div class="sm:col-span-2">
                   <label class="field-label" for="prospect-address">Adresse</label>
-                  <input id="prospect-address" class="field-input" type="text" formControlName="address" />
+                  <input
+                    id="prospect-address"
+                    class="field-input"
+                    type="text"
+                    formControlName="address"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="prospect-postal">Code postal</label>
-                  <input id="prospect-postal" class="field-input" type="text" formControlName="postalCode" />
+                  <input
+                    id="prospect-postal"
+                    class="field-input"
+                    type="text"
+                    formControlName="postalCode"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="prospect-city">Ville</label>
-                  <input id="prospect-city" class="field-input" type="text" formControlName="city" />
+                  <input
+                    id="prospect-city"
+                    class="field-input"
+                    type="text"
+                    formControlName="city"
+                  />
                 </div>
               </div>
             }
 
             @if (prospectFeedback()) {
-              <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+              <p
+                class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                role="status"
+                aria-live="polite"
+              >
                 {{ prospectFeedback() }}
               </p>
             }
@@ -1006,7 +1599,7 @@
                 type="submit"
                 [disabled]="prospectPending()"
               >
-                {{ prospectPending() ? "Ajout..." : "Ajouter" }}
+                {{ prospectPending() ? 'Ajout...' : 'Ajouter' }}
               </button>
             </div>
           </form>
@@ -1024,7 +1617,9 @@
       >
         <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
           <div class="flex items-start justify-between gap-2">
-            <h3 id="visit-modal-title" class="text-xl font-semibold text-slate-900">Ajouter une visite</h3>
+            <h3 id="visit-modal-title" class="text-xl font-semibold text-slate-900">
+              Ajouter une visite
+            </h3>
             <button
               type="button"
               class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
@@ -1048,7 +1643,12 @@
               </div>
               <div>
                 <label class="field-label" for="visit-end">Heure fin visite</label>
-                <input id="visit-end" class="field-input" type="datetime-local" formControlName="endsAt" />
+                <input
+                  id="visit-end"
+                  class="field-input"
+                  type="datetime-local"
+                  formControlName="endsAt"
+                />
               </div>
             </div>
 
@@ -1121,7 +1721,12 @@
                       tabindex="-1"
                     >
                       @for (client of filteredVisitClients(); track client.id) {
-                        <li role="option" [attr.aria-selected]="visitForm.controls.userId.value === client.id ? 'true' : 'false'">
+                        <li
+                          role="option"
+                          [attr.aria-selected]="
+                            visitForm.controls.userId.value === client.id ? 'true' : 'false'
+                          "
+                        >
                           <button
                             type="button"
                             class="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
@@ -1145,37 +1750,76 @@
               <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label class="field-label" for="visit-prospect-first-name">Prenom</label>
-                  <input id="visit-prospect-first-name" class="field-input" type="text" formControlName="firstName" />
+                  <input
+                    id="visit-prospect-first-name"
+                    class="field-input"
+                    type="text"
+                    formControlName="firstName"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="visit-prospect-last-name">Nom</label>
-                  <input id="visit-prospect-last-name" class="field-input" type="text" formControlName="lastName" />
+                  <input
+                    id="visit-prospect-last-name"
+                    class="field-input"
+                    type="text"
+                    formControlName="lastName"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="visit-prospect-phone">Telephone</label>
-                  <input id="visit-prospect-phone" class="field-input" type="text" formControlName="phone" />
+                  <input
+                    id="visit-prospect-phone"
+                    class="field-input"
+                    type="text"
+                    formControlName="phone"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="visit-prospect-email">Email</label>
-                  <input id="visit-prospect-email" class="field-input" type="email" formControlName="email" />
+                  <input
+                    id="visit-prospect-email"
+                    class="field-input"
+                    type="email"
+                    formControlName="email"
+                  />
                 </div>
                 <div class="sm:col-span-2">
                   <label class="field-label" for="visit-prospect-address">Adresse</label>
-                  <input id="visit-prospect-address" class="field-input" type="text" formControlName="address" />
+                  <input
+                    id="visit-prospect-address"
+                    class="field-input"
+                    type="text"
+                    formControlName="address"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="visit-prospect-postal">Code postal</label>
-                  <input id="visit-prospect-postal" class="field-input" type="text" formControlName="postalCode" />
+                  <input
+                    id="visit-prospect-postal"
+                    class="field-input"
+                    type="text"
+                    formControlName="postalCode"
+                  />
                 </div>
                 <div>
                   <label class="field-label" for="visit-prospect-city">Ville</label>
-                  <input id="visit-prospect-city" class="field-input" type="text" formControlName="city" />
+                  <input
+                    id="visit-prospect-city"
+                    class="field-input"
+                    type="text"
+                    formControlName="city"
+                  />
                 </div>
               </div>
             }
 
             @if (visitFeedback()) {
-              <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+              <p
+                class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                role="status"
+                aria-live="polite"
+              >
                 {{ visitFeedback() }}
               </p>
             }
@@ -1193,7 +1837,7 @@
                 type="submit"
                 [disabled]="visitPending()"
               >
-                {{ visitPending() ? "Ajout..." : "Ajouter" }}
+                {{ visitPending() ? 'Ajout...' : 'Ajouter' }}
               </button>
             </div>
           </form>

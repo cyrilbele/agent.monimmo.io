@@ -3,6 +3,8 @@ import { Injectable } from "@angular/core";
 import type { ErrorResponse } from "./api.models";
 import {
   ACCESS_TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
+  SESSION_EMAIL_STORAGE_KEY,
 } from "./constants";
 import { normalizeApiBaseUrl } from "./auth-helpers";
 
@@ -70,6 +72,7 @@ export class ApiClientService {
 
     if (!response.ok) {
       const payload = data as Partial<ErrorResponse> | null;
+      this.handleInvalidTokenError(payload?.message ?? null);
       throw new Error(payload?.message ?? `Requête impossible (${response.status}).`);
     }
 
@@ -118,5 +121,43 @@ export class ApiClientService {
     }
 
     return localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? "";
+  }
+
+  private handleInvalidTokenError(message: string | null): void {
+    if (typeof message !== "string") {
+      return;
+    }
+
+    if (!message.toLowerCase().includes("token invalide")) {
+      return;
+    }
+
+    this.clearStoredSession();
+    this.redirectToLogin();
+  }
+
+  private clearStoredSession(): void {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(SESSION_EMAIL_STORAGE_KEY);
+  }
+
+  private redirectToLogin(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const onLoginPage = currentPath.startsWith("/login");
+    if (onLoginPage) {
+      return;
+    }
+
+    const redirect = encodeURIComponent(currentPath || "/app");
+    window.location.assign(`/login?redirect=${redirect}`);
   }
 }

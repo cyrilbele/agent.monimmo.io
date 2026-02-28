@@ -14,6 +14,7 @@ import {
 } from "@angular/forms";
 
 import type { IntegrationPath } from "../../core/api.models";
+import { AppSettingsService } from "../../services/app-settings.service";
 import { IntegrationService } from "../../services/integration.service";
 
 type FeedbackTone = "info" | "success" | "error";
@@ -25,6 +26,10 @@ type ConnectFormGroup = FormGroup<{
 
 type SyncFormGroup = FormGroup<{
   cursor: FormControl<string>;
+}>;
+
+type ValuationSettingsFormGroup = FormGroup<{
+  notaryFeePct: FormControl<string>;
 }>;
 
 interface IntegrationCard {
@@ -61,6 +66,7 @@ export class ConfigurationPageComponent {
   readonly providers = PROVIDERS;
 
   private readonly integrationService = inject(IntegrationService);
+  private readonly appSettingsService = inject(AppSettingsService);
   private readonly formBuilder = inject(FormBuilder);
 
   readonly connectForms: Record<IntegrationPath, ConnectFormGroup> = {
@@ -75,11 +81,16 @@ export class ConfigurationPageComponent {
     whatsapp: this.createSyncForm(),
   };
 
+  readonly valuationSettingsForm: ValuationSettingsFormGroup = this.formBuilder.nonNullable.group({
+    notaryFeePct: [this.formatNotaryFeePct(this.appSettingsService.notaryFeePct())],
+  });
+
   readonly feedback = signal<Record<IntegrationPath, string | null>>({
     gmail: null,
     "google-calendar": null,
     whatsapp: null,
   });
+  readonly valuationFeedback = signal<string | null>(null);
 
   readonly feedbackTone = signal<Record<IntegrationPath, FeedbackTone>>({
     gmail: "info",
@@ -164,6 +175,20 @@ export class ConfigurationPageComponent {
     return `${path}-feedback`;
   }
 
+  saveValuationSettings(): void {
+    const raw = this.valuationSettingsForm.controls.notaryFeePct.value.trim();
+    const normalizedInput = raw.replace(",", ".");
+    const parsed = Number(normalizedInput);
+    if (!raw || !Number.isFinite(parsed) || parsed < 0) {
+      this.valuationFeedback.set("Le taux de frais de notaire doit etre un nombre positif.");
+      return;
+    }
+
+    const persisted = this.appSettingsService.updateNotaryFeePct(parsed);
+    this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(persisted));
+    this.valuationFeedback.set("Parametre enregistre.");
+  }
+
   private createConnectForm(): ConnectFormGroup {
     return this.formBuilder.nonNullable.group({
       code: [""],
@@ -214,5 +239,13 @@ export class ConfigurationPageComponent {
       default:
         return `${baseClasses} bg-slate-100 text-slate-700`;
     }
+  }
+
+  private formatNotaryFeePct(value: number): string {
+    if (!Number.isFinite(value)) {
+      return "";
+    }
+
+    return value.toFixed(2).replace(/\.00$/, "");
   }
 }

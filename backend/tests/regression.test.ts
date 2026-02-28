@@ -155,7 +155,7 @@ describe("comparables regression", () => {
     }
   });
 
-  it("exclut les outliers surface/prix et expose le calcul affine a surface du bien", async () => {
+  it("filtre les comparables hors plage surface bien /2 a *2", async () => {
     process.env.DF_API_BASE_URL = "https://dvf.regression.test/records";
     const previousFetch = globalThis.fetch;
 
@@ -211,12 +211,13 @@ describe("comparables regression", () => {
         forceRefresh: true,
       });
 
-      expect(comparables.summary.count).toBe(100);
-      expect(comparables.regression.pointsUsed).toBe(100);
+      expect(comparables.summary.count).toBe(80);
+      expect(comparables.regression.pointsUsed).toBe(80);
       expect(comparables.regression.slope).toBe(2000);
       expect(comparables.regression.intercept).toBe(0);
       expect(comparables.subject.predictedPrice).toBe(200000);
-      expect(comparables.subject.affinePriceAtSubjectSurface).toBe(200000);
+      expect(comparables.subject.affinePriceAtSubjectSurface).toBeNull();
+      expect(comparables.points.some((point) => point.surfaceM2 < 50 || point.surfaceM2 > 200)).toBe(false);
       expect(comparables.points.some((point) => point.surfaceM2 === 350)).toBe(false);
     } finally {
       globalThis.fetch = previousFetch;

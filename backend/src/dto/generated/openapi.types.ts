@@ -962,6 +962,7 @@ export interface components {
             /** Format: date-time */
             saleDate: string;
             surfaceM2: number;
+            landSurfaceM2: number | null;
             salePrice: number;
             pricePerM2: number;
             distanceM: number | null;

@@ -47,9 +47,9 @@ const COMPARABLE_WINDOW_YEARS = 10;
 const COMPARABLE_TARGET_COUNT = 100;
 const COMPARABLE_RADIUS_STEPS = [1000, 2000, 3000, 5000, 7000, 10000] as const;
 const COMPARABLE_PRICE_TOLERANCE = 0.1;
-const COMPARABLE_OUTLIER_SURFACE_FACTOR = 3;
-const COMPARABLE_OUTLIER_PRICE_FACTOR = 2;
-const COMPARABLE_CACHE_VERSION = "dvf-open-v3-outlier-filtering";
+const COMPARABLE_SUBJECT_SURFACE_MIN_FACTOR = 0.5;
+const COMPARABLE_SUBJECT_SURFACE_MAX_FACTOR = 2;
+const COMPARABLE_CACHE_VERSION = "dvf-open-v4-surface-range-and-front-affine";
 
 const toDvfUnavailableDetails = (error: unknown): Record<string, unknown> => {
   if (error instanceof DvfClientError) {
@@ -78,6 +78,7 @@ export type ComparablePricingPosition = "UNDER_PRICED" | "NORMAL" | "OVER_PRICED
 type ComparablePoint = {
   saleDate: string;
   surfaceM2: number;
+  landSurfaceM2: number | null;
   salePrice: number;
   pricePerM2: number;
   distanceM: number | null;
@@ -465,7 +466,7 @@ const computeRegression = (
   };
 };
 
-const computeAffinePrice = (input: {
+const computePredictedPrice = (input: {
   surfaceM2: number | null;
   slope: number | null;
   intercept: number | null;
@@ -490,7 +491,7 @@ const computeAffinePrice = (input: {
   return formatComparableNumber(predicted);
 };
 
-const removeComparableOutliers = (input: {
+const filterComparablesBySubjectSurfaceRange = (input: {
   points: ComparablePoint[];
   subjectSurfaceM2: number | null;
 }): ComparablePoint[] => {
@@ -502,40 +503,10 @@ const removeComparableOutliers = (input: {
     return input.points;
   }
 
-  const maxSurfaceM2 = input.subjectSurfaceM2 * COMPARABLE_OUTLIER_SURFACE_FACTOR;
-  const baselinePoints = input.points.filter((point) => point.surfaceM2 <= maxSurfaceM2);
-  const baselineRegression = computeRegression(
-    baselinePoints.map((point) => ({
-      surfaceM2: point.surfaceM2,
-      salePrice: point.salePrice,
-    })),
-  );
-
-  if (
-    baselineRegression.slope === null ||
-    baselineRegression.intercept === null ||
-    !Number.isFinite(baselineRegression.slope) ||
-    !Number.isFinite(baselineRegression.intercept)
-  ) {
-    return input.points;
-  }
-
+  const minSurfaceM2 = input.subjectSurfaceM2 * COMPARABLE_SUBJECT_SURFACE_MIN_FACTOR;
+  const maxSurfaceM2 = input.subjectSurfaceM2 * COMPARABLE_SUBJECT_SURFACE_MAX_FACTOR;
   return input.points.filter((point) => {
-    if (point.surfaceM2 <= maxSurfaceM2) {
-      return true;
-    }
-
-    const affinePrice = computeAffinePrice({
-      surfaceM2: point.surfaceM2,
-      slope: baselineRegression.slope,
-      intercept: baselineRegression.intercept,
-    });
-
-    if (affinePrice === null) {
-      return true;
-    }
-
-    return point.salePrice <= affinePrice * COMPARABLE_OUTLIER_PRICE_FACTOR;
+    return point.surfaceM2 >= minSurfaceM2 && point.surfaceM2 <= maxSurfaceM2;
   });
 };
 
@@ -1636,6 +1607,12 @@ export const propertiesService = {
         return {
           saleDate: row.saleDate.toISOString(),
           surfaceM2: formatComparableNumber(row.surfaceM2),
+          landSurfaceM2:
+            typeof row.landSurfaceM2 === "number" &&
+            Number.isFinite(row.landSurfaceM2) &&
+            row.landSurfaceM2 > 0
+              ? formatComparableNumber(row.landSurfaceM2)
+              : null,
           salePrice: row.salePrice,
           pricePerM2: formatComparableNumber(row.salePrice / row.surfaceM2),
           distanceM,
@@ -1646,7 +1623,7 @@ export const propertiesService = {
 
     const subjectSurfaceM2 = resolveSubjectSurface(details, resolvedPropertyType);
     const askingPrice = resolveSubjectAskingPrice(property, details);
-    const points = removeComparableOutliers({
+    const points = filterComparablesBySubjectSurfaceRange({
       points: rawPoints,
       subjectSurfaceM2,
     });
@@ -1657,12 +1634,12 @@ export const propertiesService = {
       points.map((point) => ({ surfaceM2: point.surfaceM2, salePrice: point.salePrice })),
     );
 
-    const predictedPrice = computeAffinePrice({
+    const predictedPrice = computePredictedPrice({
       surfaceM2: subjectSurfaceM2,
       slope: regression.slope,
       intercept: regression.intercept,
     });
-    const affinePriceAtSubjectSurface = askingPrice !== null ? predictedPrice : null;
+    const affinePriceAtSubjectSurface = null;
     const pricing = resolvePricingPosition({
       askingPrice,
       predictedPrice,

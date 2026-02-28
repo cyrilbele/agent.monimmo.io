@@ -367,6 +367,7 @@ export const ComparableRegressionResponseSchema = z.object({
 export const ComparablePointResponseSchema = z.object({
   saleDate: z.iso.datetime(),
   surfaceM2: z.number(),
+  landSurfaceM2: z.number().nullable(),
   salePrice: z.number(),
   pricePerM2: z.number(),
   distanceM: z.number().nullable(),

@@ -126,7 +126,7 @@ describe("PropertyService", () => {
       subject: {
         surfaceM2: 58,
         askingPrice: 320000,
-        affinePriceAtSubjectSurface: 305000,
+        affinePriceAtSubjectSurface: null,
         predictedPrice: 305000,
         deviationPct: 4.92,
         pricingPosition: "NORMAL",
@@ -141,6 +141,7 @@ describe("PropertyService", () => {
         {
           saleDate: "2024-01-10T00:00:00.000Z",
           surfaceM2: 60,
+          landSurfaceM2: null,
           salePrice: 300000,
           pricePerM2: 5000,
           distanceM: 320,

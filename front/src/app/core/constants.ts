@@ -329,8 +329,6 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "notaryFees", label: "Frais notaire", type: "number" },
       { key: "propertyTax", label: "Taxe fonciere", type: "number" },
       { key: "annualChargesEstimate", label: "Charges annuelles", type: "number" },
-      { key: "estimatedRentalValue", label: "Valeur locative estimee", type: "number" },
-      { key: "estimatedYield", label: "Rentabilite estimee (%)", type: "number" },
       { key: "isRental", label: "Location", type: "select", options: BOOL_OPTIONS },
       { key: "monthlyRent", label: "Loyer mensuel", type: "number" },
       { key: "rentalCharges", label: "Charges locatives", type: "number" },
@@ -356,8 +354,6 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "electricity", label: "Electricite", type: "select", options: BOOL_OPTIONS },
       { key: "gas", label: "Gaz", type: "select", options: BOOL_OPTIONS },
       { key: "riskStatement", label: "ERP", type: "select", options: BOOL_OPTIONS },
-      { key: "floodZone", label: "Zone inondable", type: "select", options: BOOL_OPTIONS },
-      { key: "seismicZone", label: "Zone sismique", type: "select", options: BOOL_OPTIONS },
     ],
   },
   {

@@ -1678,13 +1678,16 @@ components:
           type: integer
     ComparablePointResponse:
       type: object
-      required: [saleDate, surfaceM2, salePrice, pricePerM2, distanceM, city, postalCode]
+      required: [saleDate, surfaceM2, landSurfaceM2, salePrice, pricePerM2, distanceM, city, postalCode]
       properties:
         saleDate:
           type: string
           format: date-time
         surfaceM2:
           type: number
+        landSurfaceM2:
+          type: number
+          nullable: true
         salePrice:
           type: number
         pricePerM2:
