@@ -8,6 +8,28 @@ import { issueTokenPair, verifyAccessToken, verifyRefreshToken } from "./jwt";
 import { refreshTokenStore } from "./refresh-token-store";
 
 type UserRow = typeof users.$inferSelect;
+type OrganizationRow = typeof organizations.$inferSelect;
+
+const DEFAULT_NOTARY_FEE_PCT = 8;
+const MIN_NOTARY_FEE_PCT = 0;
+const MAX_NOTARY_FEE_PCT = 100;
+
+const normalizeNotaryFeePct = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_NOTARY_FEE_PCT;
+  }
+
+  const clamped = Math.min(Math.max(value, MIN_NOTARY_FEE_PCT), MAX_NOTARY_FEE_PCT);
+  return Number(clamped.toFixed(2));
+};
+
+const resolveNotaryFeePct = (organization: OrganizationRow | undefined): number => {
+  if (!organization) {
+    return DEFAULT_NOTARY_FEE_PCT;
+  }
+
+  return normalizeNotaryFeePct(organization.notaryFeePct);
+};
 
 const getUserEmailForAuth = (user: UserRow): string => {
   if (!user.email) {
@@ -45,6 +67,12 @@ const loadUserById = async (id: string, expectedOrgId?: string): Promise<UserRow
   }
 
   return user;
+};
+
+const loadOrganizationById = async (id: string): Promise<OrganizationRow | undefined> => {
+  return db.query.organizations.findFirst({
+    where: eq(organizations.id, id),
+  });
 };
 
 const issueAuthTokens = async (user: UserRow) => {
@@ -210,6 +238,37 @@ export const authService = {
 
     return {
       user: toUserResponse(user),
+    };
+  },
+
+  async getSettings(accessToken: string) {
+    const payload = await verifyAccessToken(accessToken);
+    assertRoleAllowed(payload.role);
+    const user = await loadUserById(payload.sub, payload.orgId);
+    const organization = await loadOrganizationById(user.orgId);
+
+    return {
+      notaryFeePct: resolveNotaryFeePct(organization),
+    };
+  },
+
+  async updateSettings(accessToken: string, input: { notaryFeePct: number }) {
+    const payload = await verifyAccessToken(accessToken);
+    assertRoleAllowed(payload.role);
+    const user = await loadUserById(payload.sub, payload.orgId);
+    const normalizedNotaryFeePct = normalizeNotaryFeePct(input.notaryFeePct);
+    const now = new Date();
+
+    await db
+      .update(organizations)
+      .set({
+        notaryFeePct: normalizedNotaryFeePct,
+        updatedAt: now,
+      })
+      .where(eq(organizations.id, user.orgId));
+
+    return {
+      notaryFeePct: normalizedNotaryFeePct,
     };
   },
 };

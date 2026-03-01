@@ -91,6 +91,7 @@ export class ConfigurationPageComponent {
     whatsapp: null,
   });
   readonly valuationFeedback = signal<string | null>(null);
+  readonly valuationPending = signal(false);
 
   readonly feedbackTone = signal<Record<IntegrationPath, FeedbackTone>>({
     gmail: "info",
@@ -119,6 +120,10 @@ export class ConfigurationPageComponent {
       whatsapp: this.feedbackClassFromTone(tones.whatsapp),
     };
   });
+
+  constructor() {
+    void this.loadValuationSettings();
+  }
 
   async connect(path: IntegrationPath): Promise<void> {
     const pendingState = this.connectPending();
@@ -175,7 +180,11 @@ export class ConfigurationPageComponent {
     return `${path}-feedback`;
   }
 
-  saveValuationSettings(): void {
+  async saveValuationSettings(): Promise<void> {
+    if (this.valuationPending()) {
+      return;
+    }
+
     const raw = this.valuationSettingsForm.controls.notaryFeePct.value.trim();
     const normalizedInput = raw.replace(",", ".");
     const parsed = Number(normalizedInput);
@@ -184,9 +193,18 @@ export class ConfigurationPageComponent {
       return;
     }
 
-    const persisted = this.appSettingsService.updateNotaryFeePct(parsed);
-    this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(persisted));
-    this.valuationFeedback.set("Paramètre enregistré.");
+    this.valuationPending.set(true);
+
+    try {
+      const persisted = await this.appSettingsService.updateNotaryFeePct(parsed);
+      this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(persisted));
+      this.valuationFeedback.set("Paramètre enregistré.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Enregistrement impossible.";
+      this.valuationFeedback.set(message);
+    } finally {
+      this.valuationPending.set(false);
+    }
   }
 
   private createConnectForm(): ConnectFormGroup {
@@ -239,6 +257,11 @@ export class ConfigurationPageComponent {
       default:
         return `${baseClasses} bg-slate-100 text-slate-700`;
     }
+  }
+
+  private async loadValuationSettings(): Promise<void> {
+    const loaded = await this.appSettingsService.refresh();
+    this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(loaded));
   }
 
   private formatNotaryFeePct(value: number): string {

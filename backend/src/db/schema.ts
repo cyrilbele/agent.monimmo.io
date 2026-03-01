@@ -8,6 +8,7 @@ const timestampColumns = {
 export const organizations = sqliteTable("organizations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  notaryFeePct: real("notary_fee_pct").notNull().default(8),
   ...timestampColumns,
 });
 

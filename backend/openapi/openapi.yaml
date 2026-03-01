@@ -106,6 +106,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /me/settings:
+    get:
+      tags: [Auth]
+      operationId: getMeSettings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Paramètres applicatifs de l'utilisateur courant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettingsResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Auth]
+      operationId: patchMeSettings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppSettingsPatchRequest"
+      responses:
+        "200":
+          description: Paramètres applicatifs mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettingsResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /users:
     get:
       tags: [Users]
@@ -1225,6 +1268,22 @@ components:
       properties:
         user:
           $ref: "#/components/schemas/UserResponse"
+    AppSettingsResponse:
+      type: object
+      required: [notaryFeePct]
+      properties:
+        notaryFeePct:
+          type: number
+          minimum: 0
+          maximum: 100
+    AppSettingsPatchRequest:
+      type: object
+      required: [notaryFeePct]
+      properties:
+        notaryFeePct:
+          type: number
+          minimum: 0
+          maximum: 100
     LoginRequest:
       type: object
       required: [email, password]

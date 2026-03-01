@@ -103,6 +103,14 @@ export const MeResponseSchema = z.object({
   user: UserResponseSchema,
 });
 
+export const AppSettingsResponseSchema = z.object({
+  notaryFeePct: z.number(),
+});
+
+export const AppSettingsPatchRequestSchema = z.object({
+  notaryFeePct: z.number(),
+});
+
 export const LoginRequestSchema = z.object({
   email: z.email(),
   password: z.string().min(8),

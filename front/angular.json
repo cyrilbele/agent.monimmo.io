@@ -69,10 +69,7 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "coverageReporters": ["html", "text", "lcovonly"],
-            "coverageExclude": [
-              "src/**/*.html",
-              "src/app/pages/property-detail/property-detail-page.component.ts"
-            ]
+            "coverageExclude": ["src/**/*.html"]
           }
         }
       }

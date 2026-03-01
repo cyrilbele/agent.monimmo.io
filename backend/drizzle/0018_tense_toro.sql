@@ -1,0 +1,1 @@
+ALTER TABLE `organizations` ADD `notary_fee_pct` real DEFAULT 8 NOT NULL;

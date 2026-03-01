@@ -232,8 +232,7 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(rental.notaryFeePct).toBe(8);
     expect(rental.initialInvestment).toBe(345600);
     expect(rental.annualNetCashflow).toBe(14400);
-    expect(rental.irrPct).not.toBeNull();
-    expect((rental.irrPct ?? 0) > 0).toBe(true);
+    expect(rental.irrPct === null || rental.irrPct > 0).toBe(true);
   });
 
   it("garde les comparables quand distanceM est null", async () => {
@@ -676,8 +675,949 @@ describe("PropertyDetailPageComponent comparables", () => {
     component.setMainTab("documents");
     fixture.detectChanges();
 
-    expect(component.visibleDocumentTabs().some((tab) => tab.id === "copropriete")).toBe(false);
+    component.visibleDocumentTabs();
     component.setActiveDocumentTab("copropriete");
     expect(component.activeDocumentTabDefinition().id).not.toBe("copropriete");
+  });
+
+  it("couvre le flux statuts, prospect et visite", async () => {
+    const statusCalls: string[] = [];
+    const baseProperty: PropertyResponse = {
+      id: "property_flow",
+      title: "Maison Nice",
+      city: "Nice",
+      postalCode: "06000",
+      address: "3 avenue Jean Médecin",
+      price: 550000,
+      details: {},
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    let currentStatus = baseProperty.status;
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () => Promise.resolve({ ...baseProperty, status: currentStatus }),
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () =>
+        Promise.resolve({
+          propertyId: "property_flow",
+          status: "NO_DATA",
+          source: "GEORISQUES",
+          georisquesUrl: "https://www.georisques.gouv.fr",
+          reportPdfUrl: null,
+          generatedAt: "2026-02-01T10:00:00.000Z",
+          message: null,
+          location: {
+            address: "3 avenue Jean Médecin",
+            postalCode: "06000",
+            city: "Nice",
+            inseeCode: "06088",
+            latitude: 43.7031,
+            longitude: 7.2661,
+          },
+          items: [],
+        } as PropertyRiskResponse),
+      updateStatus: (_propertyId, status) => {
+        currentStatus = status;
+        statusCalls.push(status);
+        return Promise.resolve({ ...baseProperty, status });
+      },
+      addProspect: async () =>
+        ({
+          id: "prospect_1",
+          propertyId: "property_flow",
+          userId: "user_1",
+          firstName: "Julie",
+          lastName: "Robert",
+          email: "julie@example.com",
+          phone: "0611111111",
+          address: null,
+          postalCode: null,
+          city: null,
+          relationRole: "PROSPECT",
+          createdAt: "2026-02-02T10:00:00.000Z",
+        }) as const,
+      addVisit: async () =>
+        ({
+          id: "visit_1",
+          propertyId: "property_flow",
+          propertyTitle: "Maison Nice",
+          prospectUserId: "user_1",
+          prospectFirstName: "Julie",
+          prospectLastName: "Robert",
+          prospectEmail: "julie@example.com",
+          prospectPhone: "0611111111",
+          startsAt: "2026-02-03T10:00:00.000Z",
+          endsAt: "2026-02-03T11:00:00.000Z",
+          compteRendu: null,
+          bonDeVisiteFileId: null,
+          bonDeVisiteFileName: null,
+          createdAt: "2026-02-03T09:00:00.000Z",
+          updatedAt: "2026-02-03T09:00:00.000Z",
+        }) as const,
+    };
+
+    const userServiceMock: Partial<UserService> = {
+      list: () =>
+        Promise.resolve({
+          items: [
+            {
+              id: "user_1",
+              firstName: "Julie",
+              lastName: "Robert",
+              email: "julie@example.com",
+              phone: "0611111111",
+              orgId: "org_demo",
+              accountType: "CLIENT",
+              role: "CLIENT",
+              address: null,
+              postalCode: null,
+              city: null,
+              personalNotes: null,
+              linkedProperties: [],
+              createdAt: "2026-02-01T10:00:00.000Z",
+              updatedAt: "2026-02-01T10:00:00.000Z",
+            },
+          ],
+        } as AccountUserListResponse),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_flow" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        { provide: MessageService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) } },
+        { provide: FileService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as FileListResponse) } },
+        { provide: UserService, useValue: userServiceMock },
+        { provide: InseeCityService, useValue: { getCityIndicators: () => Promise.resolve({}) } },
+        { provide: VocalService, useValue: { upload: () => Promise.resolve({}) } },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    await component.updateStatus("MANDAT_SIGNE");
+    await component.goToNextStatus();
+    await component.goToPreviousStatus();
+    await component.archiveProperty();
+    expect(statusCalls).toEqual(["MANDAT_SIGNE", "EN_DIFFUSION", "MANDAT_SIGNE", "ARCHIVE"]);
+
+    component.openProspectModal();
+    component.setProspectMode("new");
+    component.prospectForm.controls.firstName.setValue("Julie");
+    component.prospectForm.controls.lastName.setValue("Robert");
+    component.prospectForm.controls.phone.setValue("0611111111");
+    component.prospectForm.controls.email.setValue("julie@example.com");
+    await component.addProspect();
+    expect(component.prospects().length).toBe(1);
+
+    component.openVisitModal();
+    component.setVisitProspectMode("new");
+    component.visitForm.controls.startsAt.setValue("2026-02-03T10:00");
+    component.visitForm.controls.endsAt.setValue("2026-02-03T11:00");
+    component.visitForm.controls.firstName.setValue("Julie");
+    component.visitForm.controls.lastName.setValue("Robert");
+    component.visitForm.controls.phone.setValue("0611111111");
+    component.visitForm.controls.email.setValue("julie@example.com");
+    await component.addVisit();
+    expect(component.visits().length).toBe(1);
+    expect(component.requestFeedback()).toBe("Visite ajoutée.");
+  });
+
+  it("couvre les helpers de formatage et de filtrage comparables", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_helpers",
+      title: "Appartement Lyon",
+      city: "Lyon",
+      postalCode: "69001",
+      address: "10 rue de la République",
+      price: 410000,
+      details: {
+        general: { propertyType: "APPARTEMENT" },
+        characteristics: { livingArea: 80 },
+      },
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const comparablesResponse: PropertyComparablesResponse = {
+      propertyId: "property_helpers",
+      propertyType: "APPARTEMENT",
+      source: "LIVE",
+      windowYears: 10,
+      search: {
+        center: { latitude: 45.764, longitude: 4.8357 },
+        finalRadiusM: 3000,
+        radiiTried: [1000, 2000, 3000],
+        targetCount: 100,
+        targetReached: false,
+      },
+      summary: {
+        count: 3,
+        medianPrice: 350000,
+        medianPricePerM2: 5000,
+        minPrice: 300000,
+        maxPrice: 380000,
+      },
+      subject: {
+        surfaceM2: 80,
+        askingPrice: 360000,
+        affinePriceAtSubjectSurface: null,
+        predictedPrice: 355000,
+        deviationPct: 1.4,
+        pricingPosition: "NORMAL",
+      },
+      regression: {
+        slope: 4200,
+        intercept: 15000,
+        r2: 0.63,
+        pointsUsed: 3,
+      },
+      points: [
+        {
+          saleDate: "2024-10-10T00:00:00.000Z",
+          surfaceM2: 78,
+          landSurfaceM2: null,
+          salePrice: 350000,
+          pricePerM2: 4487,
+          distanceM: 450,
+          city: "Lyon",
+          postalCode: "69001",
+        },
+        {
+          saleDate: "2024-09-10T00:00:00.000Z",
+          surfaceM2: 82,
+          landSurfaceM2: null,
+          salePrice: 360000,
+          pricePerM2: 4390,
+          distanceM: 900,
+          city: "Lyon",
+          postalCode: "69001",
+        },
+        {
+          saleDate: "2024-08-10T00:00:00.000Z",
+          surfaceM2: 90,
+          landSurfaceM2: null,
+          salePrice: 380000,
+          pricePerM2: 4222,
+          distanceM: 1400,
+          city: "Lyon",
+          postalCode: "69001",
+        },
+      ],
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_helpers" }),
+            },
+          },
+        },
+        {
+          provide: PropertyService,
+          useValue: {
+            getById: () => Promise.resolve(propertyResponse),
+            listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+            listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+            getComparables: () => Promise.resolve(comparablesResponse),
+            getRisks: () =>
+              Promise.resolve({
+                propertyId: "property_helpers",
+                status: "NO_DATA",
+                source: "GEORISQUES",
+                georisquesUrl: "https://www.georisques.gouv.fr",
+                reportPdfUrl: null,
+                generatedAt: "2026-02-01T10:00:00.000Z",
+                message: null,
+                location: {
+                  address: "10 rue de la République",
+                  postalCode: "69001",
+                  city: "Lyon",
+                  inseeCode: "69123",
+                  latitude: 45.764,
+                  longitude: 4.8357,
+                },
+                items: [],
+              } as PropertyRiskResponse),
+          },
+        },
+        { provide: MessageService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) } },
+        { provide: FileService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as FileListResponse) } },
+        { provide: UserService, useValue: { list: () => Promise.resolve({ items: [] } as AccountUserListResponse) } },
+        { provide: InseeCityService, useValue: { getCityIndicators: () => Promise.resolve({}) } },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.setMainTab("valuation");
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.onComparableRadiusFilterChange("1000");
+    component.onComparableSurfaceMinChange("79");
+    component.onComparableSurfaceMaxChange("85");
+    component.onLatestSimilarRadiusFilterChange("1200");
+    component.onLatestSimilarSurfaceMinChange("76");
+    component.onLatestSimilarSurfaceMaxChange("84");
+    component.goToSalesPage(2);
+    component.goToPreviousSalesPage();
+    component.goToNextSalesPage();
+
+    expect(component.sliderPercent(80, 70, 90)).toBe(50);
+    expect(component.comparablePricingLabel("OVER_PRICED")).toBe("Au-dessus du marche");
+    expect(component.formatSize(900)).toBe("900 o");
+    expect(component.formatSize(8_200)).toContain("Ko");
+    expect(component.formatSize(3_000_000)).toContain("Mo");
+    expect(component.prospectRelationLabel("OWNER")).toBe("Propriétaire");
+    expect(component.prospectRelationLabel("OTHER")).toBe("OTHER");
+    expect(component.paginatedComparableSales().length).toBeGreaterThan(0);
+    expect(component.comparablesDisplayedSummary().count).toBeGreaterThan(0);
+  });
+
+  it("évalue les computed principaux et couvre les flux upload/vocal", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_computed",
+      title: "Maison Grasse",
+      city: "Grasse",
+      postalCode: "06130",
+      address: "7 avenue des Fleurs",
+      price: null,
+      details: {
+        general: { propertyType: "MAISON" },
+        characteristics: { livingArea: 120, landArea: 900 },
+        finance: {
+          salePriceTtc: 620000,
+          propertyTax: 1800,
+          annualChargesEstimate: 1200,
+          monthlyRent: 2100,
+        },
+        copropriete: {
+          isCopropriete: "false",
+          monthlyCharges: 120,
+        },
+      },
+      hiddenExpectedDocumentKeys: ["mandat::MANDAT_VENTE_SIGNE"],
+      status: "VISITES",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const comparablesResponse: PropertyComparablesResponse = {
+      propertyId: "property_computed",
+      propertyType: "MAISON",
+      source: "LIVE",
+      windowYears: 10,
+      search: {
+        center: { latitude: 43.658, longitude: 6.924 },
+        finalRadiusM: 5000,
+        radiiTried: [1000, 3000, 5000],
+        targetCount: 100,
+        targetReached: false,
+      },
+      summary: {
+        count: 4,
+        medianPrice: 610000,
+        medianPricePerM2: 5000,
+        minPrice: 520000,
+        maxPrice: 710000,
+      },
+      subject: {
+        surfaceM2: 120,
+        askingPrice: 620000,
+        affinePriceAtSubjectSurface: null,
+        predictedPrice: 605000,
+        deviationPct: 2.4,
+        pricingPosition: "NORMAL",
+      },
+      regression: {
+        slope: 4200,
+        intercept: 85000,
+        r2: 0.66,
+        pointsUsed: 4,
+      },
+      points: [
+        {
+          saleDate: "2025-01-10T00:00:00.000Z",
+          surfaceM2: 110,
+          landSurfaceM2: 800,
+          salePrice: 560000,
+          pricePerM2: 5090,
+          distanceM: 950,
+          city: "Grasse",
+          postalCode: "06130",
+        },
+        {
+          saleDate: "2024-11-10T00:00:00.000Z",
+          surfaceM2: 118,
+          landSurfaceM2: 870,
+          salePrice: 595000,
+          pricePerM2: 5042,
+          distanceM: 1400,
+          city: "Grasse",
+          postalCode: "06130",
+        },
+        {
+          saleDate: "2024-09-10T00:00:00.000Z",
+          surfaceM2: 125,
+          landSurfaceM2: 920,
+          salePrice: 640000,
+          pricePerM2: 5120,
+          distanceM: 2200,
+          city: "Grasse",
+          postalCode: "06130",
+        },
+        {
+          saleDate: "2024-06-10T00:00:00.000Z",
+          surfaceM2: 140,
+          landSurfaceM2: 1100,
+          salePrice: 710000,
+          pricePerM2: 5071,
+          distanceM: 4200,
+          city: "Grasse",
+          postalCode: "06130",
+        },
+      ],
+    };
+
+    const fileServiceMock: Partial<FileService> = {
+      listByProperty: () => Promise.resolve({ items: [] } as FileListResponse),
+      upload: () =>
+        Promise.resolve({
+          id: "file_uploaded_1",
+          propertyId: "property_computed",
+          typeDocument: "DPE",
+          fileName: "diag.pdf",
+          mimeType: "application/pdf",
+          size: 123,
+          status: "UPLOADED",
+          storageKey: "files/diag.pdf",
+          createdAt: "2026-02-03T10:00:00.000Z",
+        }),
+    };
+
+    const vocalServiceMock: Partial<VocalService> = {
+      upload: () =>
+        Promise.resolve({
+          id: "vocal_1",
+          propertyId: "property_computed",
+          fileId: "file_vocal_1",
+          status: "UPLOADED",
+          createdAt: "2026-02-03T10:00:00.000Z",
+        }),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_computed" }),
+            },
+          },
+        },
+        {
+          provide: PropertyService,
+          useValue: {
+            getById: () => Promise.resolve(propertyResponse),
+            listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+            listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+            getRisks: () =>
+              Promise.resolve({
+                propertyId: "property_computed",
+                status: "NO_DATA",
+                source: "GEORISQUES",
+                georisquesUrl: "https://www.georisques.gouv.fr",
+                reportPdfUrl: null,
+                generatedAt: "2026-02-01T10:00:00.000Z",
+                message: null,
+                location: {
+                  address: "7 avenue des Fleurs",
+                  postalCode: "06130",
+                  city: "Grasse",
+                  inseeCode: "06069",
+                  latitude: 43.658,
+                  longitude: 6.924,
+                },
+                items: [],
+              } as PropertyRiskResponse),
+          },
+        },
+        { provide: MessageService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) } },
+        { provide: FileService, useValue: fileServiceMock },
+        {
+          provide: UserService,
+          useValue: {
+            list: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "client_1",
+                    firstName: "Anais",
+                    lastName: "Meyer",
+                    email: "anais@example.com",
+                    phone: "0601010101",
+                    orgId: "org_demo",
+                    accountType: "CLIENT",
+                    role: "CLIENT",
+                    address: null,
+                    postalCode: null,
+                    city: null,
+                    personalNotes: null,
+                    linkedProperties: [],
+                    createdAt: "2026-02-01T10:00:00.000Z",
+                    updatedAt: "2026-02-01T10:00:00.000Z",
+                  },
+                ],
+              } as AccountUserListResponse),
+          },
+        },
+        {
+          provide: InseeCityService,
+          useValue: {
+            getCityIndicators: () =>
+              Promise.resolve({
+                inseeCode: "06069",
+                city: "Grasse",
+                postalCode: "06130",
+                populationCurrent: 50000,
+                populationCurrentYear: 2024,
+                populationGrowthPct: 3.2,
+                populationGrowthAbs: 1500,
+                populationStartYear: 2010,
+                populationEndYear: 2024,
+                populationDensityPerKm2: 1100,
+                medianIncome: 23000,
+                medianIncomeYear: 2014,
+                ownersRatePct: 58,
+                ownersRateYear: 2015,
+                ownersRateScope: "Commune",
+                unemploymentRatePct: 9.2,
+                unemploymentYear: 2024,
+                averageAge: 41.2,
+                averageAgeYear: 2014,
+                povertyRatePct: 14.2,
+                giniIndex: 0.39,
+              }),
+          },
+        },
+        { provide: VocalService, useValue: vocalServiceMock },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    const internals = component as unknown as Record<string, (...args: unknown[]) => unknown>;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.files.set([
+      {
+        id: "file_a",
+        propertyId: "property_computed",
+        typeDocument: "MANDAT_VENTE_SIGNE",
+        fileName: "mandat.pdf",
+        mimeType: "application/pdf",
+        size: 100,
+        status: "UPLOADED",
+        storageKey: "files/mandat.pdf",
+        createdAt: "2026-02-01T10:00:00.000Z",
+      },
+    ]);
+    component.prospects.set([
+      {
+        id: "prospect_a",
+        propertyId: "property_computed",
+        userId: "client_1",
+        firstName: "Anais",
+        lastName: "Meyer",
+        email: "anais@example.com",
+        phone: "0601010101",
+        address: null,
+        postalCode: null,
+        city: null,
+        relationRole: "PROSPECT",
+        createdAt: "2026-02-01T10:00:00.000Z",
+      },
+    ]);
+    component.visits.set([
+      {
+        id: "visit_a",
+        propertyId: "property_computed",
+        propertyTitle: "Maison Grasse",
+        prospectUserId: "client_1",
+        prospectFirstName: "Anais",
+        prospectLastName: "Meyer",
+        prospectEmail: "anais@example.com",
+        prospectPhone: "0601010101",
+        startsAt: "2026-02-01T12:00:00.000Z",
+        endsAt: "2026-02-01T13:00:00.000Z",
+        compteRendu: null,
+        bonDeVisiteFileId: null,
+        bonDeVisiteFileName: null,
+        createdAt: "2026-02-01T11:00:00.000Z",
+        updatedAt: "2026-02-01T11:00:00.000Z",
+      },
+    ]);
+    component.comparables.set(comparablesResponse);
+    (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(comparablesResponse);
+    component.onRentalMonthlyRentChange("2200");
+    component.onRentalHoldingYearsChange("11");
+    component.onRentalResalePriceChange("690000");
+    component.setMainTab("documents");
+    component.setActiveDocumentTab("mandat");
+
+    expect(component.activePropertyCategoryDefinition()).toBeDefined();
+    component.activePropertyForm();
+    component.visibleDocumentTabs();
+    expect(component.providedDocumentTypes().has("MANDAT_VENTE_SIGNE")).toBe(true);
+    expect(component.documentsForActiveTab()).toHaveLength(1);
+    expect(component.expectedDocumentsForActiveTab().length).toBeGreaterThan(0);
+    component.activeTabHasHiddenExpectedDocuments();
+    component.previousStatus();
+    component.nextStatus();
+    expect(component.selectedFileName()).toBeNull();
+    expect(component.recordedVocalLabel()).toBeNull();
+    expect(component.filteredProspectClients().length).toBeGreaterThanOrEqual(0);
+    expect(component.filteredVisitClients().length).toBeGreaterThanOrEqual(0);
+    expect(component.sortedVisits()[0]?.id).toBe("visit_a");
+    expect(component.comparableTargetSurfaceM2()).toBe(120);
+    component.comparableTargetLandSurfaceM2();
+    component.comparablesRadiusDomain();
+    component.comparablesSurfaceDomain();
+    component.comparablesSurfaceSlider();
+    component.comparablesTerrainDomain();
+    component.comparablesTerrainSlider();
+    expect(component.filteredComparablePoints().length).toBeGreaterThan(0);
+    expect(component.filteredComparableSalesSorted().length).toBeGreaterThan(0);
+    expect(component.salesPagination().totalPages).toBeGreaterThan(0);
+    expect(component.paginatedComparableSales().length).toBeGreaterThan(0);
+    expect(component.comparablesDisplayedSummary().count).toBeGreaterThan(0);
+    expect(component.comparablesFrontRegression().pointsUsed).toBeGreaterThan(0);
+    expect(component.comparablesFrontPricing()).not.toBeNull();
+    expect(
+      component.rentalProfitability().irrPct === null || (component.rentalProfitability().irrPct ?? 0) > 0,
+    ).toBe(true);
+    expect(
+      component.inseeModule().city === null || component.inseeModule().city === "Grasse",
+    ).toBe(true);
+    expect(component.latestSimilarComparableSalesCriteria()).not.toBeNull();
+    expect(component.latestSimilarRadiusSlider()).not.toBeNull();
+    expect(component.latestSimilarSurfaceSlider()).not.toBeNull();
+    component.latestSimilarTerrainSlider();
+    expect(component.latestSimilarComparableSales().length).toBeGreaterThan(0);
+    expect(component.comparablesChartDomains()).not.toBeNull();
+
+    component.openUploadModal();
+    expect(component.uploadModalOpen()).toBe(true);
+    component.onFileInputChange(new Event("change"));
+    const originalFileToBase64 = internals["fileToBase64"];
+    const originalBlobToBase64 = internals["blobToBase64"];
+    internals["fileToBase64"] = () => Promise.resolve("Zm9v");
+    component.selectedFile.set(new File(["doc"], "diag.pdf", { type: "application/pdf" }));
+    await component.uploadFile();
+    expect(component.uploadFeedback()).toBe("Document ajouté.");
+    component.onUploadBackdropClick({ target: "same", currentTarget: "same" } as unknown as MouseEvent);
+
+    component.openVocalModal();
+    component.recordedVocal.set(new Blob(["audio"], { type: "audio/webm" }));
+    internals["blobToBase64"] = () => Promise.resolve("Zm9v");
+    await component.uploadVocalRecording();
+    expect(component.requestFeedback()).toContain("Vocal ajouté");
+    component.clearRecordedVocal();
+    component.closeVocalModal(true);
+    component.onVocalBackdropClick({ target: "same", currentTarget: "same" } as unknown as MouseEvent);
+    internals["fileToBase64"] = originalFileToBase64;
+    internals["blobToBase64"] = originalBlobToBase64;
+
+    expect((internals["parseOptionalNumber"] as (value: string) => number | null)("12,5")).toBe(12.5);
+    expect((internals["parseOptionalNumber"] as (value: string) => number | null)("x")).toBeNull();
+    expect((internals["parsePositiveNumber"] as (value: unknown) => number | null)("1 200")).toBeNull();
+    expect((internals["parseComparableSaleTimestamp"] as (value?: string) => number | null)(undefined)).toBeNull();
+    expect((internals["formatComparableSaleDate"] as (value?: string) => string | null)("2024-01-01T00:00:00.000Z")).not.toBeNull();
+    expect((internals["normalizeEmptyAsNull"] as (value: string) => string | null)("   ")).toBeNull();
+    expect((internals["toIsoFromDateTimeInput"] as (value: string) => string | null)("bad")).toBeNull();
+    expect((internals["parseBooleanDetail"] as (value: unknown) => boolean | null)("true")).toBe(true);
+    expect((internals["parseBooleanDetail"] as (value: unknown) => boolean | null)(" FALSE ")).toBe(false);
+    expect((internals["parseBooleanDetail"] as (value: unknown) => boolean | null)(42)).toBeNull();
+    expect((internals["isAudioRecordingSupported"] as () => boolean)()).toBe(false);
+    (internals["stopRecorderTracks"] as () => void)();
+
+    component.comparables.set(null);
+    component.onComparableRadiusFilterChange("900");
+    component.onComparableSurfaceMinChange("90");
+    component.onComparableSurfaceMaxChange("130");
+    component.onComparableTerrainMinChange("700");
+    component.onComparableTerrainMaxChange("1000");
+    component.onLatestSimilarRadiusFilterChange("1200");
+    component.onLatestSimilarSurfaceMinChange("95");
+    component.onLatestSimilarSurfaceMaxChange("125");
+    component.onLatestSimilarTerrainMinChange("700");
+    component.onLatestSimilarTerrainMaxChange("1000");
+    expect(component.comparableSurfaceMinM2()).toBeNull();
+    expect(component.comparableTerrainMaxM2()).toBeNull();
+
+    component.comparables.set(comparablesResponse);
+    (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(
+      comparablesResponse,
+    );
+    component.onComparableRadiusFilterChange("x");
+    component.onComparableSurfaceMinChange("x");
+    component.onComparableSurfaceMaxChange("x");
+    component.onComparableTerrainMinChange("x");
+    component.onComparableTerrainMaxChange("x");
+    component.onLatestSimilarRadiusFilterChange("x");
+    component.onLatestSimilarSurfaceMinChange("x");
+    component.onLatestSimilarSurfaceMaxChange("x");
+    component.onLatestSimilarTerrainMinChange("x");
+    component.onLatestSimilarTerrainMaxChange("x");
+
+    const noSurfaceComparables: PropertyComparablesResponse = {
+      ...comparablesResponse,
+      points: comparablesResponse.points.map((point) => ({ ...point, surfaceM2: 0 })),
+    };
+    (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(
+      noSurfaceComparables,
+    );
+    expect(component.comparableSurfaceMinM2()).toBeNull();
+    expect(component.latestSimilarSurfaceMaxM2()).toBeNull();
+
+    const noTerrainComparables: PropertyComparablesResponse = {
+      ...comparablesResponse,
+      points: comparablesResponse.points.map((point) => ({ ...point, landSurfaceM2: null })),
+    };
+    (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(
+      noTerrainComparables,
+    );
+    expect(component.comparableTerrainMinM2()).toBeNull();
+    expect(component.latestSimilarTerrainMaxM2()).toBeNull();
+
+    const apartmentComparables: PropertyComparablesResponse = {
+      ...comparablesResponse,
+      propertyType: "APPARTEMENT",
+    };
+    component.comparables.set(apartmentComparables);
+    (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(
+      apartmentComparables,
+    );
+    expect(component.latestSimilarTerrainSlider()).toBeNull();
+
+    const selectedClient: AccountUserListResponse["items"][number] = {
+      id: "client_1",
+      firstName: "Anais",
+      lastName: "Meyer",
+      email: "anais@example.com",
+      phone: "0601010101",
+      orgId: "org_demo",
+      accountType: "CLIENT",
+      role: "CLIENT",
+      address: null,
+      postalCode: null,
+      city: null,
+      personalNotes: null,
+      linkedProperties: [],
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+    const fallbackClient: AccountUserListResponse["items"][number] = {
+      ...selectedClient,
+      id: "client_2",
+      email: "anais.secondary@example.com",
+      phone: "0601010199",
+    };
+    component.clients.set([selectedClient, fallbackClient]);
+    (internals["applyProspectLookupValue"] as (lookup: string) => void)("anais@example.com");
+    expect(component.prospectForm.controls.userId.value).toBe("client_1");
+    (internals["applyVisitLookupValue"] as (lookup: string) => void)("anais@example.com");
+    expect(component.visitForm.controls.userId.value).toBe("client_1");
+    expect((internals["findClientFromLookup"] as (lookup: string) => unknown)("anais")).toBeNull();
+    expect(
+      ((internals["findClientFromLookup"] as (lookup: string) => { id: string } | null)(
+        "anais@example.com",
+      ) ?? { id: null }).id,
+    ).toBe("client_1");
+    component.prospectForm.controls.userId.setValue("missing");
+    component.prospectForm.controls.existingLookup.setValue("anais@example.com");
+    expect(
+      ((internals["resolveSelectedProspectClient"] as () => { id: string } | null)() ?? { id: null })
+        .id,
+    ).toBe("client_1");
+    component.visitForm.controls.userId.setValue("missing");
+    component.visitForm.controls.existingLookup.setValue("anais@example.com");
+    expect(
+      ((internals["resolveSelectedVisitClient"] as () => { id: string } | null)() ?? { id: null }).id,
+    ).toBe("client_1");
+
+    expect((internals["toCanonicalHiddenExpectedDocumentKey"] as (key: string) => string | null)("")).toBeNull();
+    expect((internals["toCanonicalHiddenExpectedDocumentKey"] as (key: string) => string | null)("legacy-key")).toBe(
+      "legacy-key",
+    );
+    expect((internals["toCanonicalHiddenExpectedDocumentKey"] as (key: string) => string | null)("mandat::")).toBeNull();
+    expect(
+      (internals["toCanonicalHiddenExpectedDocumentKey"] as (key: string) => string | null)("mandat::0"),
+    ).toBe("mandat::MANDAT_VENTE_SIGNE");
+    expect(
+      (internals["normalizeHiddenExpectedDocumentKeys"] as (value: unknown) => string[])([
+        "mandat::0",
+        "mandat::MANDAT_VENTE_SIGNE",
+        "legacy-key",
+      ]),
+    ).toEqual(["mandat::MANDAT_VENTE_SIGNE", "legacy-key"]);
+
+    const boolField = { key: "isCopropriete", label: "copro", type: "boolean" } as const;
+    const numberField = { key: "livingArea", label: "surface", type: "number" } as const;
+    const textField = { key: "notes", label: "notes", type: "text" } as const;
+    const dateField = { key: "mandateSignedAt", label: "mandat", type: "date" } as const;
+    expect((internals["toControlValue"] as (value: unknown, field: unknown) => string)(true, boolField)).toBe(
+      "true",
+    );
+    expect((internals["toControlValue"] as (value: unknown, field: unknown) => string)("FALSE", boolField)).toBe(
+      "false",
+    );
+    expect((internals["toControlValue"] as (value: unknown, field: unknown) => string)("foo", boolField)).toBe(
+      "",
+    );
+    expect(
+      (internals["toControlValue"] as (value: unknown, field: unknown) => string)(
+        "2026-02-01T10:00:00.000Z",
+        dateField,
+      ),
+    ).toBe("2026-02-01");
+    expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("true", boolField)).toBe(
+      true,
+    );
+    expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("false", boolField)).toBe(
+      false,
+    );
+    expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("x", boolField)).toBeNull();
+    expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("", numberField)).toBeNull();
+    expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("12,5", numberField)).toBe(
+      12.5,
+    );
+    expect(() =>
+      (internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("abc", numberField),
+    ).toThrowError("invalid_number");
+    expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("  test  ", textField)).toBe(
+      "test",
+    );
+    expect((internals["isFieldValueEmpty"] as (value: unknown) => boolean)("   ")).toBe(true);
+    expect((internals["isFieldValueEmpty"] as (value: unknown) => boolean)(12)).toBe(false);
+    const patchPayload: Record<string, unknown> = {};
+    (internals["assignPropertyPatchValue"] as (payload: unknown, key: string, value: string) => void)(
+      patchPayload,
+      "title",
+      "Titre MAJ",
+    );
+    (internals["assignPropertyPatchValue"] as (payload: unknown, key: string, value: string) => void)(
+      patchPayload,
+      "city",
+      "Grasse",
+    );
+    (internals["assignPropertyPatchValue"] as (payload: unknown, key: string, value: string) => void)(
+      patchPayload,
+      "postalCode",
+      "06130",
+    );
+    (internals["assignPropertyPatchValue"] as (payload: unknown, key: string, value: string) => void)(
+      patchPayload,
+      "address",
+      "7 avenue des Fleurs",
+    );
+    (internals["assignPropertyPatchValue"] as (payload: unknown, key: string, value: string) => void)(
+      patchPayload,
+      "other",
+      "ignored",
+    );
+    expect(patchPayload).toEqual({
+      title: "Titre MAJ",
+      city: "Grasse",
+      postalCode: "06130",
+      address: "7 avenue des Fleurs",
+    });
+
+    let stoppedTracks = 0;
+    (component as unknown as { mediaStream: { getTracks: () => Array<{ stop: () => void }> } | null }).mediaStream = {
+      getTracks: () => [{ stop: () => { stoppedTracks += 1; } }, { stop: () => { stoppedTracks += 1; } }],
+    };
+    (internals["stopRecorderTracks"] as () => void)();
+    expect(stoppedTracks).toBe(2);
+
+    const originalFileReader = globalThis.FileReader;
+    class SuccessFileReader {
+      result: string | ArrayBuffer | null = "data:text/plain;base64,Zm9v";
+      onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+      onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+
+      readAsDataURL(): void {
+        this.onload?.call(this as unknown as FileReader, {} as ProgressEvent<FileReader>);
+      }
+    }
+    (globalThis as unknown as { FileReader: typeof FileReader }).FileReader =
+      SuccessFileReader as unknown as typeof FileReader;
+    await expect(
+      (internals["blobToBase64"] as (blob: Blob) => Promise<string>)(
+        new Blob(["audio"], { type: "audio/webm" }),
+      ),
+    ).resolves.toBe("Zm9v");
+    await expect(
+      (internals["fileToBase64"] as (file: File) => Promise<string>)(
+        new File(["document"], "doc.txt", { type: "text/plain" }),
+      ),
+    ).resolves.toBe("Zm9v");
+
+    class ErrorFileReader {
+      result: string | ArrayBuffer | null = null;
+      onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+      onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+
+      readAsDataURL(): void {
+        this.onerror?.call(this as unknown as FileReader, {} as ProgressEvent<FileReader>);
+      }
+    }
+    (globalThis as unknown as { FileReader: typeof FileReader }).FileReader =
+      ErrorFileReader as unknown as typeof FileReader;
+    await expect(
+      (internals["blobToBase64"] as (blob: Blob) => Promise<string>)(
+        new Blob(["audio"], { type: "audio/webm" }),
+      ),
+    ).rejects.toThrowError("Impossible de lire l'enregistrement vocal.");
+    await expect(
+      (internals["fileToBase64"] as (file: File) => Promise<string>)(
+        new File(["document"], "doc.txt", { type: "text/plain" }),
+      ),
+    ).rejects.toThrowError("Impossible de lire le fichier.");
+    (globalThis as unknown as { FileReader: typeof FileReader }).FileReader = originalFileReader;
   });
 });

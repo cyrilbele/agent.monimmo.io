@@ -84,6 +84,14 @@ export interface AuthResponse {
   user: UserResponse;
 }
 
+export interface AppSettingsResponse {
+  notaryFeePct: number;
+}
+
+export interface AppSettingsPatchRequest {
+  notaryFeePct: number;
+}
+
 export interface PropertyOwner {
   firstName: string;
   lastName: string;

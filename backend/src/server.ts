@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authService } from "./auth/service";
 import {
+  AppSettingsPatchRequestSchema,
   ForgotPasswordRequestSchema,
   FileUpdateRequestSchema,
   FileUploadRequestSchema,
@@ -369,6 +370,19 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       if (request.method === "GET" && url.pathname === "/me") {
         const accessToken = getBearerToken();
         const response = await authService.me(accessToken);
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/me/settings") {
+        const accessToken = getBearerToken();
+        const response = await authService.getSettings(accessToken);
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/me/settings") {
+        const accessToken = getBearerToken();
+        const payload = await parseJson(AppSettingsPatchRequestSchema);
+        const response = await authService.updateSettings(accessToken, payload);
         return withCors(request, json(response, { status: 200 }));
       }
 

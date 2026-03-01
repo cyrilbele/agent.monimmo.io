@@ -107,6 +107,66 @@ describe("auth endpoints", () => {
     expect(mePayload.user.email).toBe(DEMO_AUTH_EMAIL);
   });
 
+  it("lit et met à jour les paramètres applicatifs via /me/settings", async () => {
+    const loginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_AUTH_EMAIL,
+          password: DEMO_AUTH_PASSWORD,
+        }),
+      }),
+    );
+    const loginPayload = await loginResponse.json();
+
+    const getInitialResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+      }),
+    );
+
+    expect(getInitialResponse.status).toBe(200);
+    const initialSettings = await getInitialResponse.json();
+    expect(typeof initialSettings.notaryFeePct).toBe("number");
+    expect(Number.isFinite(initialSettings.notaryFeePct)).toBe(true);
+
+    const updateResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+        body: JSON.stringify({
+          notaryFeePct: 7.35,
+        }),
+      }),
+    );
+
+    expect(updateResponse.status).toBe(200);
+    expect(await updateResponse.json()).toEqual({
+      notaryFeePct: 7.35,
+    });
+
+    const getUpdatedResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+      }),
+    );
+
+    expect(getUpdatedResponse.status).toBe(200);
+    expect(await getUpdatedResponse.json()).toEqual({
+      notaryFeePct: 7.35,
+    });
+  });
+
   it("invalide le refresh token après logout", async () => {
     const loginResponse = await createApp().fetch(
       new Request("http://localhost/auth/login", {

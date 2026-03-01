@@ -22,7 +22,14 @@
           step="0.1"
         />
       </div>
-      <button class="btn w-full sm:w-auto" type="submit">Enregistrer</button>
+      <button
+        class="btn w-full sm:w-auto"
+        type="submit"
+        [disabled]="valuationPending()"
+        [attr.aria-busy]="valuationPending() ? 'true' : 'false'"
+      >
+        {{ valuationPending() ? "Enregistrement..." : "Enregistrer" }}
+      </button>
     </form>
 
     @if (valuationFeedback()) {

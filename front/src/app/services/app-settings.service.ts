@@ -1,41 +1,44 @@
-import { Injectable, signal } from "@angular/core";
+import { inject, Injectable, signal } from "@angular/core";
 
-const NOTARY_FEE_PCT_STORAGE_KEY = "monimmo.settings.notaryFeePct";
+import type { AppSettingsResponse } from "../core/api.models";
+import { ApiClientService } from "../core/api-client.service";
+
 const DEFAULT_NOTARY_FEE_PCT = 8;
 const MIN_NOTARY_FEE_PCT = 0;
 const MAX_NOTARY_FEE_PCT = 100;
 
 @Injectable({ providedIn: "root" })
 export class AppSettingsService {
-  readonly notaryFeePct = signal<number>(this.readNotaryFeePct());
+  private readonly api = inject(ApiClientService);
 
-  updateNotaryFeePct(value: number): number {
+  readonly notaryFeePct = signal<number>(DEFAULT_NOTARY_FEE_PCT);
+  readonly loaded = signal(false);
+
+  constructor() {
+    void this.refresh();
+  }
+
+  async refresh(): Promise<number> {
+    try {
+      const response = await this.api.request<AppSettingsResponse>("GET", "/me/settings");
+      const normalized = this.normalizeNotaryFeePct(response.notaryFeePct);
+      this.notaryFeePct.set(normalized);
+      return normalized;
+    } catch {
+      return this.notaryFeePct();
+    } finally {
+      this.loaded.set(true);
+    }
+  }
+
+  async updateNotaryFeePct(value: number): Promise<number> {
     const normalized = this.normalizeNotaryFeePct(value);
-    this.notaryFeePct.set(normalized);
-    this.persistNotaryFeePct(normalized);
-    return normalized;
-  }
-
-  private readNotaryFeePct(): number {
-    if (typeof localStorage === "undefined") {
-      return DEFAULT_NOTARY_FEE_PCT;
-    }
-
-    const raw = localStorage.getItem(NOTARY_FEE_PCT_STORAGE_KEY);
-    if (!raw) {
-      return DEFAULT_NOTARY_FEE_PCT;
-    }
-
-    const parsed = Number(raw);
-    return this.normalizeNotaryFeePct(parsed);
-  }
-
-  private persistNotaryFeePct(value: number): void {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    localStorage.setItem(NOTARY_FEE_PCT_STORAGE_KEY, String(value));
+    const response = await this.api.request<AppSettingsResponse>("PATCH", "/me/settings", {
+      body: { notaryFeePct: normalized },
+    });
+    const persisted = this.normalizeNotaryFeePct(response.notaryFeePct);
+    this.notaryFeePct.set(persisted);
+    return persisted;
   }
 
   private normalizeNotaryFeePct(value: number): number {
@@ -48,4 +51,4 @@ export class AppSettingsService {
   }
 }
 
-export { DEFAULT_NOTARY_FEE_PCT, NOTARY_FEE_PCT_STORAGE_KEY };
+export { DEFAULT_NOTARY_FEE_PCT };

@@ -24,7 +24,7 @@ Objectifs principaux:
 2. Maintenir compatibilite API/OpenAPI/Zod.
 3. Ajouter/mettre a jour les tests avec les changements backend.
 4. toujours faire les tests et maintenir un coverage de 80%
-5. pour le front end, ne rien stocker dans le localStorage, toujours persister dans le back-end
+5. pour le front end, ne pas stocker dans le localStorage des données immobilières qui pourraient etre utile sur d autres front-end, toujours persister dans le back-end
 
 ## Regles pour la UI
 
