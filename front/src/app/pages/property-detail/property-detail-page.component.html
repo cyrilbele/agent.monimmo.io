@@ -621,81 +621,6 @@
               {{ comparablesError() }}
             </p>
           } @else if (comparables(); as comparablesResponse) {
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Nb ventes
-                </p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">
-                  {{ comparablesDisplayedSummary().count }}
-                </p>
-              </article>
-              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Mediane prix / m2
-                </p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">
-                  @if (comparablesDisplayedSummary().medianPricePerM2 !== null) {
-                    {{ comparablesDisplayedSummary().medianPricePerM2 | number: '1.0-0' }} €/m²
-                  } @else {
-                    N/A
-                  }
-                </p>
-              </article>
-              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Prix predit
-                </p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">
-                  @if (comparablesFrontPricing(); as frontPricing) {
-                    @if (frontPricing.predictedPrice !== null) {
-                      {{ frontPricing.predictedPrice | number: '1.0-0' }} €
-                    } @else {
-                      N/A
-                    }
-                  } @else {
-                    N/A
-                  }
-                </p>
-              </article>
-              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Position prix
-                </p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">
-                  @if (comparablesFrontPricing(); as frontPricing) {
-                    {{ comparablePricingLabel(frontPricing.pricingPosition) }}
-                  } @else {
-                    N/A
-                  }
-                </p>
-                <p class="mt-3 text-sm text-slate-700">
-                  Prix demandé:
-                  <strong>
-                    @if (comparablesResponse.subject.askingPrice !== null) {
-                      {{ comparablesResponse.subject.askingPrice | number: '1.0-0' }} €
-                    } @else {
-                      N/A
-                    }
-                  </strong>
-                </p>
-                <p class="text-sm text-slate-700">
-                  Ecart:
-                  <strong>
-                    @if (comparablesFrontPricing(); as frontPricing) {
-                      @if (frontPricing.deviationPct !== null) {
-                        {{ frontPricing.deviationPct | number: '1.0-1' }} %
-                      } @else {
-                        N/A
-                      }
-                    } @else {
-                      N/A
-                    }
-                  </strong>
-                </p>
-              </article>
-            </div>
-
             <article class="rounded-xl border border-slate-200 bg-white p-4">
               <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
                 Filtres comparables
@@ -819,6 +744,151 @@
               </div>
             </article>
 
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Nb ventes
+                </p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">
+                  {{ comparablesDisplayedSummary().count }}
+                </p>
+              </article>
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Mediane prix / m2
+                </p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">
+                  @if (comparablesDisplayedSummary().medianPricePerM2 !== null) {
+                    {{ comparablesDisplayedSummary().medianPricePerM2 | number: '1.0-0' }} €/m²
+                  } @else {
+                    N/A
+                  }
+                </p>
+              </article>
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Prix predit
+                </p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">
+                  @if (comparablesFrontPricing(); as frontPricing) {
+                    @if (frontPricing.predictedPrice !== null) {
+                      {{ frontPricing.predictedPrice | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  } @else {
+                    N/A
+                  }
+                </p>
+              </article>
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Position prix
+                </p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">
+                  @if (comparablesFrontPricing(); as frontPricing) {
+                    {{ comparablePricingLabel(frontPricing.pricingPosition) }}
+                  } @else {
+                    N/A
+                  }
+                </p>
+                <p class="mt-3 text-sm text-slate-700">
+                  Prix demandé:
+                  <strong>
+                    @if (comparablesResponse.subject.askingPrice !== null) {
+                      {{ comparablesResponse.subject.askingPrice | number: '1.0-0' }} €
+                    } @else {
+                      N/A
+                    }
+                  </strong>
+                </p>
+                <p class="text-sm text-slate-700">
+                  Ecart:
+                  <strong>
+                    @if (comparablesFrontPricing(); as frontPricing) {
+                      @if (frontPricing.deviationPct !== null) {
+                        {{ frontPricing.deviationPct | number: '1.0-1' }} %
+                      } @else {
+                        N/A
+                      }
+                    } @else {
+                      N/A
+                    }
+                  </strong>
+                </p>
+              </article>
+            </div>
+
+            <article class="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Tendance du marché (5 dernières années)
+              </h4>
+              <div class="mt-3 overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead class="bg-slate-50 text-xs uppercase tracking-[0.08em] text-slate-500">
+                    <tr>
+                      <th class="px-3 py-2 text-left">Indicateur</th>
+                      @for (yearRow of marketTrendRows(); track yearRow.year) {
+                        <th class="px-3 py-2 text-right">{{ yearRow.year }}</th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 bg-white">
+                    <tr>
+                      <th class="px-3 py-2 text-left font-semibold text-slate-700">Nb ventes</th>
+                      @for (yearRow of marketTrendRows(); track yearRow.year) {
+                        <td class="px-3 py-2 text-right align-top">
+                          <p class="font-semibold text-slate-900">
+                            {{ yearRow.salesCount | number: '1.0-0' }}
+                          </p>
+                          <p
+                            class="text-xs font-medium"
+                            [ngClass]="variationClass(yearRow.salesCountVariationPct)"
+                          >
+                            @if (yearRow.salesCountVariationPct !== null) {
+                              ({{ yearRow.salesCountVariationPct > 0 ? '+' : '' }}{{
+                                yearRow.salesCountVariationPct | number: '1.0-1'
+                              }}
+                              %)
+                            } @else {
+                              (N/A)
+                            }
+                          </p>
+                        </td>
+                      }
+                    </tr>
+                    <tr>
+                      <th class="px-3 py-2 text-left font-semibold text-slate-700">Prix moyen m²</th>
+                      @for (yearRow of marketTrendRows(); track yearRow.year) {
+                        <td class="px-3 py-2 text-right align-top">
+                          <p class="font-semibold text-slate-900">
+                            @if (yearRow.avgPricePerM2 !== null) {
+                              {{ yearRow.avgPricePerM2 | number: '1.0-0' }} €/m²
+                            } @else {
+                              N/A
+                            }
+                          </p>
+                          <p
+                            class="text-xs font-medium"
+                            [ngClass]="variationClass(yearRow.avgPricePerM2VariationPct)"
+                          >
+                            @if (yearRow.avgPricePerM2VariationPct !== null) {
+                              ({{ yearRow.avgPricePerM2VariationPct > 0 ? '+' : '' }}{{
+                                yearRow.avgPricePerM2VariationPct | number: '1.0-1'
+                              }}
+                              %)
+                            } @else {
+                              (N/A)
+                            }
+                          </p>
+                        </td>
+                      }
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
             <article class="rounded-xl border border-slate-200 bg-white p-4">
               <h4 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
                 Nuage surface/prix
@@ -861,13 +931,63 @@
                   <table class="min-w-full divide-y divide-slate-200 text-sm">
                     <thead class="bg-slate-50 text-xs uppercase tracking-[0.08em] text-slate-500">
                       <tr>
-                        <th class="px-3 py-2 text-left">Date de vente</th>
-                        <th class="px-3 py-2 text-left">Surface</th>
+                        <th class="px-3 py-2 text-left" [attr.aria-sort]="comparableSalesAriaSort('saleDate')">
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1 rounded text-left font-semibold text-slate-600 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                            (click)="sortComparableSalesBy('saleDate')"
+                          >
+                            Date de vente
+                            <span aria-hidden="true">{{ comparableSalesSortIndicator('saleDate') }}</span>
+                          </button>
+                        </th>
+                        <th class="px-3 py-2 text-left" [attr.aria-sort]="comparableSalesAriaSort('surfaceM2')">
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1 rounded text-left font-semibold text-slate-600 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                            (click)="sortComparableSalesBy('surfaceM2')"
+                          >
+                            Surface
+                            <span aria-hidden="true">{{ comparableSalesSortIndicator('surfaceM2') }}</span>
+                          </button>
+                        </th>
                         @if (comparablesResponse.propertyType === 'MAISON') {
-                          <th class="px-3 py-2 text-left">Surface terrain</th>
+                          <th
+                            class="px-3 py-2 text-left"
+                            [attr.aria-sort]="comparableSalesAriaSort('landSurfaceM2')"
+                          >
+                            <button
+                              type="button"
+                              class="inline-flex items-center gap-1 rounded text-left font-semibold text-slate-600 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                              (click)="sortComparableSalesBy('landSurfaceM2')"
+                            >
+                              Surface terrain
+                              <span aria-hidden="true">{{
+                                comparableSalesSortIndicator('landSurfaceM2')
+                              }}</span>
+                            </button>
+                          </th>
                         }
-                        <th class="px-3 py-2 text-left">Prix</th>
-                        <th class="px-3 py-2 text-left">Prix / m²</th>
+                        <th class="px-3 py-2 text-left" [attr.aria-sort]="comparableSalesAriaSort('salePrice')">
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1 rounded text-left font-semibold text-slate-600 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                            (click)="sortComparableSalesBy('salePrice')"
+                          >
+                            Prix
+                            <span aria-hidden="true">{{ comparableSalesSortIndicator('salePrice') }}</span>
+                          </button>
+                        </th>
+                        <th class="px-3 py-2 text-left" [attr.aria-sort]="comparableSalesAriaSort('pricePerM2')">
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1 rounded text-left font-semibold text-slate-600 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                            (click)="sortComparableSalesBy('pricePerM2')"
+                          >
+                            Prix / m²
+                            <span aria-hidden="true">{{ comparableSalesSortIndicator('pricePerM2') }}</span>
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">

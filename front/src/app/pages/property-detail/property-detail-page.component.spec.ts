@@ -1327,6 +1327,67 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(component.comparablesDisplayedSummary().count).toBeGreaterThan(0);
     expect(component.comparablesFrontRegression().pointsUsed).toBeGreaterThan(0);
     expect(component.comparablesFrontPricing()).not.toBeNull();
+    expect(component.comparableSalesSortDirection("saleDate")).toBe("desc");
+    expect(component.comparableSalesSortIndicator("saleDate")).toBe("↓");
+    expect(component.comparableSalesAriaSort("saleDate")).toBe("descending");
+    expect(component.filteredComparableSalesSorted().map((point) => point.saleDate)).toEqual([
+      "2025-01-10T00:00:00.000Z",
+      "2024-11-10T00:00:00.000Z",
+      "2024-09-10T00:00:00.000Z",
+      "2024-06-10T00:00:00.000Z",
+    ]);
+
+    component.sortComparableSalesBy("surfaceM2");
+    expect(component.comparableSalesSortDirection("surfaceM2")).toBe("asc");
+    expect(component.comparableSalesSortIndicator("surfaceM2")).toBe("↑");
+    expect(component.comparableSalesAriaSort("saleDate")).toBe("none");
+    expect(component.filteredComparableSalesSorted().map((point) => point.surfaceM2)).toEqual([
+      110, 118, 125, 140,
+    ]);
+
+    component.sortComparableSalesBy("surfaceM2");
+    expect(component.comparableSalesSortDirection("surfaceM2")).toBe("desc");
+    expect(component.filteredComparableSalesSorted().map((point) => point.surfaceM2)).toEqual([
+      140, 125, 118, 110,
+    ]);
+
+    component.sortComparableSalesBy("landSurfaceM2");
+    expect(component.comparableSalesSortDirection("landSurfaceM2")).toBe("asc");
+    expect(component.filteredComparableSalesSorted().map((point) => point.landSurfaceM2)).toEqual([
+      800, 870, 920, 1100,
+    ]);
+
+    component.sortComparableSalesBy("salePrice");
+    expect(component.comparableSalesSortDirection("salePrice")).toBe("asc");
+    expect(component.filteredComparableSalesSorted().map((point) => point.salePrice)).toEqual([
+      560000, 595000, 640000, 710000,
+    ]);
+
+    component.sortComparableSalesBy("pricePerM2");
+    expect(component.comparableSalesSortDirection("pricePerM2")).toBe("asc");
+    expect(component.filteredComparableSalesSorted().map((point) => point.pricePerM2)).toEqual([
+      5042, 5071, 5090, 5120,
+    ]);
+
+    component.sortComparableSalesBy("pricePerM2");
+    expect(component.comparableSalesSortDirection("pricePerM2")).toBe("desc");
+    expect(component.filteredComparableSalesSorted().map((point) => point.pricePerM2)).toEqual([
+      5120, 5090, 5071, 5042,
+    ]);
+    const marketTrendRows = component.marketTrendRows();
+    expect(marketTrendRows).toHaveLength(5);
+    expect(marketTrendRows[0]?.year).toBe(2021);
+    expect(marketTrendRows[0]?.salesCount).toBe(0);
+    expect(marketTrendRows[3]?.salesCount).toBe(3);
+    expect(marketTrendRows[4]?.salesCount).toBe(1);
+    expect((marketTrendRows[4]?.salesCountVariationPct ?? 0) < 0).toBe(true);
+    expect((marketTrendRows[4]?.avgPricePerM2VariationPct ?? 0) > 0).toBe(true);
+    expect(component.variationClass(marketTrendRows[4]?.salesCountVariationPct ?? null)).toBe(
+      "text-red-700",
+    );
+    expect(component.variationClass(1)).toBe("text-emerald-700");
+    expect(component.variationClass(0)).toBe("text-slate-700");
+    expect(component.variationClass(null)).toBe("text-slate-500");
     expect(
       component.rentalProfitability().irrPct === null || (component.rentalProfitability().irrPct ?? 0) > 0,
     ).toBe(true);
@@ -1339,6 +1400,29 @@ describe("PropertyDetailPageComponent comparables", () => {
     component.latestSimilarTerrainSlider();
     expect(component.latestSimilarComparableSales().length).toBeGreaterThan(0);
     expect(component.comparablesChartDomains()).not.toBeNull();
+    const outlierComparables: PropertyComparablesResponse = {
+      ...comparablesResponse,
+      points: [
+        ...comparablesResponse.points,
+        {
+          saleDate: "2024-03-10T00:00:00.000Z",
+          surfaceM2: 120,
+          landSurfaceM2: 820,
+          salePrice: 4_700_000,
+          pricePerM2: 39_166,
+          distanceM: 1800,
+          city: "Grasse",
+          postalCode: "06130",
+        },
+      ],
+    };
+    component.comparables.set(outlierComparables);
+    (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(
+      outlierComparables,
+    );
+    expect(component.filteredComparablePoints().some((point) => point.salePrice === 4_700_000)).toBe(true);
+    expect(component.chartComparablePoints().some((point) => point.salePrice === 4_700_000)).toBe(false);
+    expect((component.comparablesChartDomains()?.yDomain.max ?? 0) < 4_700_000).toBe(true);
 
     component.openUploadModal();
     expect(component.uploadModalOpen()).toBe(true);

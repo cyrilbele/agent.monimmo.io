@@ -97,10 +97,24 @@ type ExpectedDocumentItem = {
   typeDocument: TypeDocument | null;
   provided: boolean;
 };
+type MarketTrendYearRow = {
+  year: number;
+  salesCount: number;
+  avgPricePerM2: number | null;
+  salesCountVariationPct: number | null;
+  avgPricePerM2VariationPct: number | null;
+};
+type ComparableSalesSortKey = "saleDate" | "surfaceM2" | "landSurfaceM2" | "salePrice" | "pricePerM2";
+type ComparableSalesSortDirection = "asc" | "desc";
+type ComparableSalesSortState = {
+  key: ComparableSalesSortKey;
+  direction: ComparableSalesSortDirection;
+};
 
 const DEFAULT_TYPE_DOCUMENT: TypeDocument = "PIECE_IDENTITE";
 const EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR = "::";
 const FRONT_COMPARABLE_PRICE_TOLERANCE = 0.1;
+const CHART_OUTLIER_PRICE_PER_M2_MULTIPLIER = 3;
 const SALES_PAGE_SIZE = 10;
 const COMPARABLE_TYPE_OPTIONS: Array<{ value: ComparablePropertyType; label: string }> = [
   { value: "APPARTEMENT", label: "Appartement" },
@@ -161,6 +175,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly latestSimilarTerrainMinM2 = signal<number | null>(null);
   readonly latestSimilarTerrainMaxM2 = signal<number | null>(null);
   readonly salesPage = signal(1);
+  readonly comparableSalesSort = signal<ComparableSalesSortState>({
+    key: "saleDate",
+    direction: "desc",
+  });
   readonly clients = signal<AccountUserResponse[]>([]);
   private comparablesChart: Chart<"scatter", ComparableScatterPoint[]> | null = null;
   private comparablesChartCanvas: HTMLCanvasElement | null = null;
@@ -587,15 +605,63 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return true;
     });
   });
-  readonly filteredComparableSalesSorted = computed(() =>
-    this.filteredComparablePoints()
-      .map((point) => ({
-        point,
-        saleTimestamp: this.parseComparableSaleTimestamp(point.saleDate) ?? Number.NEGATIVE_INFINITY,
-      }))
-      .sort((a, b) => b.saleTimestamp - a.saleTimestamp)
-      .map((entry) => entry.point),
-  );
+  readonly chartComparablePoints = computed(() => {
+    const points = this.filteredComparablePoints();
+    if (points.length === 0) {
+      return [];
+    }
+
+    const comparablePricePerM2Values = points
+      .map((point) => this.resolveComparablePricePerM2(point))
+      .filter((value): value is number => value !== null);
+    if (comparablePricePerM2Values.length === 0) {
+      return points;
+    }
+
+    const averagePricePerM2 =
+      comparablePricePerM2Values.reduce((sum, value) => sum + value, 0) / comparablePricePerM2Values.length;
+    if (!Number.isFinite(averagePricePerM2) || averagePricePerM2 <= 0) {
+      return points;
+    }
+
+    const maxAllowedPricePerM2 = averagePricePerM2 * CHART_OUTLIER_PRICE_PER_M2_MULTIPLIER;
+    const filteredPoints = points.filter((point) => {
+      const pricePerM2 = this.resolveComparablePricePerM2(point);
+      if (pricePerM2 === null) {
+        return true;
+      }
+
+      return pricePerM2 <= maxAllowedPricePerM2;
+    });
+
+    return filteredPoints.length > 0 ? filteredPoints : points;
+  });
+  readonly filteredComparableSalesSorted = computed(() => {
+    const points = this.filteredComparablePoints().slice();
+    const sortState = this.comparableSalesSort();
+
+    points.sort((a, b) => {
+      const left = this.resolveComparableSalesSortValue(a, sortState.key);
+      const right = this.resolveComparableSalesSortValue(b, sortState.key);
+
+      if (left === null && right === null) {
+        return 0;
+      }
+      if (left === null) {
+        return 1;
+      }
+      if (right === null) {
+        return -1;
+      }
+      if (left === right) {
+        return 0;
+      }
+
+      return sortState.direction === "asc" ? left - right : right - left;
+    });
+
+    return points;
+  });
   readonly salesPagination = computed(() => {
     const total = this.filteredComparableSalesSorted().length;
     const pageSize = SALES_PAGE_SIZE;
@@ -633,9 +699,85 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       maxPrice: prices.length > 0 ? Math.max(...prices) : null,
     };
   });
+  readonly marketTrendRows = computed<MarketTrendYearRow[]>(() => {
+    const response = this.comparables();
+    if (!response) {
+      return [];
+    }
+    const filteredPoints = this.filteredComparablePoints();
+
+    const saleYears = response.points
+      .map((point) => this.parseComparableSaleTimestamp(point.saleDate))
+      .filter((timestamp): timestamp is number => timestamp !== null)
+      .map((timestamp) => new Date(timestamp).getFullYear());
+
+    const latestYear = saleYears.length > 0 ? Math.max(...saleYears) : new Date().getFullYear();
+    const years = Array.from({ length: 5 }, (_value, index) => latestYear - (4 - index));
+
+    const byYear = new Map<number, { salesCount: number; sumPricePerM2: number; priceCount: number }>();
+    for (const year of years) {
+      byYear.set(year, { salesCount: 0, sumPricePerM2: 0, priceCount: 0 });
+    }
+
+    for (const point of filteredPoints) {
+      const saleTimestamp = this.parseComparableSaleTimestamp(point.saleDate);
+      if (saleTimestamp === null) {
+        continue;
+      }
+
+      const saleYear = new Date(saleTimestamp).getFullYear();
+      const bucket = byYear.get(saleYear);
+      if (!bucket) {
+        continue;
+      }
+
+      bucket.salesCount += 1;
+      const pricePerM2 = this.resolveComparablePricePerM2(point);
+      if (pricePerM2 !== null) {
+        bucket.sumPricePerM2 += pricePerM2;
+        bucket.priceCount += 1;
+      }
+    }
+
+    return years.map((year, index) => {
+      const current = byYear.get(year) ?? { salesCount: 0, sumPricePerM2: 0, priceCount: 0 };
+      const previous = byYear.get(year - 1) ?? { salesCount: 0, sumPricePerM2: 0, priceCount: 0 };
+      const avgPricePerM2 =
+        current.priceCount > 0 ? this.roundComparable(current.sumPricePerM2 / current.priceCount) : null;
+      const previousAvgPricePerM2 =
+        previous.priceCount > 0 ? previous.sumPricePerM2 / previous.priceCount : null;
+
+      return {
+        year,
+        salesCount: current.salesCount,
+        avgPricePerM2,
+        salesCountVariationPct:
+          index > 0 && previous.salesCount > 0
+            ? this.roundComparable(
+                ((current.salesCount - previous.salesCount) / previous.salesCount) * 100,
+              )
+            : null,
+        avgPricePerM2VariationPct:
+          index > 0 &&
+          avgPricePerM2 !== null &&
+          previousAvgPricePerM2 !== null &&
+          previousAvgPricePerM2 > 0
+            ? this.roundComparable(((avgPricePerM2 - previousAvgPricePerM2) / previousAvgPricePerM2) * 100)
+            : null,
+      };
+    });
+  });
   readonly comparablesFrontRegression = computed(() =>
     computeComparablesRegression(
       this.filteredComparablePoints().map((point) => ({
+        surfaceM2: point.surfaceM2,
+        salePrice: point.salePrice,
+      })),
+    ),
+  );
+  readonly chartComparableRegression = computed(() =>
+    computeComparablesRegression(
+      this.chartComparablePoints().map((point) => ({
         surfaceM2: point.surfaceM2,
         salePrice: point.salePrice,
       })),
@@ -913,14 +1055,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       .map((entry) => entry.point);
   });
   readonly comparablesChartDomains = computed(() => {
-    const points = this.filteredComparablePoints();
+    const points = this.chartComparablePoints();
     if (points.length === 0) {
       return null;
     }
 
     const xValues = points.map((point) => point.surfaceM2);
     const yValues = points.map((point) => point.salePrice);
-    const regression = this.comparablesFrontRegression();
+    const regression = this.chartComparableRegression();
 
     let minX = Math.min(...xValues);
     let maxX = Math.max(...xValues);
@@ -2245,6 +2387,52 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.latestSimilarTerrainMinM2.set(Math.min(currentMin, nextMax));
   }
 
+  sortComparableSalesBy(key: ComparableSalesSortKey): void {
+    this.comparableSalesSort.update((current) => {
+      if (current.key === key) {
+        return {
+          key,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        key,
+        direction: key === "saleDate" ? "desc" : "asc",
+      };
+    });
+    this.salesPage.set(1);
+  }
+
+  comparableSalesSortDirection(key: ComparableSalesSortKey): ComparableSalesSortDirection | null {
+    const sort = this.comparableSalesSort();
+    return sort.key === key ? sort.direction : null;
+  }
+
+  comparableSalesSortIndicator(key: ComparableSalesSortKey): string {
+    const direction = this.comparableSalesSortDirection(key);
+    if (direction === "asc") {
+      return "↑";
+    }
+    if (direction === "desc") {
+      return "↓";
+    }
+
+    return "↕";
+  }
+
+  comparableSalesAriaSort(key: ComparableSalesSortKey): "ascending" | "descending" | "none" {
+    const direction = this.comparableSalesSortDirection(key);
+    if (direction === "asc") {
+      return "ascending";
+    }
+    if (direction === "desc") {
+      return "descending";
+    }
+
+    return "none";
+  }
+
   goToSalesPage(page: number): void {
     const pagination = this.salesPagination();
     const nextPage = Math.min(Math.max(Math.floor(page), 1), pagination.totalPages);
@@ -2276,10 +2464,26 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return resolveComparablePricingLabel(value);
   }
 
+  variationClass(value: number | null): string {
+    if (value === null) {
+      return "text-slate-500";
+    }
+
+    if (value > 0) {
+      return "text-emerald-700";
+    }
+
+    if (value < 0) {
+      return "text-red-700";
+    }
+
+    return "text-slate-700";
+  }
+
   private renderComparablesChart(): void {
     const response = this.comparables();
     const chartDomains = this.comparablesChartDomains();
-    const filteredPoints = this.filteredComparablePoints();
+    const filteredPoints = this.chartComparablePoints();
     if (!response || !chartDomains || filteredPoints.length === 0 || !this.comparablesChartCanvas) {
       this.destroyComparablesChart();
       return;
@@ -2307,7 +2511,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         distanceM: point.distanceM,
       }));
 
-    const regression = this.comparablesFrontRegression();
+    const regression = this.chartComparableRegression();
     const minX = chartDomains.xDomain.min;
     const maxX = chartDomains.xDomain.max;
     const datasets: ChartDataset<"scatter", ComparableScatterPoint[]>[] = [
@@ -2485,6 +2689,50 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     return this.roundComparable(sorted[middle]);
+  }
+
+  private resolveComparablePricePerM2(
+    point: PropertyComparablesResponse["points"][number],
+  ): number | null {
+    if (Number.isFinite(point.pricePerM2) && point.pricePerM2 > 0) {
+      return point.pricePerM2;
+    }
+
+    if (
+      Number.isFinite(point.salePrice) &&
+      point.salePrice > 0 &&
+      Number.isFinite(point.surfaceM2) &&
+      point.surfaceM2 > 0
+    ) {
+      return point.salePrice / point.surfaceM2;
+    }
+
+    return null;
+  }
+
+  private resolveComparableSalesSortValue(
+    point: PropertyComparablesResponse["points"][number],
+    key: ComparableSalesSortKey,
+  ): number | null {
+    if (key === "saleDate") {
+      return this.parseComparableSaleTimestamp(point.saleDate);
+    }
+
+    if (key === "surfaceM2") {
+      return Number.isFinite(point.surfaceM2) && point.surfaceM2 > 0 ? point.surfaceM2 : null;
+    }
+
+    if (key === "landSurfaceM2") {
+      return typeof point.landSurfaceM2 === "number" && Number.isFinite(point.landSurfaceM2) && point.landSurfaceM2 > 0
+        ? point.landSurfaceM2
+        : null;
+    }
+
+    if (key === "salePrice") {
+      return Number.isFinite(point.salePrice) && point.salePrice > 0 ? point.salePrice : null;
+    }
+
+    return this.resolveComparablePricePerM2(point);
   }
 
   private computePredictedComparablePrice(input: {
