@@ -1,0 +1,115 @@
+        <section class="panel space-y-4 p-5">
+          <div class="flex items-center gap-2 overflow-x-auto pb-1">
+            @for (category of host.propertyCategories; track category.id) {
+              <button
+                type="button"
+                class="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold"
+                [class.bg-blue-600]="host.isActivePropertyCategory(category.id)"
+                [class.text-white]="host.isActivePropertyCategory(category.id)"
+                [class.bg-slate-100]="!host.isActivePropertyCategory(category.id)"
+                [class.text-slate-700]="!host.isActivePropertyCategory(category.id)"
+                (click)="host.setActivePropertyCategory(category.id)"
+              >
+                {{ category.label }}
+              </button>
+            }
+          </div>
+
+          @if (host.activePropertyCategoryDefinition(); as category) {
+            <div
+              class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4"
+            >
+              <h3 class="text-xl font-semibold text-slate-900">{{ category.label }}</h3>
+
+              <div class="flex items-center gap-2">
+                @if (!host.isEditingActiveCategory()) {
+                  <button
+                    type="button"
+                    class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    (click)="host.startEditingActiveCategory()"
+                  >
+                    Modifier
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                    [disabled]="host.patchPending()"
+                    (click)="host.cancelEditingActiveCategory()"
+                  >
+                    Annuler
+                  </button>
+
+                  <button
+                    type="button"
+                    class="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                    [disabled]="host.patchPending()"
+                    (click)="host.saveActivePropertyCategory()"
+                  >
+                    {{ host.patchPending() ? 'Enregistrement...' : 'Enregistrer' }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            @if (host.activePropertyForm(); as form) {
+              <form class="grid gap-3 sm:grid-cols-2" [formGroup]="form" novalidate>
+                @for (field of category.fields; track field.key) {
+                  @if (
+                    host.shouldDisplayPropertyField(category.id, field) &&
+                    (host.isEditingActiveCategory() || host.hasFieldValue(category.id, field))
+                  ) {
+                    <article
+                      [class]="
+                        field.type === 'textarea'
+                          ? 'rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2'
+                          : 'rounded-xl border border-slate-200 bg-slate-50 p-3'
+                      "
+                    >
+                      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        {{ field.label }}
+                      </p>
+
+                      @if (host.isEditingActiveCategory()) {
+                        @switch (field.type) {
+                          @case ('textarea') {
+                            <textarea
+                              class="field-input mt-2 min-h-24"
+                              [formControlName]="field.key"
+                            ></textarea>
+                          }
+                          @case ('select') {
+                            <select class="field-input mt-2" [formControlName]="field.key">
+                              <option value="">Non renseigné</option>
+                              @for (option of field.options ?? []; track option.value) {
+                                <option [value]="option.value">{{ option.label }}</option>
+                              }
+                            </select>
+                          }
+                          @case ('date') {
+                            <input
+                              class="field-input mt-2"
+                              type="date"
+                              [formControlName]="field.key"
+                            />
+                          }
+                          @default {
+                            <input
+                              class="field-input mt-2"
+                              type="text"
+                              [formControlName]="field.key"
+                            />
+                          }
+                        }
+                      } @else {
+                        <p class="mt-2 text-sm text-slate-900">
+                          {{ host.fieldDisplayValue(category.id, field) }}
+                        </p>
+                      }
+                    </article>
+                  }
+                }
+              </form>
+            }
+          }
+        </section>

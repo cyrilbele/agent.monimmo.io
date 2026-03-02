@@ -22,6 +22,20 @@
           step="0.1"
         />
       </div>
+      <div>
+        <label class="field-label" for="valuation-ai-output-format">
+          Format de sortie de l'analyse IA (Markdown)
+        </label>
+        <textarea
+          id="valuation-ai-output-format"
+          class="field-input min-h-80"
+          formControlName="valuationAiOutputFormat"
+        ></textarea>
+        <p class="mt-1 text-xs text-slate-500">
+          Ce format définit uniquement la structure attendue dans le champ
+          <code>justification</code> de la réponse IA.
+        </p>
+      </div>
       <button
         class="btn w-full sm:w-auto"
         type="submit"

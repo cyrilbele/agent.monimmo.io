@@ -12,6 +12,8 @@ import type {
   ExtractVocalInsightsResult,
   MatchMessageToPropertyInput,
   MatchMessageToPropertyResult,
+  PropertyValuationInput,
+  PropertyValuationResult,
   TranscribeVocalInput,
   TranscribeVocalResult,
   VocalType,
@@ -291,6 +293,44 @@ export class OpenAIProvider implements AIProvider {
           : {},
       confidence: clampConfidence(parsed.confidence, 0.45),
     };
+  }
+
+  async computePropertyValuation(input: PropertyValuationInput): Promise<PropertyValuationResult> {
+    try {
+      const raw = await this.requestJsonText([
+        "Tu es un expert en valorisation immobilière en France.",
+        "À partir des données fournies, propose une valorisation cohérente et justifiée.",
+        "Réponds uniquement en JSON:",
+        "{\"calculatedValuation\":number|null,\"justification\":string}.",
+        "Ne renvoie aucun texte hors JSON (pas de préambule, pas de balises de code).",
+        "La valeur justification doit être du Markdown (titres + listes à puces), pas du texte plat.",
+        "Si les données sont insuffisantes, renvoie calculatedValuation à null et explique pourquoi.",
+        "",
+        input.prompt,
+      ]);
+
+      const parsed = extractJsonObject(raw);
+      if (!parsed) {
+        return this.fallbackProvider.computePropertyValuation(input);
+      }
+
+      const rawValuation = parsed.calculatedValuation;
+      const numericValuation =
+        typeof rawValuation === "number" ? rawValuation : Number(rawValuation);
+      const calculatedValuation =
+        Number.isFinite(numericValuation) && numericValuation > 0 ? Math.round(numericValuation) : null;
+      const justification =
+        typeof parsed.justification === "string" && parsed.justification.trim()
+          ? parsed.justification.trim()
+          : "Justificatif IA indisponible.";
+
+      return {
+        calculatedValuation,
+        justification,
+      };
+    } catch {
+      return this.fallbackProvider.computePropertyValuation(input);
+    }
   }
 
   private async requestJsonText(promptLines: string[]): Promise<string> {

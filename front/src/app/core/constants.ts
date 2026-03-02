@@ -176,6 +176,36 @@ const FIELD_STANDING_OPTIONS: readonly DetailSelectOption[] = [
   { value: "LUXE", label: "Luxe" },
 ];
 
+const NOISE_LEVEL_OPTIONS: readonly DetailSelectOption[] = [
+  { value: "FAIBLE", label: "Faible" },
+  { value: "MODERE", label: "Modéré" },
+  { value: "ELEVE", label: "Élevé" },
+];
+
+const CRAWL_SPACE_OPTIONS: readonly DetailSelectOption[] = [
+  { value: "NON", label: "Non" },
+  { value: "OUI", label: "Oui" },
+  { value: "PARTIEL", label: "Partiel" },
+];
+
+const SANITATION_OPTIONS: readonly DetailSelectOption[] = [
+  { value: "TOUT_A_L_EGOUT", label: "Tout-à-l'égout" },
+  { value: "FOSSE_SEPTIQUE", label: "Fosse septique" },
+];
+
+const GARDEN_OPTIONS: readonly DetailSelectOption[] = [
+  { value: "NON", label: "Non" },
+  { value: "OUI_NU", label: "Oui nu" },
+  { value: "OUI_ARBORE", label: "Oui arboré" },
+  { value: "OUI_PAYSAGE", label: "Oui paysagé" },
+];
+
+const POOL_OPTIONS: readonly DetailSelectOption[] = [
+  { value: "NON", label: "Non" },
+  { value: "PISCINABLE", label: "Piscinable" },
+  { value: "OUI", label: "Oui" },
+];
+
 const FEES_RESPONSIBILITY_OPTIONS: readonly DetailSelectOption[] = [
   { value: "VENDEUR", label: "Charge vendeur" },
   { value: "ACQUEREUR", label: "Charge acquéreur" },
@@ -261,8 +291,41 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "heatingType", label: "Type de chauffage", type: "text" },
       { key: "hotWaterProduction", label: "Production eau chaude", type: "text" },
       { key: "constructionYear", label: "Année de construction", type: "number" },
+      { key: "lastRenovationYear", label: "Année de dernière rénovation", type: "number" },
       { key: "condition", label: "État général", type: "select", options: FIELD_STATE_OPTIONS },
       { key: "standing", label: "Standing", type: "select", options: FIELD_STANDING_OPTIONS },
+      { key: "hasCracks", label: "Problème de fissures", type: "select", options: BOOL_OPTIONS },
+      { key: "hasVisAVis", label: "Vis-à-vis", type: "select", options: BOOL_OPTIONS },
+      { key: "noiseLevel", label: "Niveau de bruit", type: "select", options: NOISE_LEVEL_OPTIONS },
+      {
+        key: "crawlSpacePresence",
+        label: "Présence vide sanitaire",
+        type: "select",
+        options: CRAWL_SPACE_OPTIONS,
+      },
+      {
+        key: "sanitationType",
+        label: "Assainissement",
+        type: "select",
+        options: SANITATION_OPTIONS,
+      },
+      {
+        key: "septicTankCompliant",
+        label: "Fosse septique aux normes",
+        type: "select",
+        options: BOOL_OPTIONS,
+      },
+      {
+        key: "foundationUnderpinningDone",
+        label: "Reprise des fondations faite",
+        type: "select",
+        options: BOOL_OPTIONS,
+      },
+      {
+        key: "agentAdditionalDetails",
+        label: "Détails complémentaires (agent)",
+        type: "textarea",
+      },
     ],
   },
   {
@@ -272,8 +335,22 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "elevator", label: "Ascenseur", type: "select", options: BOOL_OPTIONS },
       { key: "balcony", label: "Balcon", type: "select", options: BOOL_OPTIONS },
       { key: "terrace", label: "Terrasse", type: "select", options: BOOL_OPTIONS },
-      { key: "garden", label: "Jardin", type: "select", options: BOOL_OPTIONS },
-      { key: "pool", label: "Piscine", type: "select", options: BOOL_OPTIONS },
+      { key: "garden", label: "Jardin", type: "select", options: GARDEN_OPTIONS },
+      { key: "pool", label: "Piscine", type: "select", options: POOL_OPTIONS },
+      { key: "fenced", label: "Clôturé", type: "select", options: BOOL_OPTIONS },
+      { key: "coveredGarage", label: "Garage couvert", type: "select", options: BOOL_OPTIONS },
+      { key: "carport", label: "Carport", type: "select", options: BOOL_OPTIONS },
+      {
+        key: "photovoltaicPanels",
+        label: "Panneaux photovoltaïques",
+        type: "select",
+        options: BOOL_OPTIONS,
+      },
+      {
+        key: "photovoltaicAnnualIncome",
+        label: "Revenu annuel panneaux photovoltaïques",
+        type: "number",
+      },
       { key: "garage", label: "Garage", type: "select", options: BOOL_OPTIONS },
       { key: "parking", label: "Parking", type: "select", options: BOOL_OPTIONS },
       { key: "cellar", label: "Cave", type: "select", options: BOOL_OPTIONS },
@@ -301,6 +378,12 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "isCopropriete", label: "Bien en copropriété", type: "select", options: BOOL_OPTIONS },
       { key: "lotsCount", label: "Nombre de lots", type: "number" },
       { key: "monthlyCharges", label: "Charges mensuelles", type: "number" },
+      { key: "sharedPool", label: "Piscine", type: "select", options: BOOL_OPTIONS },
+      { key: "sharedTennis", label: "Tennis", type: "select", options: BOOL_OPTIONS },
+      { key: "sharedMiniGolf", label: "Mini-golf", type: "select", options: BOOL_OPTIONS },
+      { key: "privateSeaAccess", label: "Accès mer privé", type: "select", options: BOOL_OPTIONS },
+      { key: "guardedResidence", label: "Gardée", type: "select", options: BOOL_OPTIONS },
+      { key: "fencedResidence", label: "Clôturée", type: "select", options: BOOL_OPTIONS },
       { key: "ongoingProcedure", label: "Procédure en cours", type: "select", options: BOOL_OPTIONS },
       { key: "syndic", label: "Syndic", type: "text" },
       { key: "worksFund", label: "Fonds de travaux", type: "number" },
@@ -348,7 +431,7 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "co2Emission", label: "Émissions CO2", type: "number" },
       { key: "dpeDate", label: "Date du DPE", type: "date" },
       { key: "energyAuditRequired", label: "Audit énergétique", type: "select", options: BOOL_OPTIONS },
-      { key: "asbestos", label: "Amiante", type: "select", options: BOOL_OPTIONS },
+      { key: "asbestos", label: "Présence d'amiante", type: "select", options: BOOL_OPTIONS },
       { key: "lead", label: "Plomb", type: "select", options: BOOL_OPTIONS },
       { key: "electricity", label: "Électricité", type: "select", options: BOOL_OPTIONS },
       { key: "gas", label: "Gaz", type: "select", options: BOOL_OPTIONS },

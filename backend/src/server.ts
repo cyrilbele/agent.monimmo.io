@@ -17,6 +17,8 @@ import {
   PropertyVisitPatchRequestSchema,
   PropertyVisitCreateRequestSchema,
   PropertyStatusUpdateRequestSchema,
+  PropertyValuationAIPromptResponseSchema,
+  PropertyValuationAIRequestSchema,
   ReviewQueueResolveRequestSchema,
   RegisterRequestSchema,
   RefreshRequestSchema,
@@ -868,6 +870,37 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           forceRefresh: parseBooleanQueryParam("forceRefresh"),
         });
         return withCors(request, json(response, { status: 200 }));
+      }
+
+      const propertyValuationAIMatch = url.pathname.match(/^\/properties\/([^/]+)\/valuation-ai$/);
+      if (propertyValuationAIMatch && request.method === "POST") {
+        const propertyId = decodeURIComponent(propertyValuationAIMatch[1]);
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(PropertyValuationAIRequestSchema);
+        const response = await propertiesService.runValuationAIAnalysis({
+          orgId: user.orgId,
+          propertyId,
+          data: payload,
+        });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      const propertyValuationAIPromptMatch = url.pathname.match(
+        /^\/properties\/([^/]+)\/valuation-ai\/prompt$/,
+      );
+      if (propertyValuationAIPromptMatch && request.method === "POST") {
+        const propertyId = decodeURIComponent(propertyValuationAIPromptMatch[1]);
+        const user = await getAuthenticatedUser();
+        const payload = await parseOptionalJson(PropertyValuationAIRequestSchema);
+        const response = await propertiesService.generateValuationAIPrompt({
+          orgId: user.orgId,
+          propertyId,
+          data: payload,
+        });
+        return withCors(
+          request,
+          json(PropertyValuationAIPromptResponseSchema.parse(response), { status: 200 }),
+        );
       }
 
       const propertyByIdMatch = url.pathname.match(/^\/properties\/([^/]+)$/);

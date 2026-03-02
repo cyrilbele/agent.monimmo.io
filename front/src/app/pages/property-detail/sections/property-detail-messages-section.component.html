@@ -1,0 +1,24 @@
+        <section class="panel space-y-4 p-5">
+          <h3 class="text-xl font-semibold text-slate-900">Messages rattachés</h3>
+
+          @if (host.messages().length === 0) {
+            <p class="text-sm text-slate-600">Aucun message lie a ce bien.</p>
+          } @else {
+            <div class="space-y-3">
+              @for (message of host.messages(); track message.id) {
+                <article class="rounded-2xl border border-slate-200 bg-white p-3">
+                  <p class="text-xs uppercase tracking-[0.12em] text-slate-500">
+                    {{ message.channel }} · {{ message.receivedAt | date: 'short' }}
+                  </p>
+                  <p class="mt-1 font-semibold text-slate-900">
+                    {{ message.subject || 'Sans objet' }}
+                  </p>
+                  <p class="text-sm text-slate-600">{{ message.body }}</p>
+                  <p class="mt-1 text-xs font-semibold text-slate-500">
+                    IA: {{ message.aiStatus }}
+                  </p>
+                </article>
+              }
+            </div>
+          }
+        </section>

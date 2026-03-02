@@ -133,6 +133,8 @@ describe("auth endpoints", () => {
     const initialSettings = await getInitialResponse.json();
     expect(typeof initialSettings.notaryFeePct).toBe("number");
     expect(Number.isFinite(initialSettings.notaryFeePct)).toBe(true);
+    expect(typeof initialSettings.valuationAiOutputFormat).toBe("string");
+    expect(initialSettings.valuationAiOutputFormat.trim().length).toBeGreaterThan(0);
 
     const updateResponse = await createApp().fetch(
       new Request("http://localhost/me/settings", {
@@ -143,6 +145,7 @@ describe("auth endpoints", () => {
         },
         body: JSON.stringify({
           notaryFeePct: 7.35,
+          valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
         }),
       }),
     );
@@ -150,6 +153,7 @@ describe("auth endpoints", () => {
     expect(updateResponse.status).toBe(200);
     expect(await updateResponse.json()).toEqual({
       notaryFeePct: 7.35,
+      valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
     });
 
     const getUpdatedResponse = await createApp().fetch(
@@ -164,7 +168,73 @@ describe("auth endpoints", () => {
     expect(getUpdatedResponse.status).toBe(200);
     expect(await getUpdatedResponse.json()).toEqual({
       notaryFeePct: 7.35,
+      valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
     });
+
+    const resetFormatResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+        body: JSON.stringify({
+          valuationAiOutputFormat: null,
+        }),
+      }),
+    );
+
+    expect(resetFormatResponse.status).toBe(200);
+    const resetFormatPayload = await resetFormatResponse.json();
+    expect(resetFormatPayload.notaryFeePct).toBe(7.35);
+    expect(resetFormatPayload.valuationAiOutputFormat).toContain("## 1️⃣ Synthèse exécutive");
+
+    const getResetFormatResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+      }),
+    );
+
+    expect(getResetFormatResponse.status).toBe(200);
+    const resetSettings = await getResetFormatResponse.json();
+    expect(resetSettings.notaryFeePct).toBe(7.35);
+    expect(resetSettings.valuationAiOutputFormat).toContain("## 1️⃣ Synthèse exécutive");
+    expect(resetSettings.valuationAiOutputFormat).toContain(
+      "Fourchette de commercialisation conseillée",
+    );
+  });
+
+  it("refuse /me/settings PATCH sans champ modifié", async () => {
+    const loginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_AUTH_EMAIL,
+          password: DEMO_AUTH_PASSWORD,
+        }),
+      }),
+    );
+    const loginPayload = await loginResponse.json();
+
+    const updateResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${loginPayload.accessToken}`,
+        },
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(updateResponse.status).toBe(400);
+    const payload = await updateResponse.json();
+    expect(payload.code).toBe("VALIDATION_ERROR");
+    expect(payload.message).toBe("Payload invalide");
   });
 
   it("invalide le refresh token après logout", async () => {

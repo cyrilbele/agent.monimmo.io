@@ -5,6 +5,7 @@ import {
   files,
   marketDvfQueryCache,
   marketDvfTransactions,
+  organizations,
   properties,
   propertyParties,
   propertyTimelineEvents,
@@ -13,6 +14,7 @@ import {
   users,
 } from "../db/schema";
 import { HttpError } from "../http/errors";
+import { resolveValuationAiOutputFormat } from "../config/valuation-ai-output-format";
 import {
   DvfClientError,
   MARKET_PROPERTY_TYPES,
@@ -21,6 +23,7 @@ import {
 } from "./dvf-client";
 import { findCoordinatesForAddress, type PropertyCoordinates } from "./geocoding";
 import { getPropertyRisks, type PropertyRisksResponse } from "./georisques";
+import { getAIProvider } from "../ai/factory";
 
 type PropertyRow = typeof properties.$inferSelect;
 
@@ -50,7 +53,9 @@ const COMPARABLE_RADIUS_STEPS = [1000, 2000, 3000, 5000, 7000, 10000] as const;
 const COMPARABLE_PRICE_TOLERANCE = 0.1;
 const COMPARABLE_SUBJECT_SURFACE_MIN_FACTOR = 0.5;
 const COMPARABLE_SUBJECT_SURFACE_MAX_FACTOR = 2;
-const COMPARABLE_CACHE_VERSION = "dvf-open-v4-surface-range-and-front-affine";
+const COMPARABLE_MIN_PRICE_PER_M2 = 500;
+const COMPARABLE_CACHE_VERSION = "dvf-open-v5-min-price-per-m2-500";
+const VALUATION_AI_SNAPSHOT_KEY = "valuationAiSnapshot";
 
 const toDvfUnavailableDetails = (error: unknown): Record<string, unknown> => {
   if (error instanceof DvfClientError) {
@@ -85,6 +90,43 @@ type ComparablePoint = {
   distanceM: number | null;
   city: string | null;
   postalCode: string | null;
+};
+
+type PropertyValuationAIComparableFilters = {
+  propertyType?: MarketPropertyType;
+  radiusMaxM?: number | null;
+  surfaceMinM2?: number | null;
+  surfaceMaxM2?: number | null;
+  landSurfaceMinM2?: number | null;
+  landSurfaceMaxM2?: number | null;
+};
+
+type PropertyValuationCriterion = {
+  label: string;
+  value: string;
+};
+
+type PropertyValuationMarketTrendYear = {
+  year: number;
+  salesCount: number;
+  avgPricePerM2: number | null;
+  salesCountVariationPct: number | null;
+  avgPricePerM2VariationPct: number | null;
+};
+
+export type PropertyValuationAIResponse = {
+  propertyId: string;
+  aiCalculatedValuation: number | null;
+  valuationJustification: string;
+  promptUsed: string;
+  generatedAt: string;
+  comparableCountUsed: number;
+  criteriaUsed: PropertyValuationCriterion[];
+};
+
+export type PropertyValuationAIPromptResponse = {
+  propertyId: string;
+  promptUsed: string;
 };
 
 export type PropertyComparablesResponse = {
@@ -215,6 +257,24 @@ const toFiniteNumber = (value: unknown): number | null => {
 
     const numeric = Number(trimmed.replace(",", "."));
     return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  return null;
+};
+
+const toBooleanLike = (value: unknown): boolean | null => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "oui" || normalized === "yes" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "non" || normalized === "no" || normalized === "0") {
+      return false;
+    }
   }
 
   return null;
@@ -373,6 +433,24 @@ const getFinanceDetails = (details: PropertyDetailsInput): Record<string, unknow
   return finance;
 };
 
+const getRegulationDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const regulation = details.regulation;
+  if (!isRecord(regulation)) {
+    return {};
+  }
+
+  return regulation;
+};
+
+const getAmenitiesDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const amenities = details.amenities;
+  if (!isRecord(amenities)) {
+    return {};
+  }
+
+  return amenities;
+};
+
 const resolvePropertyTypeFromDetails = (details: PropertyDetailsInput): MarketPropertyType | null => {
   const general = getGeneralDetails(details);
   const fromGeneral = normalizeMarketPropertyType(general.propertyType);
@@ -439,6 +517,703 @@ const computeMedian = (values: number[]): number | null => {
   }
 
   return formatComparableNumber(sorted[mid]);
+};
+
+const normalizeValuationComparableFilters = (
+  filters: PropertyValuationAIComparableFilters | undefined,
+): PropertyValuationAIComparableFilters => {
+  if (!filters) {
+    return {};
+  }
+
+  const normalizePositive = (value: number | null | undefined): number | null => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+      return null;
+    }
+
+    return value;
+  };
+
+  const surfaceMin = normalizePositive(filters.surfaceMinM2);
+  const surfaceMax = normalizePositive(filters.surfaceMaxM2);
+  const landMin = normalizePositive(filters.landSurfaceMinM2);
+  const landMax = normalizePositive(filters.landSurfaceMaxM2);
+
+  return {
+    propertyType: filters.propertyType,
+    radiusMaxM: normalizePositive(filters.radiusMaxM),
+    surfaceMinM2:
+      surfaceMin !== null && surfaceMax !== null ? Math.min(surfaceMin, surfaceMax) : surfaceMin,
+    surfaceMaxM2:
+      surfaceMin !== null && surfaceMax !== null ? Math.max(surfaceMin, surfaceMax) : surfaceMax,
+    landSurfaceMinM2: landMin !== null && landMax !== null ? Math.min(landMin, landMax) : landMin,
+    landSurfaceMaxM2: landMin !== null && landMax !== null ? Math.max(landMin, landMax) : landMax,
+  };
+};
+
+const filterComparablePoints = (
+  points: ComparablePoint[],
+  filters: PropertyValuationAIComparableFilters,
+): ComparablePoint[] =>
+  points.filter((point) => {
+    if (filters.radiusMaxM !== null && typeof filters.radiusMaxM === "number") {
+      if (typeof point.distanceM !== "number" || !Number.isFinite(point.distanceM) || point.distanceM > filters.radiusMaxM) {
+        return false;
+      }
+    }
+
+    if (filters.surfaceMinM2 !== null && typeof filters.surfaceMinM2 === "number" && point.surfaceM2 < filters.surfaceMinM2) {
+      return false;
+    }
+
+    if (filters.surfaceMaxM2 !== null && typeof filters.surfaceMaxM2 === "number" && point.surfaceM2 > filters.surfaceMaxM2) {
+      return false;
+    }
+
+    if (
+      filters.landSurfaceMinM2 !== null &&
+      typeof filters.landSurfaceMinM2 === "number" &&
+      (typeof point.landSurfaceM2 !== "number" ||
+        !Number.isFinite(point.landSurfaceM2) ||
+        point.landSurfaceM2 < filters.landSurfaceMinM2)
+    ) {
+      return false;
+    }
+
+    if (
+      filters.landSurfaceMaxM2 !== null &&
+      typeof filters.landSurfaceMaxM2 === "number" &&
+      (typeof point.landSurfaceM2 !== "number" ||
+        !Number.isFinite(point.landSurfaceM2) ||
+        point.landSurfaceM2 > filters.landSurfaceMaxM2)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+const summarizeComparablePoints = (points: ComparablePoint[]) => {
+  const prices = points.map((point) => point.salePrice);
+  const pricesPerM2 = points.map((point) => point.pricePerM2);
+
+  return {
+    count: points.length,
+    medianPrice: computeMedian(prices),
+    medianPricePerM2: computeMedian(pricesPerM2),
+    minPrice: prices.length > 0 ? Math.min(...prices) : null,
+    maxPrice: prices.length > 0 ? Math.max(...prices) : null,
+  };
+};
+
+const STANDING_LABELS: Record<string, string> = {
+  STANDARD: "Standard",
+  HAUT_DE_GAMME: "Haut de gamme",
+  LUXE: "Luxe",
+};
+
+const CONDITION_LABELS: Record<string, string> = {
+  NEUF: "Neuf",
+  RENOVE: "Rénové",
+  A_RAFRAICHIR: "À rafraîchir",
+  A_RENOVER: "À rénover",
+};
+
+const NOISE_LEVEL_LABELS: Record<string, string> = {
+  FAIBLE: "Faible",
+  MODERE: "Modéré",
+  ELEVE: "Élevé",
+};
+
+const CRAWL_SPACE_LABELS: Record<string, string> = {
+  NON: "Non",
+  OUI: "Oui",
+  PARTIEL: "Partiel",
+};
+
+const SANITATION_TYPE_LABELS: Record<string, string> = {
+  TOUT_A_L_EGOUT: "Tout-à-l'égout",
+  FOSSE_SEPTIQUE: "Fosse septique",
+};
+
+const GARDEN_LABELS: Record<string, string> = {
+  NON: "Non",
+  OUI_NU: "Oui nu",
+  OUI_ARBORE: "Oui arboré",
+  OUI_PAYSAGE: "Oui paysagé",
+};
+
+const POOL_LABELS: Record<string, string> = {
+  NON: "Non",
+  PISCINABLE: "Piscinable",
+  OUI: "Oui",
+};
+
+const PROPERTY_DETAIL_CATEGORY_LABELS: Record<string, string> = {
+  general: "Informations générales",
+  location: "Localisation",
+  characteristics: "Caractéristiques",
+  amenities: "Prestations",
+  copropriete: "Copropriété",
+  finance: "Finance",
+  regulation: "Réglementation",
+  marketing: "Commercialisation",
+};
+
+const PROPERTY_DETAIL_FIELD_LABELS: Record<string, string> = {
+  "characteristics.livingArea": "Surface habitable",
+  "characteristics.landArea": "Surface terrain",
+  "characteristics.rooms": "Nombre de pièces",
+  "characteristics.standing": "Standing",
+  "characteristics.condition": "État général",
+  "characteristics.lastRenovationYear": "Année de dernière rénovation",
+  "characteristics.hasCracks": "Problème de fissures",
+  "characteristics.hasVisAVis": "Vis-à-vis",
+  "characteristics.noiseLevel": "Niveau de bruit",
+  "characteristics.crawlSpacePresence": "Présence vide sanitaire",
+  "characteristics.sanitationType": "Assainissement",
+  "characteristics.septicTankCompliant": "Fosse septique aux normes",
+  "characteristics.foundationUnderpinningDone": "Reprise des fondations faite",
+  "characteristics.agentAdditionalDetails": "Détails complémentaires agent",
+  "amenities.garden": "Jardin",
+  "amenities.pool": "Piscine",
+  "amenities.fenced": "Bien clôturé",
+  "amenities.coveredGarage": "Garage couvert",
+  "amenities.carport": "Carport",
+  "amenities.photovoltaicPanels": "Panneaux photovoltaïques",
+  "amenities.photovoltaicAnnualIncome": "Revenu annuel panneaux photovoltaïques",
+  "copropriete.sharedPool": "Piscine copropriété",
+  "copropriete.sharedTennis": "Tennis copropriété",
+  "copropriete.sharedMiniGolf": "Mini-golf copropriété",
+  "copropriete.privateSeaAccess": "Accès mer privé",
+  "copropriete.guardedResidence": "Résidence gardée",
+  "copropriete.fencedResidence": "Résidence clôturée",
+  "regulation.dpeClass": "DPE (classe énergie)",
+  "regulation.asbestos": "Présence d'amiante",
+};
+
+const toFrInteger = (value: number): string =>
+  new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(value);
+const toFrPercent = (value: number): string =>
+  new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+
+const toYesNo = (value: boolean | null): string | null => {
+  if (value === null) {
+    return null;
+  }
+
+  return value ? "Oui" : "Non";
+};
+
+const resolvePoolLabel = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+
+    const mapped = POOL_LABELS[normalized];
+    if (mapped) {
+      return mapped;
+    }
+  }
+
+  return toYesNo(toBooleanLike(value));
+};
+
+const resolvePointPricePerM2 = (point: ComparablePoint): number | null => {
+  if (Number.isFinite(point.pricePerM2) && point.pricePerM2 > 0) {
+    return point.pricePerM2;
+  }
+
+  if (
+    Number.isFinite(point.salePrice) &&
+    point.salePrice > 0 &&
+    Number.isFinite(point.surfaceM2) &&
+    point.surfaceM2 > 0
+  ) {
+    return point.salePrice / point.surfaceM2;
+  }
+
+  return null;
+};
+
+const computeValuationMarketTrendRows = (
+  points: ComparablePoint[],
+  yearsWindow = 5,
+): PropertyValuationMarketTrendYear[] => {
+  const saleYears = points
+    .map((point) => new Date(point.saleDate).getFullYear())
+    .filter((year) => Number.isInteger(year) && year > 0);
+  const latestYear = saleYears.length > 0 ? Math.max(...saleYears) : new Date().getFullYear();
+  const years = Array.from({ length: yearsWindow }, (_value, index) => latestYear - (yearsWindow - 1 - index));
+
+  const aggregates = new Map<number, { salesCount: number; sumPricePerM2: number; priceCount: number }>();
+  for (const year of years) {
+    aggregates.set(year, { salesCount: 0, sumPricePerM2: 0, priceCount: 0 });
+  }
+
+  for (const point of points) {
+    const saleTimestamp = new Date(point.saleDate).getTime();
+    if (!Number.isFinite(saleTimestamp)) {
+      continue;
+    }
+
+    const saleYear = new Date(saleTimestamp).getFullYear();
+    const aggregate = aggregates.get(saleYear);
+    if (!aggregate) {
+      continue;
+    }
+
+    aggregate.salesCount += 1;
+    const pricePerM2 = resolvePointPricePerM2(point);
+    if (pricePerM2 !== null) {
+      aggregate.sumPricePerM2 += pricePerM2;
+      aggregate.priceCount += 1;
+    }
+  }
+
+  const rows: PropertyValuationMarketTrendYear[] = [];
+  let previousRow: { salesCount: number; avgPricePerM2: number | null } | null = null;
+
+  for (const year of years) {
+    const aggregate = aggregates.get(year) ?? { salesCount: 0, sumPricePerM2: 0, priceCount: 0 };
+    const avgPricePerM2 =
+      aggregate.priceCount > 0 ? formatComparableNumber(aggregate.sumPricePerM2 / aggregate.priceCount) : null;
+    const salesCountVariationPct =
+      previousRow !== null && previousRow.salesCount > 0
+        ? formatComparableNumber(((aggregate.salesCount - previousRow.salesCount) / previousRow.salesCount) * 100)
+        : null;
+    const avgPricePerM2VariationPct =
+      previousRow !== null &&
+      previousRow.avgPricePerM2 !== null &&
+      previousRow.avgPricePerM2 > 0 &&
+      avgPricePerM2 !== null
+        ? formatComparableNumber(((avgPricePerM2 - previousRow.avgPricePerM2) / previousRow.avgPricePerM2) * 100)
+        : null;
+
+    rows.push({
+      year,
+      salesCount: aggregate.salesCount,
+      avgPricePerM2,
+      salesCountVariationPct,
+      avgPricePerM2VariationPct,
+    });
+
+    previousRow = {
+      salesCount: aggregate.salesCount,
+      avgPricePerM2,
+    };
+  }
+
+  return rows;
+};
+
+const humanizeDetailFieldKey = (fieldKey: string): string =>
+  fieldKey
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/^./, (letter) => letter.toUpperCase());
+
+const formatDetailPromptLabel = (categoryId: string, fieldKey: string): string => {
+  const mapped = PROPERTY_DETAIL_FIELD_LABELS[`${categoryId}.${fieldKey}`];
+  if (mapped) {
+    return mapped;
+  }
+
+  const categoryLabel = PROPERTY_DETAIL_CATEGORY_LABELS[categoryId] ?? categoryId;
+  return `${categoryLabel} - ${humanizeDetailFieldKey(fieldKey)}`;
+};
+
+const formatDetailPromptValue = (value: unknown): string | null => {
+  if (typeof value === "boolean") {
+    return value ? "Oui" : "Non";
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    return Number.isInteger(value)
+      ? toFrInteger(value)
+      : new Intl.NumberFormat("fr-FR", {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const normalized = trimmed.toLowerCase();
+    if (normalized === "true") {
+      return "Oui";
+    }
+    if (normalized === "false") {
+      return "Non";
+    }
+
+    const mappedGarden = GARDEN_LABELS[trimmed.toUpperCase()];
+    if (mappedGarden) {
+      return mappedGarden;
+    }
+
+    const mappedPool = POOL_LABELS[trimmed.toUpperCase()];
+    if (mappedPool) {
+      return mappedPool;
+    }
+
+    if (/^[A-Z0-9_]+$/.test(trimmed)) {
+      return trimmed
+        .split("_")
+        .filter((token) => token.length > 0)
+        .map((token) => token.charAt(0) + token.slice(1).toLowerCase())
+        .join(" ");
+    }
+
+    return trimmed.length > 320 ? `${trimmed.slice(0, 317)}...` : trimmed;
+  }
+
+  if (Array.isArray(value)) {
+    const values = value
+      .map((entry) => formatDetailPromptValue(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    if (values.length === 0) {
+      return null;
+    }
+
+    return values.join(", ");
+  }
+
+  return null;
+};
+
+const resolveAllPropertyCriteriaForPrompt = (details: PropertyDetailsInput): PropertyValuationCriterion[] => {
+  const categories = [
+    "general",
+    "location",
+    "characteristics",
+    "amenities",
+    "copropriete",
+    "finance",
+    "regulation",
+    "marketing",
+  ] as const;
+  const criteria: PropertyValuationCriterion[] = [];
+
+  for (const categoryId of categories) {
+    const rawCategory = details[categoryId];
+    if (!isRecord(rawCategory)) {
+      continue;
+    }
+
+    for (const [fieldKey, rawValue] of Object.entries(rawCategory)) {
+      const value = formatDetailPromptValue(rawValue);
+      if (!value) {
+        continue;
+      }
+
+      criteria.push({
+        label: formatDetailPromptLabel(categoryId, fieldKey),
+        value,
+      });
+    }
+  }
+
+  return criteria;
+};
+
+const resolveValuationCriteria = (
+  details: PropertyDetailsInput,
+  propertyType: MarketPropertyType,
+): PropertyValuationCriterion[] => {
+  const characteristics = getCharacteristicsDetails(details);
+  const regulation = getRegulationDetails(details);
+  const amenities = getAmenitiesDetails(details);
+  const criteria: PropertyValuationCriterion[] = [];
+
+  const pushCriterion = (label: string, value: string | null): void => {
+    if (!value) {
+      return;
+    }
+    criteria.push({ label, value });
+  };
+
+  const dpeClassRaw = typeof regulation.dpeClass === "string" ? regulation.dpeClass.trim().toUpperCase() : "";
+  pushCriterion("DPE (classe énergie)", dpeClassRaw || null);
+
+  const standingRaw =
+    typeof characteristics.standing === "string" ? characteristics.standing.trim().toUpperCase() : "";
+  pushCriterion("Standing", STANDING_LABELS[standingRaw] ?? (standingRaw || null));
+
+  pushCriterion("Piscine", resolvePoolLabel(amenities.pool));
+
+  const livingArea = toFiniteNumber(characteristics.livingArea);
+  pushCriterion("Surface habitable", livingArea !== null && livingArea > 0 ? `${toFrInteger(livingArea)} m²` : null);
+
+  const landArea = toFiniteNumber(characteristics.landArea);
+  pushCriterion(
+    "Surface terrain",
+    propertyType === "MAISON" && landArea !== null && landArea > 0 ? `${toFrInteger(landArea)} m²` : null,
+  );
+
+  const hasCracks = toBooleanLike(characteristics.hasCracks);
+  pushCriterion("Problème de fissures", toYesNo(hasCracks));
+
+  const hasAsbestos = toBooleanLike(regulation.asbestos);
+  pushCriterion("Présence d'amiante", toYesNo(hasAsbestos));
+
+  const hasVisAVis = toBooleanLike(characteristics.hasVisAVis);
+  pushCriterion("Vis-à-vis", toYesNo(hasVisAVis));
+
+  const noiseLevelRaw =
+    typeof characteristics.noiseLevel === "string"
+      ? characteristics.noiseLevel.trim().toUpperCase()
+      : "";
+  pushCriterion("Niveau de bruit", NOISE_LEVEL_LABELS[noiseLevelRaw] ?? (noiseLevelRaw || null));
+
+  const foundationUnderpinningDone = toBooleanLike(characteristics.foundationUnderpinningDone);
+  pushCriterion("Reprise des fondations faite", toYesNo(foundationUnderpinningDone));
+
+  const conditionRaw =
+    typeof characteristics.condition === "string" ? characteristics.condition.trim().toUpperCase() : "";
+  pushCriterion("État général", CONDITION_LABELS[conditionRaw] ?? (conditionRaw || null));
+
+  const lastRenovationYear = toFiniteNumber(characteristics.lastRenovationYear);
+  pushCriterion(
+    "Année de dernière rénovation",
+    lastRenovationYear !== null && lastRenovationYear > 1800
+      ? toFrInteger(Math.round(lastRenovationYear))
+      : null,
+  );
+
+  const rooms = toFiniteNumber(characteristics.rooms);
+  pushCriterion("Nombre de pièces", rooms !== null && rooms > 0 ? `${toFrInteger(rooms)} pièces` : null);
+
+  return criteria.slice(0, 5);
+};
+
+const resolveValuationAnalysisFactors = (
+  details: PropertyDetailsInput,
+  propertyType: MarketPropertyType,
+): PropertyValuationCriterion[] => {
+  const characteristics = getCharacteristicsDetails(details);
+  const regulation = getRegulationDetails(details);
+  const amenities = getAmenitiesDetails(details);
+  const factors: PropertyValuationCriterion[] = [];
+
+  const pushFactor = (label: string, value: string | null): void => {
+    if (!value) {
+      return;
+    }
+
+    factors.push({ label, value });
+  };
+
+  const landArea = toFiniteNumber(characteristics.landArea);
+  pushFactor(
+    "Surface terrain",
+    propertyType === "MAISON" && landArea !== null && landArea > 0 ? `${toFrInteger(landArea)} m²` : null,
+  );
+  const crawlSpaceRaw =
+    typeof characteristics.crawlSpacePresence === "string"
+      ? characteristics.crawlSpacePresence.trim().toUpperCase()
+      : "";
+  pushFactor("Présence vide sanitaire", CRAWL_SPACE_LABELS[crawlSpaceRaw] ?? (crawlSpaceRaw || null));
+
+  const sanitationRaw =
+    typeof characteristics.sanitationType === "string"
+      ? characteristics.sanitationType.trim().toUpperCase()
+      : "";
+  pushFactor("Assainissement", SANITATION_TYPE_LABELS[sanitationRaw] ?? (sanitationRaw || null));
+  if (sanitationRaw === "FOSSE_SEPTIQUE") {
+    pushFactor(
+      "Fosse septique aux normes",
+      toYesNo(toBooleanLike(characteristics.septicTankCompliant)),
+    );
+  }
+
+  pushFactor("Garage couvert", toYesNo(toBooleanLike(amenities.coveredGarage)));
+  pushFactor("Carport", toYesNo(toBooleanLike(amenities.carport)));
+  const hasPhotovoltaicPanels = toBooleanLike(amenities.photovoltaicPanels);
+  pushFactor("Panneaux photovoltaïques", toYesNo(hasPhotovoltaicPanels));
+  const photovoltaicAnnualIncome = toFiniteNumber(amenities.photovoltaicAnnualIncome);
+  pushFactor(
+    "Revenu annuel panneaux photovoltaïques",
+    hasPhotovoltaicPanels === true && photovoltaicAnnualIncome !== null && photovoltaicAnnualIncome > 0
+      ? `${toFrInteger(photovoltaicAnnualIncome)} €/an`
+      : null,
+  );
+
+  pushFactor("Piscine", resolvePoolLabel(amenities.pool));
+  pushFactor("Bien clôturé", toYesNo(toBooleanLike(amenities.fenced)));
+  pushFactor("Présence d'amiante", toYesNo(toBooleanLike(regulation.asbestos)));
+  pushFactor("Problème de fissures", toYesNo(toBooleanLike(characteristics.hasCracks)));
+  pushFactor("Vis-à-vis", toYesNo(toBooleanLike(characteristics.hasVisAVis)));
+
+  const noiseLevelRaw =
+    typeof characteristics.noiseLevel === "string"
+      ? characteristics.noiseLevel.trim().toUpperCase()
+      : "";
+  pushFactor("Niveau de bruit", NOISE_LEVEL_LABELS[noiseLevelRaw] ?? (noiseLevelRaw || null));
+
+  const lastRenovationYear = toFiniteNumber(characteristics.lastRenovationYear);
+  pushFactor(
+    "Année de dernière rénovation",
+    lastRenovationYear !== null && lastRenovationYear > 1800
+      ? toFrInteger(Math.round(lastRenovationYear))
+      : null,
+  );
+
+  pushFactor(
+    "Détails complémentaires agent",
+    formatDetailPromptValue(characteristics.agentAdditionalDetails),
+  );
+
+  return factors;
+};
+
+const buildValuationPrompt = (input: {
+  property: Pick<PropertyRow, "id" | "title" | "address" | "city" | "postalCode" | "price">;
+  propertyType: MarketPropertyType;
+  criteriaUsed: PropertyValuationCriterion[];
+  allPropertyCriteria: PropertyValuationCriterion[];
+  analysisFactors: PropertyValuationCriterion[];
+  askingPrice: number | null;
+  filteredSummary: {
+    count: number;
+    medianPrice: number | null;
+    medianPricePerM2: number | null;
+    minPrice: number | null;
+    maxPrice: number | null;
+  };
+  predictedPrice: number | null;
+  latestPoints: ComparablePoint[];
+  marketTrendRows: PropertyValuationMarketTrendYear[];
+  filters: PropertyValuationAIComparableFilters;
+  outputFormatTemplate: string;
+}): string => {
+  const criteriaText =
+    input.criteriaUsed.length > 0
+      ? input.criteriaUsed.map((criterion) => `- ${criterion.label}: ${criterion.value}`).join("\n")
+      : "- Aucun critère clé renseigné";
+  const allPropertyCriteriaText =
+    input.allPropertyCriteria.length > 0
+      ? input.allPropertyCriteria.map((criterion) => `- ${criterion.label}: ${criterion.value}`).join("\n")
+      : "- Aucun critère renseigné";
+  const analysisFactorsText =
+    input.analysisFactors.length > 0
+      ? input.analysisFactors.map((factor) => `- ${factor.label}: ${factor.value}`).join("\n")
+      : "- Aucun facteur complémentaire renseigné";
+  const latestSalesText =
+    input.latestPoints.length > 0
+      ? input.latestPoints
+          .map(
+            (point) =>
+              `- ${point.saleDate.slice(0, 10)} | ${toFrInteger(point.surfaceM2)} m² | ${toFrInteger(
+                point.salePrice,
+              )} € | ${toFrInteger(point.pricePerM2)} €/m²`,
+          )
+          .join("\n")
+      : "- Aucune vente comparable disponible avec les filtres";
+  const marketTrendText =
+    input.marketTrendRows.length > 0
+      ? input.marketTrendRows
+          .map((row) => {
+            const salesVariation =
+              row.salesCountVariationPct === null
+                ? "N/A"
+                : `${row.salesCountVariationPct > 0 ? "+" : ""}${toFrPercent(row.salesCountVariationPct)} %`;
+            const avgPricePerM2Value =
+              row.avgPricePerM2 === null ? "N/A" : `${toFrInteger(row.avgPricePerM2)} €/m²`;
+            const avgPricePerM2Variation =
+              row.avgPricePerM2VariationPct === null
+                ? "N/A"
+                : `${row.avgPricePerM2VariationPct > 0 ? "+" : ""}${toFrPercent(row.avgPricePerM2VariationPct)} %`;
+
+            return `- ${row.year}: ${toFrInteger(row.salesCount)} ventes (${salesVariation} vs année précédente), prix moyen m² ${avgPricePerM2Value} (${avgPricePerM2Variation} vs année précédente)`;
+          })
+          .join("\n")
+      : "- Aucune tendance disponible";
+
+  return [
+    "Contexte: analyse de valorisation immobilière pour fixer un prix de vente réaliste en France.",
+    "",
+    "Données bien:",
+    `- ID: ${input.property.id}`,
+    `- Titre: ${input.property.title}`,
+    `- Type: ${input.propertyType}`,
+    `- Adresse: ${input.property.address ?? "N/A"}`,
+    `- Ville: ${input.property.postalCode} ${input.property.city}`,
+    `- Prix de vente actuel: ${input.askingPrice !== null ? `${toFrInteger(input.askingPrice)} €` : "N/A"}`,
+    "",
+    "Critères clés (max 5):",
+    criteriaText,
+    "",
+    "Tous les critères renseignés du bien:",
+    allPropertyCriteriaText,
+    "",
+    "Facteurs complémentaires influençant la valorisation:",
+    analysisFactorsText,
+    "",
+    "Filtres comparables actifs:",
+    `- Rayon max: ${input.filters.radiusMaxM !== null && typeof input.filters.radiusMaxM === "number" ? `${toFrInteger(input.filters.radiusMaxM)} m` : "N/A"}`,
+    `- Surface min: ${input.filters.surfaceMinM2 !== null && typeof input.filters.surfaceMinM2 === "number" ? `${toFrInteger(input.filters.surfaceMinM2)} m²` : "N/A"}`,
+    `- Surface max: ${input.filters.surfaceMaxM2 !== null && typeof input.filters.surfaceMaxM2 === "number" ? `${toFrInteger(input.filters.surfaceMaxM2)} m²` : "N/A"}`,
+    `- Surface terrain min: ${input.filters.landSurfaceMinM2 !== null && typeof input.filters.landSurfaceMinM2 === "number" ? `${toFrInteger(input.filters.landSurfaceMinM2)} m²` : "N/A"}`,
+    `- Surface terrain max: ${input.filters.landSurfaceMaxM2 !== null && typeof input.filters.landSurfaceMaxM2 === "number" ? `${toFrInteger(input.filters.landSurfaceMaxM2)} m²` : "N/A"}`,
+    "",
+    "Synthèse comparables filtrés:",
+    `- Nombre de ventes: ${input.filteredSummary.count}`,
+    `- Prix median comparables: ${input.filteredSummary.medianPrice !== null ? `${toFrInteger(input.filteredSummary.medianPrice)} €` : "N/A"}`,
+    `- Prix median m²: ${input.filteredSummary.medianPricePerM2 !== null ? `${toFrInteger(input.filteredSummary.medianPricePerM2)} €/m²` : "N/A"}`,
+    `- Prix min: ${input.filteredSummary.minPrice !== null ? `${toFrInteger(input.filteredSummary.minPrice)} €` : "N/A"}`,
+    `- Prix max: ${input.filteredSummary.maxPrice !== null ? `${toFrInteger(input.filteredSummary.maxPrice)} €` : "N/A"}`,
+    `- Prix estime par regression: ${input.predictedPrice !== null ? `${toFrInteger(input.predictedPrice)} €` : "N/A"}`,
+    "",
+    "Évolution du marché sur 5 ans (comparables filtrés):",
+    marketTrendText,
+    "",
+    "Exemples de ventes récentes utilisées:",
+    latestSalesText,
+    "",
+    "Consigne de sortie:",
+    "Retourne un JSON strict avec les clés calculatedValuation (number|null) et justification (string).",
+    "Ne renvoie aucun texte hors JSON (pas de préambule, pas de bloc ```json).",
+    "La justification doit être rédigée en Markdown et respecter strictement le format de sortie attendu ci-dessous.",
+    "Le format ci-dessous définit uniquement la structure de la clé justification et ne remplace pas les autres consignes du prompt.",
+    "Format de sortie attendu pour la clé justification (à adapter avec les données réelles du bien):",
+    input.outputFormatTemplate,
+    "Si les données sont insuffisantes, renvoie calculatedValuation: null avec une justification markdown expliquant pourquoi.",
+  ].join("\n");
+};
+
+const ensureMarkdownValuationJustification = (rawValue: string): string => {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return "## Justificatif\n\n- Justificatif IA indisponible.";
+  }
+
+  const looksLikeMarkdown = /(^|\n)\s{0,3}#{1,6}\s+\S/.test(trimmed) || /(^|\n)\s*[-*]\s+\S/.test(trimmed);
+  if (looksLikeMarkdown) {
+    return trimmed;
+  }
+
+  const normalizedLines = trimmed
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (normalizedLines.length === 0) {
+    return "## Justificatif\n\n- Justificatif IA indisponible.";
+  }
+
+  return `## Justificatif\n\n${normalizedLines.map((line) => `- ${line}`).join("\n")}`;
 };
 
 const toRadians = (value: number): number => (value * Math.PI) / 180;
@@ -572,6 +1347,25 @@ const filterComparablesBySubjectSurfaceRange = (input: {
     return point.surfaceM2 >= minSurfaceM2 && point.surfaceM2 <= maxSurfaceM2;
   });
 };
+
+const filterComparablesByMinPricePerM2 = (points: ComparablePoint[]): ComparablePoint[] =>
+  points.filter((point) => {
+    const pricePerM2 =
+      Number.isFinite(point.pricePerM2) && point.pricePerM2 > 0
+        ? point.pricePerM2
+        : Number.isFinite(point.salePrice) &&
+            point.salePrice > 0 &&
+            Number.isFinite(point.surfaceM2) &&
+            point.surfaceM2 > 0
+          ? point.salePrice / point.surfaceM2
+          : null;
+
+    return (
+      typeof pricePerM2 === "number" &&
+      Number.isFinite(pricePerM2) &&
+      pricePerM2 >= COMPARABLE_MIN_PRICE_PER_M2
+    );
+  });
 
 const resolvePricingPosition = (input: {
   askingPrice: number | null;
@@ -1801,10 +2595,11 @@ export const propertiesService = {
 
     const subjectSurfaceM2 = resolveSubjectSurface(details, resolvedPropertyType);
     const askingPrice = resolveSubjectAskingPrice(property, details);
-    const points = filterComparablesBySubjectSurfaceRange({
+    const pointsWithinSubjectSurfaceRange = filterComparablesBySubjectSurfaceRange({
       points: rawPoints,
       subjectSurfaceM2,
     });
+    const points = filterComparablesByMinPricePerM2(pointsWithinSubjectSurfaceRange);
 
     const priceValues = points.map((point) => point.salePrice);
     const pricePerM2Values = points.map((point) => point.pricePerM2);
@@ -1888,6 +2683,178 @@ export const propertiesService = {
           updatedAt: now,
         },
       });
+
+    return response;
+  },
+
+  async prepareValuationAIContext(input: {
+    orgId: string;
+    propertyId: string;
+    data?: {
+      comparableFilters?: PropertyValuationAIComparableFilters;
+      agentAdjustedPrice?: number | null;
+    };
+  }): Promise<{
+    property: Pick<PropertyRow, "id" | "title" | "address" | "city" | "postalCode" | "price">;
+    details: PropertyDetailsInput;
+    comparables: PropertyComparablesResponse;
+    pointsUsed: ComparablePoint[];
+    summary: {
+      count: number;
+      medianPrice: number | null;
+      medianPricePerM2: number | null;
+      minPrice: number | null;
+      maxPrice: number | null;
+    };
+    askingPrice: number | null;
+    criteriaUsed: PropertyValuationCriterion[];
+    promptUsed: string;
+  }> {
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
+    });
+
+    if (!property) {
+      throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
+    }
+
+    const details = parseDetails(property.details);
+    const organization = await db.query.organizations.findFirst({
+      where: eq(organizations.id, input.orgId),
+    });
+    const outputFormatTemplate = resolveValuationAiOutputFormat(
+      organization?.valuationAiOutputFormat,
+    );
+    const filters = normalizeValuationComparableFilters(input.data?.comparableFilters);
+    const propertyTypeFromDetails = resolvePropertyTypeFromDetails(details);
+    const comparablePropertyType = filters.propertyType ?? propertyTypeFromDetails ?? undefined;
+    const comparables = await this.getComparables({
+      orgId: input.orgId,
+      propertyId: input.propertyId,
+      propertyType: comparablePropertyType,
+      forceRefresh: false,
+    });
+
+    const filteredPoints = filterComparablePoints(comparables.points, filters);
+    const pointsUsed = filteredPoints.length > 0 ? filteredPoints : comparables.points;
+    const summary = summarizeComparablePoints(pointsUsed);
+    const latestPoints = pointsUsed
+      .slice()
+      .sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())
+      .slice(0, 5);
+    const marketTrendRows = computeValuationMarketTrendRows(pointsUsed);
+
+    const adjustedPrice =
+      typeof input.data?.agentAdjustedPrice === "number" &&
+      Number.isFinite(input.data.agentAdjustedPrice) &&
+      input.data.agentAdjustedPrice > 0
+        ? Math.round(input.data.agentAdjustedPrice)
+        : null;
+    const askingPrice = adjustedPrice ?? resolveSubjectAskingPrice(property, details) ?? comparables.subject.askingPrice;
+    const criteriaUsed = resolveValuationCriteria(details, comparables.propertyType);
+    const allPropertyCriteria = resolveAllPropertyCriteriaForPrompt(details);
+    const analysisFactors = resolveValuationAnalysisFactors(details, comparables.propertyType);
+    const promptUsed = buildValuationPrompt({
+      property,
+      propertyType: comparables.propertyType,
+      criteriaUsed,
+      allPropertyCriteria,
+      analysisFactors,
+      askingPrice: askingPrice ?? null,
+      filteredSummary: summary,
+      predictedPrice: comparables.subject.predictedPrice,
+      latestPoints,
+      marketTrendRows,
+      filters,
+      outputFormatTemplate,
+    });
+
+    return {
+      property,
+      details,
+      comparables,
+      pointsUsed,
+      summary,
+      askingPrice: askingPrice ?? null,
+      criteriaUsed,
+      promptUsed,
+    };
+  },
+
+  async generateValuationAIPrompt(input: {
+    orgId: string;
+    propertyId: string;
+    data?: {
+      comparableFilters?: PropertyValuationAIComparableFilters;
+      agentAdjustedPrice?: number | null;
+    };
+  }): Promise<PropertyValuationAIPromptResponse> {
+    const context = await this.prepareValuationAIContext(input);
+    return {
+      propertyId: context.property.id,
+      promptUsed: context.promptUsed,
+    };
+  },
+
+  async runValuationAIAnalysis(input: {
+    orgId: string;
+    propertyId: string;
+    data?: {
+      comparableFilters?: PropertyValuationAIComparableFilters;
+      agentAdjustedPrice?: number | null;
+    };
+  }): Promise<PropertyValuationAIResponse> {
+    const context = await this.prepareValuationAIContext(input);
+
+    const aiProvider = getAIProvider();
+    const fallbackValuation =
+      context.summary.medianPrice ??
+      context.comparables.subject.predictedPrice ??
+      context.askingPrice ??
+      null;
+    let aiCalculatedValuation = fallbackValuation;
+    let valuationJustification = ensureMarkdownValuationJustification(
+      "Valorisation estimée à partir des comparables disponibles et des critères principaux du bien.",
+    );
+
+    try {
+      const aiResult = await aiProvider.computePropertyValuation({ prompt: context.promptUsed });
+      aiCalculatedValuation =
+        typeof aiResult.calculatedValuation === "number" &&
+        Number.isFinite(aiResult.calculatedValuation) &&
+        aiResult.calculatedValuation > 0
+          ? Math.round(aiResult.calculatedValuation)
+          : fallbackValuation;
+      valuationJustification = ensureMarkdownValuationJustification(aiResult.justification);
+    } catch (error) {
+      if (error instanceof Error && error.message.trim()) {
+        valuationJustification = `${valuationJustification}\n- Fallback technique: ${error.message.trim()}`;
+      }
+    }
+
+    const generatedAt = new Date();
+    const response: PropertyValuationAIResponse = {
+      propertyId: context.property.id,
+      aiCalculatedValuation: aiCalculatedValuation ?? null,
+      valuationJustification,
+      promptUsed: context.promptUsed,
+      generatedAt: generatedAt.toISOString(),
+      comparableCountUsed: context.pointsUsed.length,
+      criteriaUsed: context.criteriaUsed,
+    };
+
+    const { promptUsed: _promptUsed, ...persistedSnapshot } = response;
+    const nextDetails: Record<string, unknown> = {
+      ...context.details,
+      [VALUATION_AI_SNAPSHOT_KEY]: persistedSnapshot,
+    };
+    await db
+      .update(properties)
+      .set({
+        details: JSON.stringify(nextDetails),
+        updatedAt: generatedAt,
+      })
+      .where(and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)));
 
     return response;
   },

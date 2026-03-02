@@ -105,11 +105,26 @@ export const MeResponseSchema = z.object({
 
 export const AppSettingsResponseSchema = z.object({
   notaryFeePct: z.number(),
+  valuationAiOutputFormat: z.string(),
 });
 
-export const AppSettingsPatchRequestSchema = z.object({
-  notaryFeePct: z.number(),
-});
+export const AppSettingsPatchRequestSchema = z
+  .object({
+    notaryFeePct: z.number().optional(),
+    valuationAiOutputFormat: z.string().nullable().optional(),
+  })
+  .superRefine((value, context) => {
+    if (
+      typeof value.notaryFeePct === "undefined" &&
+      typeof value.valuationAiOutputFormat === "undefined"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "notaryFeePct ou valuationAiOutputFormat est obligatoire",
+        path: ["notaryFeePct"],
+      });
+    }
+  });
 
 export const LoginRequestSchema = z.object({
   email: z.email(),
@@ -411,6 +426,40 @@ export const PropertyComparablesResponseSchema = z.object({
   points: z.array(ComparablePointResponseSchema),
 });
 
+export const PropertyValuationAICriteriaItemSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
+export const PropertyValuationAIComparableFiltersSchema = z.object({
+  propertyType: ComparablePropertyTypeSchema.optional(),
+  radiusMaxM: z.number().nullable().optional(),
+  surfaceMinM2: z.number().nullable().optional(),
+  surfaceMaxM2: z.number().nullable().optional(),
+  landSurfaceMinM2: z.number().nullable().optional(),
+  landSurfaceMaxM2: z.number().nullable().optional(),
+});
+
+export const PropertyValuationAIRequestSchema = z.object({
+  comparableFilters: PropertyValuationAIComparableFiltersSchema.optional(),
+  agentAdjustedPrice: z.number().nullable().optional(),
+});
+
+export const PropertyValuationAIResponseSchema = z.object({
+  propertyId: z.string(),
+  aiCalculatedValuation: z.number().nullable(),
+  valuationJustification: z.string(),
+  promptUsed: z.string(),
+  generatedAt: z.iso.datetime(),
+  comparableCountUsed: z.number().int(),
+  criteriaUsed: z.array(PropertyValuationAICriteriaItemSchema),
+});
+
+export const PropertyValuationAIPromptResponseSchema = z.object({
+  propertyId: z.string(),
+  promptUsed: z.string(),
+});
+
 export const PropertyParticipantResponseSchema = z.object({
   id: z.string(),
   propertyId: z.string(),
@@ -675,6 +724,11 @@ export const DtoSchemaMap = {
   ComparableRegressionResponse: ComparableRegressionResponseSchema,
   ComparablePointResponse: ComparablePointResponseSchema,
   PropertyComparablesResponse: PropertyComparablesResponseSchema,
+  PropertyValuationAICriteriaItem: PropertyValuationAICriteriaItemSchema,
+  PropertyValuationAIComparableFilters: PropertyValuationAIComparableFiltersSchema,
+  PropertyValuationAIRequest: PropertyValuationAIRequestSchema,
+  PropertyValuationAIResponse: PropertyValuationAIResponseSchema,
+  PropertyValuationAIPromptResponse: PropertyValuationAIPromptResponseSchema,
   TypeDocument: TypeDocumentSchema,
   FileStatus: FileStatusSchema,
   FileUploadRequest: FileUploadRequestSchema,

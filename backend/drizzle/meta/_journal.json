@@ -134,6 +134,13 @@
       "when": 1772357988295,
       "tag": "0018_tense_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1772375600000,
+      "tag": "0019_ready_blue_blade",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { organizations, users } from "../db/schema";
 import { HttpError } from "../http/errors";
+import {
+  normalizeValuationAiOutputFormatForPersistence,
+  resolveValuationAiOutputFormat,
+} from "../config/valuation-ai-output-format";
 import { passwordResetStore } from "./password-reset-store";
 import { assertOrgScope, assertRoleAllowed } from "./rbac";
 import { issueTokenPair, verifyAccessToken, verifyRefreshToken } from "./jwt";
@@ -249,26 +253,44 @@ export const authService = {
 
     return {
       notaryFeePct: resolveNotaryFeePct(organization),
+      valuationAiOutputFormat: resolveValuationAiOutputFormat(organization?.valuationAiOutputFormat),
     };
   },
 
-  async updateSettings(accessToken: string, input: { notaryFeePct: number }) {
+  async updateSettings(
+    accessToken: string,
+    input: { notaryFeePct?: number; valuationAiOutputFormat?: string | null },
+  ) {
     const payload = await verifyAccessToken(accessToken);
     assertRoleAllowed(payload.role);
     const user = await loadUserById(payload.sub, payload.orgId);
-    const normalizedNotaryFeePct = normalizeNotaryFeePct(input.notaryFeePct);
+    const organization = await loadOrganizationById(user.orgId);
+    const normalizedNotaryFeePct =
+      typeof input.notaryFeePct === "number"
+        ? normalizeNotaryFeePct(input.notaryFeePct)
+        : resolveNotaryFeePct(organization);
+    const persistedValuationAiOutputFormat =
+      typeof input.valuationAiOutputFormat === "undefined"
+        ? organization?.valuationAiOutputFormat ?? null
+        : normalizeValuationAiOutputFormatForPersistence(input.valuationAiOutputFormat);
     const now = new Date();
 
     await db
       .update(organizations)
       .set({
         notaryFeePct: normalizedNotaryFeePct,
+        valuationAiOutputFormat: persistedValuationAiOutputFormat,
         updatedAt: now,
       })
       .where(eq(organizations.id, user.orgId));
 
+    const resolvedValuationAiOutputFormat = resolveValuationAiOutputFormat(
+      persistedValuationAiOutputFormat,
+    );
+
     return {
       notaryFeePct: normalizedNotaryFeePct,
+      valuationAiOutputFormat: resolvedValuationAiOutputFormat,
     };
   },
 };

@@ -1,0 +1,69 @@
+        <section class="panel space-y-4 p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-xl font-semibold text-slate-900">Prospects du bien</h3>
+            <button
+              type="button"
+              class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              (click)="host.openProspectModal()"
+            >
+              Ajouter un prospect
+            </button>
+          </div>
+
+          @if (host.prospectFeedback()) {
+            <p
+              class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+              role="status"
+              aria-live="polite"
+            >
+              {{ host.prospectFeedback() }}
+            </p>
+          }
+
+          @if (host.prospects().length === 0) {
+            <p class="text-sm text-slate-600">Aucun prospect enregistre.</p>
+          } @else {
+            <section class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="min-w-full border-collapse text-sm">
+                <thead
+                  class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600"
+                >
+                  <tr>
+                    <th class="px-4 py-3">Nom</th>
+                    <th class="px-4 py-3">Email</th>
+                    <th class="px-4 py-3">Téléphone</th>
+                    <th class="px-4 py-3">Lien</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (prospect of host.prospects(); track prospect.id) {
+                    <tr class="border-t border-slate-200 align-top">
+                      <td class="px-4 py-3">
+                        <p class="font-semibold text-slate-900">
+                          {{ host.prospectDisplayName(prospect) }}
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500">
+                          {{ host.prospectRelationLabel(prospect.relationRole) }}
+                        </p>
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">
+                        {{ prospect.email || 'Non renseigné' }}
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">
+                        {{ prospect.phone || 'Non renseigné' }}
+                      </td>
+                      <td class="px-4 py-3">
+                        <a
+                          [routerLink]="['/app/utilisateurs', prospect.userId]"
+                          class="text-slate-800 transition hover:text-blue-700"
+                        >
+                          Voir utilisateur
+                        </a>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          }
+        </section>

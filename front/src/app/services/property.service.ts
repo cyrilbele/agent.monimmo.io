@@ -10,6 +10,9 @@ import type {
   PropertyProspectListResponse,
   PropertyProspectResponse,
   PropertyComparablesResponse,
+  PropertyValuationAIRequest,
+  PropertyValuationAIPromptResponse,
+  PropertyValuationAIResponse,
   PropertyRiskResponse,
   PropertyVisitCreateRequest,
   PropertyVisitListResponse,
@@ -142,6 +145,32 @@ export class PropertyService {
           propertyType: options?.propertyType,
           forceRefresh: options?.forceRefresh,
         },
+      },
+    );
+  }
+
+  runValuationAnalysis(
+    propertyId: string,
+    payload?: PropertyValuationAIRequest,
+  ): Promise<PropertyValuationAIResponse> {
+    return this.api.request<PropertyValuationAIResponse>(
+      "POST",
+      `/properties/${encodeURIComponent(propertyId)}/valuation-ai`,
+      {
+        body: payload ?? {},
+      },
+    );
+  }
+
+  generateValuationPrompt(
+    propertyId: string,
+    payload?: PropertyValuationAIRequest,
+  ): Promise<PropertyValuationAIPromptResponse> {
+    return this.api.request<PropertyValuationAIPromptResponse>(
+      "POST",
+      `/properties/${encodeURIComponent(propertyId)}/valuation-ai/prompt`,
+      {
+        body: payload ?? {},
       },
     );
   }

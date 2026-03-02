@@ -308,6 +308,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/properties/{id}/valuation-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postPropertyValuationAI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/properties/{id}/valuation-ai/prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postPropertyValuationAIPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/visits": {
         parameters: {
             query?: never;
@@ -768,9 +800,11 @@ export interface components {
         };
         AppSettingsResponse: {
             notaryFeePct: number;
+            valuationAiOutputFormat: string;
         };
         AppSettingsPatchRequest: {
-            notaryFeePct: number;
+            notaryFeePct?: number;
+            valuationAiOutputFormat?: string | null;
         };
         LoginRequest: {
             /** Format: email */
@@ -1029,6 +1063,36 @@ export interface components {
             subject: components["schemas"]["ComparableSubjectResponse"];
             regression: components["schemas"]["ComparableRegressionResponse"];
             points: components["schemas"]["ComparablePointResponse"][];
+        };
+        PropertyValuationAICriteriaItem: {
+            label: string;
+            value: string;
+        };
+        PropertyValuationAIComparableFilters: {
+            propertyType?: components["schemas"]["ComparablePropertyType"];
+            radiusMaxM?: number | null;
+            surfaceMinM2?: number | null;
+            surfaceMaxM2?: number | null;
+            landSurfaceMinM2?: number | null;
+            landSurfaceMaxM2?: number | null;
+        };
+        PropertyValuationAIRequest: {
+            comparableFilters?: components["schemas"]["PropertyValuationAIComparableFilters"];
+            agentAdjustedPrice?: number | null;
+        };
+        PropertyValuationAIResponse: {
+            propertyId: string;
+            aiCalculatedValuation: number | null;
+            valuationJustification: string;
+            promptUsed: string;
+            /** Format: date-time */
+            generatedAt: string;
+            comparableCountUsed: number;
+            criteriaUsed: components["schemas"]["PropertyValuationAICriteriaItem"][];
+        };
+        PropertyValuationAIPromptResponse: {
+            propertyId: string;
+            promptUsed: string;
         };
         /** @enum {string} */
         TypeDocument: "PIECE_IDENTITE" | "LIVRET_FAMILLE" | "CONTRAT_MARIAGE_PACS" | "JUGEMENT_DIVORCE" | "TITRE_PROPRIETE" | "ATTESTATION_NOTARIALE" | "TAXE_FONCIERE" | "REFERENCE_CADASTRALE" | "MANDAT_VENTE_SIGNE" | "OFFRE_ACHAT_SIGNEE" | "DPE" | "AMIANTE" | "PLOMB" | "ELECTRICITE" | "GAZ" | "TERMITES" | "ERP_ETAT_RISQUES" | "ASSAINISSEMENT" | "LOI_CARREZ" | "REGLEMENT_COPROPRIETE" | "ETAT_DESCRIPTIF_DIVISION" | "PV_AG_3_DERNIERES_ANNEES" | "MONTANT_CHARGES" | "CARNET_ENTRETIEN" | "FICHE_SYNTHETIQUE" | "PRE_ETAT_DATE" | "ETAT_DATE" | "PHOTOS_HD" | "VIDEO_VISITE" | "PLAN_BIEN" | "ANNONCE_IMMOBILIERE" | "AFFICHE_VITRINE" | "REPORTING_VENDEUR" | "SIMULATION_FINANCEMENT" | "ATTESTATION_CAPACITE_EMPRUNT" | "ACCORD_PRINCIPE_BANCAIRE" | "COMPROMIS_OU_PROMESSE" | "ANNEXES_COMPROMIS" | "PREUVE_SEQUESTRE" | "COURRIER_RETRACTATION" | "LEVEE_CONDITIONS_SUSPENSIVES" | "ACTE_AUTHENTIQUE" | "DECOMPTE_NOTAIRE";
@@ -1903,6 +1967,94 @@ export interface operations {
             };
             /** @description Source DVF indisponible. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postPropertyValuationAI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PropertyValuationAIRequest"];
+            };
+        };
+        responses: {
+            /** @description Valorisation IA générée pour le bien. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyValuationAIResponse"];
+                };
+            };
+            /** @description Paramètres invalides. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postPropertyValuationAIPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PropertyValuationAIRequest"];
+            };
+        };
+        responses: {
+            /** @description Prompt de valorisation IA régénéré. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyValuationAIPromptResponse"];
+                };
+            };
+            /** @description Paramètres invalides. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bien introuvable. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -9,6 +9,7 @@ export const organizations = sqliteTable("organizations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   notaryFeePct: real("notary_fee_pct").notNull().default(8),
+  valuationAiOutputFormat: text("valuation_ai_output_format"),
   ...timestampColumns,
 });
 

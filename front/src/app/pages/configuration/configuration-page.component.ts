@@ -30,6 +30,7 @@ type SyncFormGroup = FormGroup<{
 
 type ValuationSettingsFormGroup = FormGroup<{
   notaryFeePct: FormControl<string>;
+  valuationAiOutputFormat: FormControl<string>;
 }>;
 
 interface IntegrationCard {
@@ -83,6 +84,7 @@ export class ConfigurationPageComponent {
 
   readonly valuationSettingsForm: ValuationSettingsFormGroup = this.formBuilder.nonNullable.group({
     notaryFeePct: [this.formatNotaryFeePct(this.appSettingsService.notaryFeePct())],
+    valuationAiOutputFormat: [this.appSettingsService.valuationAiOutputFormat()],
   });
 
   readonly feedback = signal<Record<IntegrationPath, string | null>>({
@@ -192,12 +194,22 @@ export class ConfigurationPageComponent {
       this.valuationFeedback.set("Le taux de frais de notaire doit être un nombre positif.");
       return;
     }
+    const outputFormatRaw = this.valuationSettingsForm.controls.valuationAiOutputFormat.value;
+    const normalizedOutputFormat = outputFormatRaw.trim();
 
     this.valuationPending.set(true);
 
     try {
-      const persisted = await this.appSettingsService.updateNotaryFeePct(parsed);
-      this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(persisted));
+      const persisted = await this.appSettingsService.updateSettings({
+        notaryFeePct: parsed,
+        valuationAiOutputFormat: normalizedOutputFormat || null,
+      });
+      this.valuationSettingsForm.controls.notaryFeePct.setValue(
+        this.formatNotaryFeePct(persisted.notaryFeePct),
+      );
+      this.valuationSettingsForm.controls.valuationAiOutputFormat.setValue(
+        persisted.valuationAiOutputFormat,
+      );
       this.valuationFeedback.set("Paramètre enregistré.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Enregistrement impossible.";
@@ -261,7 +273,12 @@ export class ConfigurationPageComponent {
 
   private async loadValuationSettings(): Promise<void> {
     const loaded = await this.appSettingsService.refresh();
-    this.valuationSettingsForm.controls.notaryFeePct.setValue(this.formatNotaryFeePct(loaded));
+    this.valuationSettingsForm.controls.notaryFeePct.setValue(
+      this.formatNotaryFeePct(loaded.notaryFeePct),
+    );
+    this.valuationSettingsForm.controls.valuationAiOutputFormat.setValue(
+      loaded.valuationAiOutputFormat,
+    );
   }
 
   private formatNotaryFeePct(value: number): string {

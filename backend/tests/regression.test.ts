@@ -53,6 +53,18 @@ const buildLinearRowsWithOutlier = () => [
     nom_commune: "Paris",
     code_commune: "75104",
   },
+  {
+    id: "reg-outlier-low-price-per-m2",
+    date_mutation: "2024-06-15",
+    valeur_fonciere: 40_000,
+    codtypbien: 2,
+    surface_reelle_bati: 100,
+    latitude: 48.8566,
+    longitude: 2.3522,
+    code_postal: "75004",
+    nom_commune: "Paris",
+    code_commune: "75104",
+  },
 ];
 
 describe("comparables regression", () => {
@@ -219,6 +231,8 @@ describe("comparables regression", () => {
       expect(comparables.subject.affinePriceAtSubjectSurface).toBeNull();
       expect(comparables.points.some((point) => point.surfaceM2 < 50 || point.surfaceM2 > 200)).toBe(false);
       expect(comparables.points.some((point) => point.surfaceM2 === 350)).toBe(false);
+      expect(comparables.points.some((point) => point.pricePerM2 < 500)).toBe(false);
+      expect(comparables.points.some((point) => point.salePrice === 40_000)).toBe(false);
     } finally {
       globalThis.fetch = previousFetch;
       process.env.DF_API_BASE_URL = previousApiBaseUrl;

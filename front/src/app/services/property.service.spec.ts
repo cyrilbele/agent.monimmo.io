@@ -55,6 +55,22 @@ describe("PropertyService", () => {
       bonDeVisiteFileId: "file_1",
     });
     await service.getRisks("property:1");
+    await service.runValuationAnalysis("property:1", {
+      comparableFilters: {
+        propertyType: "APPARTEMENT",
+        surfaceMinM2: 50,
+        surfaceMaxM2: 90,
+      },
+      agentAdjustedPrice: 350000,
+    });
+    await service.generateValuationPrompt("property:1", {
+      comparableFilters: {
+        propertyType: "APPARTEMENT",
+        surfaceMinM2: 50,
+        surfaceMaxM2: 90,
+      },
+      agentAdjustedPrice: 350000,
+    });
     await service.listCalendarVisits("2026-01-01T00:00:00.000Z", "2026-12-31T00:00:00.000Z");
 
     expect(calls).toEqual([
@@ -106,6 +122,34 @@ describe("PropertyService", () => {
         { body: { compteRendu: "RAS", bonDeVisiteFileId: "file_1" } },
       ],
       ["GET", "/properties/property%3A1/risks"],
+      [
+        "POST",
+        "/properties/property%3A1/valuation-ai",
+        {
+          body: {
+            comparableFilters: {
+              propertyType: "APPARTEMENT",
+              surfaceMinM2: 50,
+              surfaceMaxM2: 90,
+            },
+            agentAdjustedPrice: 350000,
+          },
+        },
+      ],
+      [
+        "POST",
+        "/properties/property%3A1/valuation-ai/prompt",
+        {
+          body: {
+            comparableFilters: {
+              propertyType: "APPARTEMENT",
+              surfaceMinM2: 50,
+              surfaceMaxM2: 90,
+            },
+            agentAdjustedPrice: 350000,
+          },
+        },
+      ],
       [
         "GET",
         "/visits",

@@ -8,6 +8,7 @@ import type {
   PropertyProspectListResponse,
   PropertyResponse,
   PropertyRiskResponse,
+  PropertyValuationAIResponse,
   PropertyVisitListResponse,
 } from "../../core/api.models";
 import { FileService } from "../../services/file.service";
@@ -128,15 +129,31 @@ describe("PropertyDetailPageComponent comparables", () => {
     };
 
     const getComparablesCalls: Array<{ propertyId: string; options?: unknown }> = [];
+    const patchCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    let currentPropertyResponse: PropertyResponse = propertyResponse;
 
     const propertyServiceMock: Partial<PropertyService> = {
-      getById: () => Promise.resolve(propertyResponse),
+      getById: () => Promise.resolve(currentPropertyResponse),
       listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
       listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
       getRisks: () => Promise.resolve(risksResponse),
       getComparables: (propertyId: string, options?: unknown) => {
         getComparablesCalls.push({ propertyId, options });
         return Promise.resolve(comparablesResponse);
+      },
+      patch: (propertyId, payload) => {
+        patchCalls.push({ propertyId, payload });
+        const patchPayload = payload as { details?: Record<string, unknown> };
+        currentPropertyResponse = {
+          ...currentPropertyResponse,
+          details: patchPayload.details
+            ? {
+                ...(currentPropertyResponse.details as Record<string, unknown>),
+                ...patchPayload.details,
+              }
+            : currentPropertyResponse.details,
+        };
+        return Promise.resolve(currentPropertyResponse);
       },
     };
 
@@ -215,17 +232,74 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(getComparablesCalls[0]?.propertyId).toBe("property_1");
     expect(
       (getComparablesCalls[0]?.options as { forceRefresh?: boolean } | undefined)?.forceRefresh,
-    ).toBeUndefined();
+    ).toBe(true);
     expect(component.comparables()?.summary.count).toBe(2);
     expect(component.comparablesFrontRegression().pointsUsed).toBe(2);
     expect(component.paginatedComparableSales().length).toBe(2);
     expect(component.paginatedComparableSales()[0]?.saleDate).toBe("2024-09-10T00:00:00.000Z");
 
     expect(component.comparables()?.propertyType).toBe("MAISON");
+    const hostElement = fixture.nativeElement as HTMLElement;
+    const rangeMarkers = Array.from(hostElement.querySelectorAll(".range-marker")) as HTMLElement[];
+    expect(rangeMarkers.length).toBe(2);
+    expect(rangeMarkers.every((marker) => !marker.classList.contains("range-marker--hidden"))).toBe(
+      true,
+    );
+    const markerStyle = getComputedStyle(rangeMarkers[0] as Element);
+    expect(markerStyle.position).toBe("absolute");
+    expect(markerStyle.borderTopStyle).toBe("solid");
+
+    const dualRangeInputs = Array.from(
+      hostElement.querySelectorAll(".dual-range__input"),
+    ) as HTMLElement[];
+    expect(dualRangeInputs.length).toBe(4);
+    expect(getComputedStyle(dualRangeInputs[0] as Element).position).toBe("absolute");
+    const coproCategory = component.propertyCategories.find((category) => category.id === "copropriete");
+    expect(coproCategory?.fields.map((field) => field.key)).toEqual(
+      expect.arrayContaining([
+        "sharedPool",
+        "sharedTennis",
+        "sharedMiniGolf",
+        "privateSeaAccess",
+        "guardedResidence",
+        "fencedResidence",
+      ]),
+    );
+    const amenitiesCategory = component.propertyCategories.find((category) => category.id === "amenities");
+    const gardenField = amenitiesCategory?.fields.find((field) => field.key === "garden");
+    expect(gardenField?.options?.map((option) => option.value)).toEqual([
+      "NON",
+      "OUI_NU",
+      "OUI_ARBORE",
+      "OUI_PAYSAGE",
+    ]);
+    const poolField = amenitiesCategory?.fields.find((field) => field.key === "pool");
+    expect(poolField?.options?.map((option) => option.value)).toEqual(["NON", "PISCINABLE", "OUI"]);
+    const fencedField = amenitiesCategory?.fields.find((field) => field.key === "fenced");
+    expect(fencedField).toBeDefined();
+    if (!fencedField) {
+      throw new Error("Champ fenced introuvable");
+    }
+    expect(component.shouldDisplayPropertyField("amenities", fencedField)).toBe(true);
+    component.property.set({
+      ...(component.property() as PropertyResponse),
+      details: {
+        ...((component.property()?.details as Record<string, unknown>) ?? {}),
+        general: {
+          ...(((component.property()?.details as Record<string, unknown>)?.["general"] as Record<
+            string,
+            unknown
+          >) ?? {}),
+          propertyType: "APPARTEMENT",
+        },
+      },
+    });
+    expect(component.shouldDisplayPropertyField("amenities", fencedField)).toBe(false);
 
     component.onRentalMonthlyRentChange("1500");
     component.onRentalHoldingYearsChange("10");
     component.onRentalResalePriceChange("380000");
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const rental = component.rentalProfitability();
@@ -233,6 +307,840 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(rental.initialInvestment).toBe(345600);
     expect(rental.annualNetCashflow).toBe(14400);
     expect(rental.irrPct === null || rental.irrPct > 0).toBe(true);
+    expect(patchCalls.length).toBe(3);
+    const financeDetails = ((component.property()?.details as Record<string, unknown>)["finance"] ??
+      {}) as Record<string, unknown>;
+    expect(financeDetails["propertyTax"]).toBe(1200);
+    expect(financeDetails["monthlyRent"]).toBe(1500);
+    expect(financeDetails["rentalHoldingYears"]).toBe(10);
+    expect(financeDetails["rentalResalePrice"]).toBe(380000);
+  });
+
+  it("permet de mettre a jour le prix de vente et de relancer l'analyse IA", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_valuation_ai",
+      title: "Maison Cagnes-sur-Mer",
+      city: "Cagnes-sur-Mer",
+      postalCode: "06800",
+      address: "22 avenue des Oliviers",
+      price: 620000,
+      details: {
+        general: {
+          propertyType: "MAISON",
+        },
+        characteristics: {
+          livingArea: 120,
+          rooms: 5,
+          standing: "HAUT_DE_GAMME",
+          condition: "RENOVE",
+          hasCracks: "true",
+          foundationUnderpinningDone: "false",
+        },
+        amenities: {
+          pool: "true",
+        },
+        regulation: {
+          dpeClass: "C",
+        },
+      },
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const comparablesResponse: PropertyComparablesResponse = {
+      propertyId: "property_valuation_ai",
+      propertyType: "MAISON",
+      source: "LIVE",
+      windowYears: 10,
+      search: {
+        center: { latitude: 43.66, longitude: 7.15 },
+        finalRadiusM: 3000,
+        radiiTried: [1000, 2000, 3000],
+        targetCount: 100,
+        targetReached: false,
+      },
+      summary: {
+        count: 3,
+        medianPrice: 615000,
+        medianPricePerM2: 5100,
+        minPrice: 560000,
+        maxPrice: 690000,
+      },
+      subject: {
+        surfaceM2: 120,
+        askingPrice: 620000,
+        affinePriceAtSubjectSurface: null,
+        predictedPrice: 610000,
+        deviationPct: 1.6,
+        pricingPosition: "NORMAL",
+      },
+      regression: {
+        slope: 4200,
+        intercept: 82000,
+        r2: 0.68,
+        pointsUsed: 3,
+      },
+      points: [
+        {
+          saleDate: "2025-02-10T00:00:00.000Z",
+          surfaceM2: 118,
+          landSurfaceM2: 700,
+          salePrice: 605000,
+          pricePerM2: 5127,
+          distanceM: 1200,
+          city: "Cagnes-sur-Mer",
+          postalCode: "06800",
+        },
+        {
+          saleDate: "2024-11-10T00:00:00.000Z",
+          surfaceM2: 125,
+          landSurfaceM2: 760,
+          salePrice: 635000,
+          pricePerM2: 5080,
+          distanceM: 1800,
+          city: "Cagnes-sur-Mer",
+          postalCode: "06800",
+        },
+        {
+          saleDate: "2024-07-10T00:00:00.000Z",
+          surfaceM2: 130,
+          landSurfaceM2: 820,
+          salePrice: 690000,
+          pricePerM2: 5307,
+          distanceM: 2600,
+          city: "Cagnes-sur-Mer",
+          postalCode: "06800",
+        },
+      ],
+    };
+
+    const runValuationResponse: PropertyValuationAIResponse = {
+      propertyId: "property_valuation_ai",
+      aiCalculatedValuation: 645000,
+      valuationJustification:
+        "## Synthèse valorisation\n\n- DPE C\n- Bon standing\n- Comparables récents proches de 640 k€",
+      promptUsed: "Prompt de valorisation IA",
+      generatedAt: "2026-03-01T10:00:00.000Z",
+      comparableCountUsed: 3,
+      criteriaUsed: [
+        { label: "DPE (classe énergie)", value: "C" },
+        { label: "Standing", value: "Haut de gamme" },
+      ],
+    };
+
+    const patchCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    const valuationCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    const promptCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    let currentPropertyResponse: PropertyResponse = propertyResponse;
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () => Promise.resolve(propertyResponse),
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () =>
+        Promise.resolve({
+          propertyId: "property_valuation_ai",
+          status: "NO_DATA",
+          source: "GEORISQUES",
+          georisquesUrl: "https://www.georisques.gouv.fr",
+          reportPdfUrl: null,
+          generatedAt: "2026-02-01T10:00:00.000Z",
+          message: null,
+          location: {
+            address: "22 avenue des Oliviers",
+            postalCode: "06800",
+            city: "Cagnes-sur-Mer",
+            inseeCode: "06027",
+            latitude: 43.66,
+            longitude: 7.15,
+          },
+          items: [],
+        } as PropertyRiskResponse),
+      getComparables: () => Promise.resolve(comparablesResponse),
+      patch: (propertyId, payload) => {
+        patchCalls.push({ propertyId, payload });
+        const patchPayload = payload as {
+          price?: number;
+          details?: Record<string, unknown>;
+        };
+        currentPropertyResponse = {
+          ...currentPropertyResponse,
+          price:
+            typeof patchPayload.price === "number"
+              ? patchPayload.price
+              : currentPropertyResponse.price,
+          details: patchPayload.details
+            ? {
+                ...(currentPropertyResponse.details as Record<string, unknown>),
+                ...patchPayload.details,
+              }
+            : currentPropertyResponse.details,
+        };
+        return Promise.resolve({
+          ...currentPropertyResponse,
+        });
+      },
+      runValuationAnalysis: (propertyId, payload) => {
+        valuationCalls.push({ propertyId, payload });
+        return Promise.resolve(runValuationResponse);
+      },
+      generateValuationPrompt: (propertyId, payload) => {
+        promptCalls.push({ propertyId, payload });
+        return Promise.resolve({
+          propertyId,
+          promptUsed: "Prompt regénéré à la volée",
+        });
+      },
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_valuation_ai" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        { provide: MessageService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) } },
+        { provide: FileService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as FileListResponse) } },
+        { provide: UserService, useValue: { list: () => Promise.resolve({ items: [] } as AccountUserListResponse) } },
+        { provide: InseeCityService, useValue: { getCityIndicators: () => Promise.resolve({}) } },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.setMainTab("valuation");
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.valuationKeyCriteria().length).toBeGreaterThan(0);
+    expect(component.valuationKeyCriteria().length).toBeLessThanOrEqual(5);
+    expect(component.valuationKeyCriteria().some((criterion) => criterion.field.key === "dpeClass")).toBe(true);
+    expect(component.valuationKeyCriteria().some((criterion) => criterion.field.key === "pool")).toBe(true);
+    expect(component.valuationKeyCriteria().some((criterion) => criterion.field.key === "standing")).toBe(true);
+    expect(component.valuationSalePriceInput()).toBe("620000");
+
+    component.onValuationSalePriceInput("650000");
+    await component.saveValuationSalePrice();
+    expect(patchCalls[0]).toEqual({
+      propertyId: "property_valuation_ai",
+      payload: { price: 650000 },
+    });
+    expect(component.property()?.price).toBe(650000);
+    expect(component.comparables()?.subject.askingPrice).toBe(650000);
+    expect(component.valuationSalePriceFeedback()).toBe("Prix de vente mis à jour.");
+
+    component.onValuationAgentJustificationInput(
+      "## Avis agent\n\n- Prix cohérent avec les ventes proches.\n- Ajustement limité au regard du vis-à-vis.",
+    );
+    await component.saveValuationAgentOpinion();
+    expect(patchCalls.length).toBe(2);
+    expect(patchCalls[1]?.propertyId).toBe("property_valuation_ai");
+    expect(patchCalls[1]?.payload).toEqual(
+      expect.objectContaining({
+        price: 650000,
+        details: expect.objectContaining({
+          valuationAgent: expect.objectContaining({
+            proposedSalePrice: 650000,
+            justification:
+              "## Avis agent\n\n- Prix cohérent avec les ventes proches.\n- Ajustement limité au regard du vis-à-vis.",
+          }),
+        }),
+      }),
+    );
+    expect(component.valuationAgentOpinionFeedback()).toBe("Avis agent enregistré.");
+
+    await component.rerunValuationAnalysis();
+    expect(valuationCalls.length).toBe(1);
+    expect(valuationCalls[0]?.propertyId).toBe("property_valuation_ai");
+    expect(
+      (
+        valuationCalls[0]?.payload as {
+          comparableFilters?: { propertyType?: string };
+          agentAdjustedPrice?: number | null;
+        }
+      )?.comparableFilters?.propertyType,
+    ).toBe("MAISON");
+    expect(
+      (
+        valuationCalls[0]?.payload as {
+          comparableFilters?: { propertyType?: string };
+          agentAdjustedPrice?: number | null;
+        }
+      )?.agentAdjustedPrice,
+    ).toBe(650000);
+
+    expect(component.valuationAiSnapshot()?.aiCalculatedValuation).toBe(645000);
+    expect(component.valuationAiSnapshot()?.valuationJustification).toContain("DPE C");
+    expect(component.valuationAiJustificationHtml()).toContain("<h2");
+    expect(component.valuationAiJustificationHtml()).toContain("<li>DPE C</li>");
+    expect(component.valuationAiFeedback()).toBe("Analyse IA mise à jour.");
+    expect(
+      (
+        (component.property()?.details as Record<string, unknown>)?.[
+          "valuationAiSnapshot"
+        ] as Record<string, unknown>
+      )?.["promptUsed"],
+    ).toBeUndefined();
+
+    await component.toggleValuationPromptVisibility();
+    expect(component.valuationAiPromptVisible()).toBe(true);
+    expect(component.valuationAiPromptText()).toBe("Prompt regénéré à la volée");
+    expect(promptCalls.length).toBe(1);
+    expect(promptCalls[0]?.propertyId).toBe("property_valuation_ai");
+    expect(
+      (
+        promptCalls[0]?.payload as {
+          comparableFilters?: { propertyType?: string };
+          agentAdjustedPrice?: number | null;
+        }
+      )?.comparableFilters?.propertyType,
+    ).toBe("MAISON");
+  });
+
+  it("affiche le champ fosse aux normes uniquement pour fosse septique et nettoie la valeur sinon", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_sanitation",
+      title: "Maison assainissement",
+      city: "Cagnes-sur-Mer",
+      postalCode: "06800",
+      address: "5 avenue des Oliviers",
+      price: 590000,
+      details: {
+        general: {
+          propertyType: "MAISON",
+        },
+        characteristics: {
+          livingArea: 110,
+          sanitationType: "TOUT_A_L_EGOUT",
+          septicTankCompliant: "true",
+        },
+      },
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const patchCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    let currentPropertyResponse: PropertyResponse = propertyResponse;
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () => Promise.resolve(currentPropertyResponse),
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () =>
+        Promise.resolve({
+          propertyId: "property_sanitation",
+          status: "NO_DATA",
+          source: "GEORISQUES",
+          georisquesUrl: "https://www.georisques.gouv.fr",
+          reportPdfUrl: null,
+          generatedAt: "2026-02-01T10:00:00.000Z",
+          message: null,
+          location: {
+            address: "5 avenue des Oliviers",
+            postalCode: "06800",
+            city: "Cagnes-sur-Mer",
+            inseeCode: "06027",
+            latitude: 43.66,
+            longitude: 7.15,
+          },
+          items: [],
+        } as PropertyRiskResponse),
+      patch: (propertyId, payload) => {
+        patchCalls.push({ propertyId, payload });
+        const patchPayload = payload as { details?: Record<string, unknown> };
+        currentPropertyResponse = {
+          ...currentPropertyResponse,
+          details: patchPayload.details
+            ? {
+                ...(currentPropertyResponse.details as Record<string, unknown>),
+                ...patchPayload.details,
+              }
+            : currentPropertyResponse.details,
+        };
+        return Promise.resolve({
+          ...currentPropertyResponse,
+        });
+      },
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_sanitation" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        {
+          provide: MessageService,
+          useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) },
+        },
+        {
+          provide: FileService,
+          useValue: { listByProperty: () => Promise.resolve({ items: [] } as FileListResponse) },
+        },
+        {
+          provide: UserService,
+          useValue: { list: () => Promise.resolve({ items: [] } as AccountUserListResponse) },
+        },
+        { provide: InseeCityService, useValue: { getCityIndicators: () => Promise.resolve({}) } },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await component.loadPropertyBundle();
+    fixture.detectChanges();
+    expect(component.error()).toBeNull();
+
+    component.setActivePropertyCategory("characteristics");
+    fixture.detectChanges();
+
+    const category = component.activePropertyCategoryDefinition();
+    const septicField = category.fields.find((field) => field.key === "septicTankCompliant");
+    expect(septicField).toBeDefined();
+    if (!septicField) {
+      throw new Error("Champ septicTankCompliant introuvable");
+    }
+
+    expect(component.shouldDisplayPropertyField("characteristics", septicField)).toBe(false);
+
+    component.startEditingActiveCategory();
+    fixture.detectChanges();
+
+    const firstForm = component.categoryForms()["characteristics"] ?? null;
+    expect(Object.keys(component.categoryForms())).toContain("characteristics");
+    expect(firstForm).not.toBeNull();
+    if (!firstForm) {
+      throw new Error("Formulaire caractéristiques introuvable");
+    }
+    firstForm.controls["sanitationType"].setValue("FOSSE_SEPTIQUE");
+    firstForm.controls["septicTankCompliant"].setValue("true");
+    expect(component.shouldDisplayPropertyField("characteristics", septicField)).toBe(true);
+
+    await component.saveActivePropertyCategory();
+    expect(patchCalls.length).toBe(1);
+    expect(patchCalls[0]?.propertyId).toBe("property_sanitation");
+    expect(
+      (
+        patchCalls[0]?.payload as {
+          details?: { characteristics?: Record<string, unknown> };
+        }
+      )?.details?.characteristics?.["sanitationType"],
+    ).toBe("FOSSE_SEPTIQUE");
+    expect(
+      (
+        patchCalls[0]?.payload as {
+          details?: { characteristics?: Record<string, unknown> };
+        }
+      )?.details?.characteristics?.["septicTankCompliant"],
+    ).toBe("true");
+
+    component.startEditingActiveCategory();
+    fixture.detectChanges();
+
+    const secondForm = component.categoryForms()["characteristics"] ?? null;
+    expect(secondForm).not.toBeNull();
+    if (!secondForm) {
+      throw new Error("Formulaire caractéristiques introuvable");
+    }
+    secondForm.controls["sanitationType"].setValue("TOUT_A_L_EGOUT");
+    secondForm.controls["septicTankCompliant"].setValue("true");
+    expect(component.shouldDisplayPropertyField("characteristics", septicField)).toBe(false);
+
+    await component.saveActivePropertyCategory();
+    expect(patchCalls.length).toBe(2);
+    expect(
+      (
+        patchCalls[1]?.payload as {
+          details?: { characteristics?: Record<string, unknown> };
+        }
+      )?.details?.characteristics?.["sanitationType"],
+    ).toBe("TOUT_A_L_EGOUT");
+    expect(
+      (
+        patchCalls[1]?.payload as {
+          details?: { characteristics?: Record<string, unknown> };
+        }
+      )?.details?.characteristics?.["septicTankCompliant"],
+    ).toBeNull();
+
+    const updatedCharacteristics =
+      (((component.property()?.details as Record<string, unknown>)["characteristics"] ??
+        {}) as Record<string, unknown>);
+    expect(updatedCharacteristics["septicTankCompliant"]).toBeNull();
+  });
+
+  it("restaure et persiste les filtres comparables surface et terrain", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_filters",
+      title: "Maison filtres",
+      city: "Cagnes-sur-Mer",
+      postalCode: "06800",
+      address: "10 avenue des Pins",
+      price: 610000,
+      details: {
+        general: {
+          propertyType: "MAISON",
+        },
+        characteristics: {
+          livingArea: 122,
+          landArea: 760,
+        },
+        valuationComparableFilters: {
+          surfaceMinM2: 119,
+          surfaceMaxM2: 126,
+          landSurfaceMinM2: 710,
+          landSurfaceMaxM2: 780,
+        },
+      },
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const comparablesResponse: PropertyComparablesResponse = {
+      propertyId: "property_filters",
+      propertyType: "MAISON",
+      source: "LIVE",
+      windowYears: 10,
+      search: {
+        center: { latitude: 43.66, longitude: 7.15 },
+        finalRadiusM: 3000,
+        radiiTried: [1000, 2000, 3000],
+        targetCount: 100,
+        targetReached: false,
+      },
+      summary: {
+        count: 3,
+        medianPrice: 615000,
+        medianPricePerM2: 5100,
+        minPrice: 560000,
+        maxPrice: 690000,
+      },
+      subject: {
+        surfaceM2: 122,
+        askingPrice: 610000,
+        affinePriceAtSubjectSurface: null,
+        predictedPrice: 608000,
+        deviationPct: 0.3,
+        pricingPosition: "NORMAL",
+      },
+      regression: {
+        slope: 4200,
+        intercept: 82000,
+        r2: 0.68,
+        pointsUsed: 3,
+      },
+      points: [
+        {
+          saleDate: "2025-02-10T00:00:00.000Z",
+          surfaceM2: 118,
+          landSurfaceM2: 700,
+          salePrice: 605000,
+          pricePerM2: 5127,
+          distanceM: 1200,
+          city: "Cagnes-sur-Mer",
+          postalCode: "06800",
+        },
+        {
+          saleDate: "2024-11-10T00:00:00.000Z",
+          surfaceM2: 125,
+          landSurfaceM2: 760,
+          salePrice: 635000,
+          pricePerM2: 5080,
+          distanceM: 1800,
+          city: "Cagnes-sur-Mer",
+          postalCode: "06800",
+        },
+        {
+          saleDate: "2024-07-10T00:00:00.000Z",
+          surfaceM2: 130,
+          landSurfaceM2: 820,
+          salePrice: 690000,
+          pricePerM2: 5307,
+          distanceM: 2600,
+          city: "Cagnes-sur-Mer",
+          postalCode: "06800",
+        },
+      ],
+    };
+
+    const patchCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    let currentPropertyResponse: PropertyResponse = propertyResponse;
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () => Promise.resolve(propertyResponse),
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () =>
+        Promise.resolve({
+          propertyId: "property_filters",
+          status: "NO_DATA",
+          source: "GEORISQUES",
+          georisquesUrl: "https://www.georisques.gouv.fr",
+          reportPdfUrl: null,
+          generatedAt: "2026-02-01T10:00:00.000Z",
+          message: null,
+          location: {
+            address: "10 avenue des Pins",
+            postalCode: "06800",
+            city: "Cagnes-sur-Mer",
+            inseeCode: "06027",
+            latitude: 43.66,
+            longitude: 7.15,
+          },
+          items: [],
+        } as PropertyRiskResponse),
+      getComparables: () => Promise.resolve(comparablesResponse),
+      patch: (propertyId, payload) => {
+        patchCalls.push({ propertyId, payload });
+        const patchPayload = payload as { details?: Record<string, unknown> };
+        currentPropertyResponse = {
+          ...currentPropertyResponse,
+          details: patchPayload.details
+            ? {
+                ...(currentPropertyResponse.details as Record<string, unknown>),
+                ...patchPayload.details,
+              }
+            : currentPropertyResponse.details,
+        };
+        return Promise.resolve({
+          ...currentPropertyResponse,
+        });
+      },
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_filters" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        { provide: MessageService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) } },
+        { provide: FileService, useValue: { listByProperty: () => Promise.resolve({ items: [] } as FileListResponse) } },
+        { provide: UserService, useValue: { list: () => Promise.resolve({ items: [] } as AccountUserListResponse) } },
+        { provide: InseeCityService, useValue: { getCityIndicators: () => Promise.resolve({}) } },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.setMainTab("valuation");
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.comparableSurfaceMinM2()).toBe(119);
+    expect(component.comparableSurfaceMaxM2()).toBe(126);
+    expect(component.comparableTerrainMinM2()).toBe(710);
+    expect(component.comparableTerrainMaxM2()).toBe(780);
+
+    component.onComparableSurfaceMinChange("120");
+    component.onComparableSurfaceMaxChange("124");
+    component.onComparableTerrainMinChange("720");
+    component.onComparableTerrainMaxChange("770");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await fixture.whenStable();
+
+    expect(patchCalls.length).toBe(1);
+    expect(patchCalls[0]).toEqual({
+      propertyId: "property_filters",
+      payload: {
+        details: {
+          valuationComparableFilters: {
+            surfaceMinM2: 120,
+            surfaceMaxM2: 124,
+            landSurfaceMinM2: 720,
+            landSurfaceMaxM2: 770,
+          },
+        },
+      },
+    });
+  });
+
+  it("persiste l'année de dernière rénovation et les détails complémentaires agent", async () => {
+    const propertyResponse: PropertyResponse = {
+      id: "property_renovation",
+      title: "Maison rénovation",
+      city: "Mougins",
+      postalCode: "06250",
+      address: "14 chemin des Oliviers",
+      price: 820000,
+      details: {
+        general: {
+          propertyType: "MAISON",
+        },
+        characteristics: {
+          livingArea: 145,
+          landArea: 980,
+          lastRenovationYear: 2011,
+          agentAdditionalDetails: "Ancien commentaire",
+        },
+      },
+      status: "PROSPECTION",
+      orgId: "org_demo",
+      createdAt: "2026-02-01T10:00:00.000Z",
+      updatedAt: "2026-02-01T10:00:00.000Z",
+    };
+
+    const patchCalls: Array<{ propertyId: string; payload: unknown }> = [];
+    let currentPropertyResponse: PropertyResponse = propertyResponse;
+    const risksResponse: PropertyRiskResponse = {
+      propertyId: "property_renovation",
+      status: "NO_DATA",
+      source: "GEORISQUES",
+      georisquesUrl: "https://www.georisques.gouv.fr",
+      reportPdfUrl: null,
+      generatedAt: "2026-02-01T10:00:00.000Z",
+      message: null,
+      location: {
+        address: "14 chemin des Oliviers",
+        postalCode: "06250",
+        city: "Mougins",
+        inseeCode: null,
+        latitude: null,
+        longitude: null,
+      },
+      items: [],
+    };
+
+    const propertyServiceMock: Partial<PropertyService> = {
+      getById: () => Promise.resolve(currentPropertyResponse),
+      listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
+      listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getRisks: () => Promise.resolve(risksResponse),
+      getComparables: () => Promise.resolve(null as unknown as PropertyComparablesResponse),
+      patch: (propertyId, payload) => {
+        patchCalls.push({ propertyId, payload });
+        const patchPayload = payload as { details?: Record<string, unknown> };
+        currentPropertyResponse = {
+          ...currentPropertyResponse,
+          details: patchPayload.details
+            ? {
+                ...(currentPropertyResponse.details as Record<string, unknown>),
+                ...patchPayload.details,
+              }
+            : currentPropertyResponse.details,
+        };
+        return Promise.resolve(currentPropertyResponse);
+      },
+    };
+
+    TestBed.configureTestingModule({
+      imports: [PropertyDetailPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: "property_renovation" }),
+            },
+          },
+        },
+        { provide: PropertyService, useValue: propertyServiceMock },
+        {
+          provide: MessageService,
+          useValue: { listByProperty: () => Promise.resolve({ items: [] } as MessageListResponse) },
+        },
+        {
+          provide: FileService,
+          useValue: { listByProperty: () => Promise.resolve({ items: [] } as FileListResponse) },
+        },
+        {
+          provide: UserService,
+          useValue: { list: () => Promise.resolve({ items: [] } as AccountUserListResponse) },
+        },
+        { provide: InseeCityService, useValue: { getCityIndicators: () => Promise.resolve({}) } },
+        { provide: VocalService, useValue: {} },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(PropertyDetailPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await component.loadPropertyBundle();
+    fixture.detectChanges();
+
+    component.setActivePropertyCategory("characteristics");
+    component.startEditingActiveCategory();
+    fixture.detectChanges();
+
+    const form = component.categoryForms()["characteristics"] ?? null;
+    expect(form).not.toBeNull();
+    if (!form) {
+      throw new Error("Formulaire caractéristiques introuvable");
+    }
+
+    expect(form.controls["lastRenovationYear"]).toBeDefined();
+    expect(form.controls["agentAdditionalDetails"]).toBeDefined();
+
+    form.controls["lastRenovationYear"].setValue("2020");
+    form.controls["agentAdditionalDetails"].setValue(
+      "  Façade rénovée, cuisine refaite, isolation des combles.  ",
+    );
+
+    await component.saveActivePropertyCategory();
+
+    expect(patchCalls.length).toBe(1);
+    expect(patchCalls[0]?.propertyId).toBe("property_renovation");
+    expect(
+      (
+        patchCalls[0]?.payload as {
+          details?: { characteristics?: Record<string, unknown> };
+        }
+      )?.details?.characteristics?.["lastRenovationYear"],
+    ).toBe(2020);
+    expect(
+      (
+        patchCalls[0]?.payload as {
+          details?: { characteristics?: Record<string, unknown> };
+        }
+      )?.details?.characteristics?.["agentAdditionalDetails"],
+    ).toBe("Façade rénovée, cuisine refaite, isolation des combles.");
+    expect(component.requestFeedback()).toBe("Informations mises à jour.");
+
+    const updatedCharacteristics =
+      (((component.property()?.details as Record<string, unknown>)["characteristics"] ??
+        {}) as Record<string, unknown>);
+    expect(updatedCharacteristics["lastRenovationYear"]).toBe(2020);
+    expect(updatedCharacteristics["agentAdditionalDetails"]).toBe(
+      "Façade rénovée, cuisine refaite, isolation des combles.",
+    );
   });
 
   it("garde les comparables quand distanceM est null", async () => {
@@ -1153,6 +2061,16 @@ describe("PropertyDetailPageComponent comparables", () => {
             getById: () => Promise.resolve(propertyResponse),
             listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
             listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+            patch: (_propertyId: string, payload: { details?: Record<string, unknown> }) =>
+              Promise.resolve({
+                ...propertyResponse,
+                details: payload.details
+                  ? {
+                      ...(propertyResponse.details as Record<string, unknown>),
+                      ...payload.details,
+                    }
+                  : propertyResponse.details,
+              }),
             getRisks: () =>
               Promise.resolve({
                 propertyId: "property_computed",
@@ -1293,6 +2211,21 @@ describe("PropertyDetailPageComponent comparables", () => {
     ]);
     component.comparables.set(comparablesResponse);
     (internals["initializeComparablesFilters"] as (arg: PropertyComparablesResponse) => void)(comparablesResponse);
+    const subjectPoint = (internals["resolveSubjectPointForChart"] as (
+      arg: PropertyComparablesResponse,
+    ) => { x: number; y: number } | null)(comparablesResponse);
+    expect(subjectPoint?.x).toBe(120);
+    expect(subjectPoint?.y).toBe(620000);
+    const elevatedSubjectComparables: PropertyComparablesResponse = {
+      ...comparablesResponse,
+      subject: {
+        ...comparablesResponse.subject,
+        askingPrice: 900000,
+      },
+    };
+    component.comparables.set(elevatedSubjectComparables);
+    expect((component.comparablesChartDomains()?.yDomain.max ?? 0) > 900000).toBe(true);
+    component.comparables.set(comparablesResponse);
     component.onRentalMonthlyRentChange("2200");
     component.onRentalHoldingYearsChange("11");
     component.onRentalResalePriceChange("690000");
@@ -1414,6 +2347,16 @@ describe("PropertyDetailPageComponent comparables", () => {
           city: "Grasse",
           postalCode: "06130",
         },
+        {
+          saleDate: "2024-02-10T00:00:00.000Z",
+          surfaceM2: 100,
+          landSurfaceM2: 800,
+          salePrice: 40_000,
+          pricePerM2: 400,
+          distanceM: 1500,
+          city: "Grasse",
+          postalCode: "06130",
+        },
       ],
     };
     component.comparables.set(outlierComparables);
@@ -1421,6 +2364,7 @@ describe("PropertyDetailPageComponent comparables", () => {
       outlierComparables,
     );
     expect(component.filteredComparablePoints().some((point) => point.salePrice === 4_700_000)).toBe(true);
+    expect(component.filteredComparablePoints().some((point) => point.salePrice === 40_000)).toBe(false);
     expect(component.chartComparablePoints().some((point) => point.salePrice === 4_700_000)).toBe(false);
     expect((component.comparablesChartDomains()?.yDomain.max ?? 0) < 4_700_000).toBe(true);
 
@@ -1581,6 +2525,8 @@ describe("PropertyDetailPageComponent comparables", () => {
     ).toEqual(["mandat::MANDAT_VENTE_SIGNE", "legacy-key"]);
 
     const boolField = { key: "isCopropriete", label: "copro", type: "boolean" } as const;
+    const poolSelectField = { key: "pool", label: "Piscine", type: "select" } as const;
+    const gardenSelectField = { key: "garden", label: "Jardin", type: "select" } as const;
     const numberField = { key: "livingArea", label: "surface", type: "number" } as const;
     const textField = { key: "notes", label: "notes", type: "text" } as const;
     const dateField = { key: "mandateSignedAt", label: "mandat", type: "date" } as const;
@@ -1599,6 +2545,18 @@ describe("PropertyDetailPageComponent comparables", () => {
         dateField,
       ),
     ).toBe("2026-02-01");
+    expect((internals["toControlValue"] as (value: unknown, field: unknown) => string)("true", poolSelectField)).toBe(
+      "OUI",
+    );
+    expect((internals["toControlValue"] as (value: unknown, field: unknown) => string)("false", poolSelectField)).toBe(
+      "NON",
+    );
+    expect(
+      (internals["toControlValue"] as (value: unknown, field: unknown) => string)(
+        "true",
+        gardenSelectField,
+      ),
+    ).toBe("OUI_NU");
     expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("true", boolField)).toBe(
       true,
     );
@@ -1616,6 +2574,18 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect((internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)("  test  ", textField)).toBe(
       "test",
     );
+    expect(
+      (internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)(
+        "true",
+        poolSelectField,
+      ),
+    ).toBe("OUI");
+    expect(
+      (internals["parseFieldFormValue"] as (value: string, field: unknown) => unknown)(
+        "false",
+        gardenSelectField,
+      ),
+    ).toBe("NON");
     expect((internals["isFieldValueEmpty"] as (value: unknown) => boolean)("   ")).toBe(true);
     expect((internals["isFieldValueEmpty"] as (value: unknown) => boolean)(12)).toBe(false);
     const patchPayload: Record<string, unknown> = {};

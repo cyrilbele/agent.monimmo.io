@@ -84,6 +84,15 @@ export type ExtractInitialVisitPropertyParamsResult = {
   confidence: number;
 };
 
+export type PropertyValuationInput = {
+  prompt: string;
+};
+
+export type PropertyValuationResult = {
+  calculatedValuation: number | null;
+  justification: string;
+};
+
 export interface AIProvider {
   matchMessageToProperty(
     input: MatchMessageToPropertyInput,
@@ -97,4 +106,5 @@ export interface AIProvider {
   extractInitialVisitPropertyParams(
     input: ExtractInitialVisitPropertyParamsInput,
   ): Promise<ExtractInitialVisitPropertyParamsResult>;
+  computePropertyValuation(input: PropertyValuationInput): Promise<PropertyValuationResult>;
 }

@@ -86,10 +86,12 @@ export interface AuthResponse {
 
 export interface AppSettingsResponse {
   notaryFeePct: number;
+  valuationAiOutputFormat: string;
 }
 
 export interface AppSettingsPatchRequest {
-  notaryFeePct: number;
+  notaryFeePct?: number;
+  valuationAiOutputFormat?: string | null;
 }
 
 export interface PropertyOwner {
@@ -337,6 +339,40 @@ export interface PropertyComparablesResponse {
   subject: ComparableSubjectResponse;
   regression: ComparableRegressionResponse;
   points: ComparablePointResponse[];
+}
+
+export interface PropertyValuationAICriteriaItem {
+  label: string;
+  value: string;
+}
+
+export interface PropertyValuationAIComparableFilters {
+  propertyType?: ComparablePropertyType;
+  radiusMaxM?: number | null;
+  surfaceMinM2?: number | null;
+  surfaceMaxM2?: number | null;
+  landSurfaceMinM2?: number | null;
+  landSurfaceMaxM2?: number | null;
+}
+
+export interface PropertyValuationAIRequest {
+  comparableFilters?: PropertyValuationAIComparableFilters;
+  agentAdjustedPrice?: number | null;
+}
+
+export interface PropertyValuationAIResponse {
+  propertyId: string;
+  aiCalculatedValuation: number | null;
+  valuationJustification: string;
+  promptUsed: string;
+  generatedAt: string;
+  comparableCountUsed: number;
+  criteriaUsed: PropertyValuationAICriteriaItem[];
+}
+
+export interface PropertyValuationAIPromptResponse {
+  propertyId: string;
+  promptUsed: string;
 }
 
 export type TypeDocument =

@@ -10,6 +10,8 @@ import type {
   ExtractInitialVisitPropertyParamsResult,
   MatchMessageToPropertyInput,
   MatchMessageToPropertyResult,
+  PropertyValuationInput,
+  PropertyValuationResult,
   TranscribeVocalInput,
   TranscribeVocalResult,
 } from "./provider";
@@ -254,6 +256,37 @@ const extractInsights = (
   };
 };
 
+const parsePromptPrice = (prompt: string, labelPattern: RegExp): number | null => {
+  const match = prompt.match(labelPattern);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const parsed = Number(match[1].replace(/[^\d.,-]/g, "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+};
+
+const computeMockValuation = (input: PropertyValuationInput): PropertyValuationResult => {
+  const medianPrice = parsePromptPrice(input.prompt, /Prix median comparables:\s*([^\n]+)/i);
+  const predictedPrice = parsePromptPrice(input.prompt, /Prix estime par regression:\s*([^\n]+)/i);
+  const askingPrice = parsePromptPrice(input.prompt, /Prix de vente actuel:\s*([^\n]+)/i);
+  const valuation = medianPrice ?? predictedPrice ?? askingPrice;
+
+  if (valuation === null) {
+    return {
+      calculatedValuation: null,
+      justification:
+        "## Données insuffisantes\n\n- Le mock IA ne dispose pas d'assez de données pour proposer une valorisation chiffrée.",
+    };
+  }
+
+  return {
+    calculatedValuation: valuation,
+    justification:
+      "## Synthèse\n\n- Estimation IA mock basée sur les comparables.\n- Les critères clés (surface, état, DPE, standing) sont pris en compte.",
+  };
+};
+
 export class MockAIProvider implements AIProvider {
   async matchMessageToProperty(
     input: MatchMessageToPropertyInput,
@@ -283,5 +316,9 @@ export class MockAIProvider implements AIProvider {
     input: ExtractInitialVisitPropertyParamsInput,
   ): Promise<ExtractInitialVisitPropertyParamsResult> {
     return extractInitialVisitPropertyParams(input);
+  }
+
+  async computePropertyValuation(input: PropertyValuationInput): Promise<PropertyValuationResult> {
+    return computeMockValuation(input);
   }
 }

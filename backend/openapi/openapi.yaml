@@ -540,6 +540,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /properties/{id}/valuation-ai:
+    post:
+      tags: [Properties]
+      operationId: postPropertyValuationAI
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyValuationAIRequest"
+      responses:
+        "200":
+          description: Valorisation IA générée pour le bien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyValuationAIResponse"
+        "400":
+          description: Paramètres invalides.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Bien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /properties/{id}/valuation-ai/prompt:
+    post:
+      tags: [Properties]
+      operationId: postPropertyValuationAIPrompt
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyValuationAIRequest"
+      responses:
+        "200":
+          description: Prompt de valorisation IA régénéré.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyValuationAIPromptResponse"
+        "400":
+          description: Paramètres invalides.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Bien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /visits:
     get:
       tags: [Visits]
@@ -1270,20 +1336,29 @@ components:
           $ref: "#/components/schemas/UserResponse"
     AppSettingsResponse:
       type: object
-      required: [notaryFeePct]
+      required: [notaryFeePct, valuationAiOutputFormat]
       properties:
         notaryFeePct:
           type: number
           minimum: 0
           maximum: 100
+        valuationAiOutputFormat:
+          type: string
+          description: Format Markdown attendu pour la clé justification de la valorisation IA.
     AppSettingsPatchRequest:
       type: object
-      required: [notaryFeePct]
       properties:
         notaryFeePct:
           type: number
           minimum: 0
           maximum: 100
+        valuationAiOutputFormat:
+          type: string
+          nullable: true
+          description: Null ou chaîne vide pour revenir au format par défaut.
+      anyOf:
+        - required: [notaryFeePct]
+        - required: [valuationAiOutputFormat]
     LoginRequest:
       type: object
       required: [email, password]
@@ -1870,6 +1945,81 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ComparablePointResponse"
+    PropertyValuationAICriteriaItem:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+    PropertyValuationAIComparableFilters:
+      type: object
+      properties:
+        propertyType:
+          $ref: "#/components/schemas/ComparablePropertyType"
+        radiusMaxM:
+          type: number
+          nullable: true
+        surfaceMinM2:
+          type: number
+          nullable: true
+        surfaceMaxM2:
+          type: number
+          nullable: true
+        landSurfaceMinM2:
+          type: number
+          nullable: true
+        landSurfaceMaxM2:
+          type: number
+          nullable: true
+    PropertyValuationAIRequest:
+      type: object
+      properties:
+        comparableFilters:
+          $ref: "#/components/schemas/PropertyValuationAIComparableFilters"
+        agentAdjustedPrice:
+          type: number
+          nullable: true
+    PropertyValuationAIResponse:
+      type: object
+      required:
+        [
+          propertyId,
+          aiCalculatedValuation,
+          valuationJustification,
+          promptUsed,
+          generatedAt,
+          comparableCountUsed,
+          criteriaUsed,
+        ]
+      properties:
+        propertyId:
+          type: string
+        aiCalculatedValuation:
+          type: number
+          nullable: true
+        valuationJustification:
+          type: string
+        promptUsed:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        comparableCountUsed:
+          type: integer
+        criteriaUsed:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyValuationAICriteriaItem"
+    PropertyValuationAIPromptResponse:
+      type: object
+      required: [propertyId, promptUsed]
+      properties:
+        propertyId:
+          type: string
+        promptUsed:
+          type: string
     TypeDocument:
       type: string
       enum:

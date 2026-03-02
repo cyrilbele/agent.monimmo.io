@@ -78,55 +78,6 @@
   cursor: pointer;
 }
 
-.single-range {
-  position: relative;
-  height: 2rem;
-}
-
-.single-range__input {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 2rem;
-  margin: 0;
-  appearance: none;
-  background: transparent;
-  z-index: 3;
-}
-
-.single-range__input::-webkit-slider-runnable-track {
-  height: 0.35rem;
-  border-radius: 9999px;
-  background-color: #e2e8f0;
-}
-
-.single-range__input::-moz-range-track {
-  height: 0.35rem;
-  border-radius: 9999px;
-  background-color: #e2e8f0;
-}
-
-.single-range__input::-webkit-slider-thumb {
-  appearance: none;
-  width: 1rem;
-  height: 1rem;
-  border-radius: 9999px;
-  border: 2px solid #0369a1;
-  background-color: #ffffff;
-  cursor: pointer;
-  margin-top: -0.33rem;
-}
-
-.single-range__input::-moz-range-thumb {
-  width: 1rem;
-  height: 1rem;
-  border-radius: 9999px;
-  border: 2px solid #0369a1;
-  background-color: #ffffff;
-  cursor: pointer;
-}
-
 .range-marker {
   position: absolute;
   top: 0.35rem;
@@ -178,38 +129,107 @@
   line-height: 1.45;
 }
 
-.markdown-output {
+:host ::ng-deep .markdown-output {
   color: #0f172a;
   font-size: 0.875rem;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
-.markdown-output :first-child {
+:host ::ng-deep .markdown-output :first-child {
   margin-top: 0;
 }
 
-.markdown-output :last-child {
+:host ::ng-deep .markdown-output :last-child {
   margin-bottom: 0;
 }
 
-.markdown-output h1,
-.markdown-output h2,
-.markdown-output h3 {
+:host ::ng-deep .markdown-output h1,
+:host ::ng-deep .markdown-output h2,
+:host ::ng-deep .markdown-output h3 {
   margin-top: 0.75rem;
   margin-bottom: 0.5rem;
   font-weight: 600;
 }
 
-.markdown-output p {
+:host ::ng-deep .markdown-output h1 {
+  font-size: 1.55rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #94a3b8;
+}
+
+:host ::ng-deep .markdown-output h2 {
+  font-size: 1.15rem;
+  line-height: 1.35;
+  margin-top: 1rem;
+  margin-bottom: 0.7rem;
+  padding: 0.3rem 0.55rem;
+  border-left: 3px solid #2563eb;
+  border-radius: 0.35rem;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0.04) 100%);
+}
+
+:host ::ng-deep .markdown-output h3 {
+  font-size: 1rem;
+  line-height: 1.35;
+  margin-top: 0.9rem;
+  margin-bottom: 0.45rem;
+}
+
+:host ::ng-deep .markdown-output p {
   margin: 0.5rem 0;
 }
 
-.markdown-output ul,
-.markdown-output ol {
+:host ::ng-deep .markdown-output ul,
+:host ::ng-deep .markdown-output ol {
   margin: 0.5rem 0 0.5rem 1.25rem;
   padding: 0;
 }
 
-.markdown-output li {
+:host ::ng-deep .markdown-output li {
   margin: 0.2rem 0;
+}
+
+:host ::ng-deep .markdown-output hr {
+  border: 0;
+  border-top: 1px solid #cbd5e1;
+  margin: 0.7rem 0;
+}
+
+:host ::ng-deep .markdown-output table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.7rem 0;
+  font-size: 0.82rem;
+}
+
+:host ::ng-deep .markdown-output th,
+:host ::ng-deep .markdown-output td {
+  border: 1px solid #cbd5e1;
+  padding: 0.4rem 0.5rem;
+  vertical-align: top;
+}
+
+:host ::ng-deep .markdown-output th {
+  font-weight: 700;
+  background-color: #f1f5f9;
+}
+
+:host ::ng-deep .markdown-output code {
+  display: inline-block;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.35rem;
+  background-color: #e2e8f0;
+  font-size: 0.78rem;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
 }

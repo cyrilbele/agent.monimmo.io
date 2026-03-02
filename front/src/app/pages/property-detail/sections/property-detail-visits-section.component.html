@@ -1,0 +1,50 @@
+        <section class="panel space-y-4 p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-xl font-semibold text-slate-900">Visites planifiées</h3>
+            <button
+              type="button"
+              class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              (click)="host.openVisitModal()"
+            >
+              Ajouter une visite
+            </button>
+          </div>
+
+          @if (host.sortedVisits().length === 0) {
+            <p class="text-sm text-slate-600">Aucune visite planifiée.</p>
+          } @else {
+            <section class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="min-w-full border-collapse text-sm">
+                <thead
+                  class="bg-slate-100 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600"
+                >
+                  <tr>
+                    <th class="px-4 py-3">Prospect</th>
+                    <th class="px-4 py-3">Debut</th>
+                    <th class="px-4 py-3">Fin</th>
+                    <th class="px-4 py-3">Contact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (visit of host.sortedVisits(); track visit.id) {
+                    <tr class="border-t border-slate-200 align-top">
+                      <td class="px-4 py-3">
+                        <p class="font-semibold text-slate-900">
+                          {{ visit.prospectFirstName }} {{ visit.prospectLastName }}
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500">
+                          ID prospect: {{ visit.prospectUserId }}
+                        </p>
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">{{ visit.startsAt | date: 'short' }}</td>
+                      <td class="px-4 py-3 text-slate-700">{{ visit.endsAt | date: 'short' }}</td>
+                      <td class="px-4 py-3 text-slate-700">
+                        {{ visit.prospectEmail || visit.prospectPhone || 'Non renseigné' }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          }
+        </section>
