@@ -1,7 +1,7 @@
 import { computed, inject, Injectable } from "@angular/core";
 
 import type { AuthResponse } from "./api.models";
-import { ApiClientService } from "./api-client.service";
+import { ApiClientService, clearApiAjaxCache } from "./api-client.service";
 import { sessionStore } from "./session-store";
 
 @Injectable({ providedIn: "root" })
@@ -74,6 +74,7 @@ export class AuthService {
 
   clearSession(): void {
     sessionStore.clear();
+    void clearApiAjaxCache();
   }
 
   private persistSession(payload: AuthResponse): void {

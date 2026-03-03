@@ -19,6 +19,32 @@ const resolveApiBaseUrl = (): string => {
   return normalizeApiBaseUrl(runtimeValue);
 };
 
+const AJAX_CACHE_NAME = "monimmo-ajax-cache-v1";
+
+const isNetworkError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.name === "TypeError" ||
+    error.message.toLowerCase().includes("network") ||
+    error.message.toLowerCase().includes("fetch")
+  );
+};
+
+export const clearApiAjaxCache = async (): Promise<void> => {
+  if (typeof caches === "undefined") {
+    return;
+  }
+
+  try {
+    await caches.delete(AJAX_CACHE_NAME);
+  } catch {
+    // no-op
+  }
+};
+
 @Injectable({ providedIn: "root" })
 export class ApiClientService {
   private readonly baseUrl = resolveApiBaseUrl();
@@ -50,21 +76,42 @@ export class ApiClientService {
       headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: hasBody
-        ? options.body instanceof FormData
-          ? options.body
-          : JSON.stringify(options.body)
-        : undefined,
-    });
+    const body = hasBody
+      ? options.body instanceof FormData
+        ? options.body
+        : JSON.stringify(options.body)
+      : undefined;
+    const cacheEnabled = this.shouldUseAjaxCache(method, url);
+    const cacheKey = this.buildCacheKey(url);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body,
+      });
+    } catch (error) {
+      if (cacheEnabled && isNetworkError(error)) {
+        const cachedResponse = await this.readCachedResponse(cacheKey);
+        if (cachedResponse) {
+          return cachedResponse as T;
+        }
+      }
+
+      throw error;
+    }
 
     if (response.status === 204) {
       return undefined as T;
     }
 
+    const responseForCache = cacheEnabled && response.ok ? response.clone() : null;
     const data = await this.readJson(response);
+
+    if (responseForCache) {
+      await this.writeCachedResponse(cacheKey, responseForCache);
+    }
 
     if (!response.ok) {
       const payload = data as Partial<ErrorResponse> | null;
@@ -111,6 +158,54 @@ export class ApiClientService {
     }
   }
 
+  private shouldUseAjaxCache(
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+    url: string,
+  ): boolean {
+    if (method !== "GET") {
+      return false;
+    }
+
+    const parsed = new URL(url);
+    return !parsed.pathname.startsWith("/auth/") && !parsed.pathname.startsWith("/privacy/");
+  }
+
+  private buildCacheKey(url: string): string {
+    const parsed = new URL(url);
+    return parsed.toString();
+  }
+
+  private async writeCachedResponse(cacheKey: string, response: Response): Promise<void> {
+    if (typeof caches === "undefined") {
+      return;
+    }
+
+    try {
+      const cache = await caches.open(AJAX_CACHE_NAME);
+      await cache.put(cacheKey, response);
+    } catch {
+      // no-op
+    }
+  }
+
+  private async readCachedResponse(cacheKey: string): Promise<unknown | null> {
+    if (typeof caches === "undefined") {
+      return null;
+    }
+
+    try {
+      const cache = await caches.open(AJAX_CACHE_NAME);
+      const match = await cache.match(cacheKey);
+      if (!match) {
+        return null;
+      }
+
+      return this.readJson(match);
+    } catch {
+      return null;
+    }
+  }
+
   private getAccessToken(): string {
     return sessionStore.accessToken() ?? "";
   }
@@ -130,6 +225,7 @@ export class ApiClientService {
 
   private clearStoredSession(): void {
     sessionStore.clear();
+    void clearApiAjaxCache();
   }
 
   private redirectToLogin(): void {

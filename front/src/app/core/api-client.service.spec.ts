@@ -2,6 +2,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientService } from "./api-client.service";
 import { sessionStore } from "./session-store";
 
+type CacheEntryMap = Map<string, Response>;
+
+const installCacheMock = () => {
+  const store: CacheEntryMap = new Map();
+  const cache = {
+    match: vi.fn(async (key: string) => store.get(key)),
+    put: vi.fn(async (key: string, response: Response) => {
+      store.set(key, response);
+    }),
+  };
+  const cachesMock = {
+    open: vi.fn(async () => cache),
+    delete: vi.fn(async () => {
+      store.clear();
+      return true;
+    }),
+  };
+
+  Object.defineProperty(globalThis, "caches", {
+    configurable: true,
+    writable: true,
+    value: cachesMock,
+  });
+
+  return { store, cache, cachesMock };
+};
+
 describe("ApiClientService", () => {
   beforeEach(() => {
     sessionStore.clear();
@@ -12,6 +39,7 @@ describe("ApiClientService", () => {
 
   afterEach(() => {
     delete (window as Window & { MONIMMO_API_BASE_URL?: string }).MONIMMO_API_BASE_URL;
+    delete (globalThis as { caches?: unknown }).caches;
     vi.restoreAllMocks();
   });
 
@@ -178,5 +206,28 @@ describe("ApiClientService", () => {
     const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(options.headers);
     expect(headers.get("authorization")).toBeNull();
+  });
+
+  it("utilise le cache GET en fallback hors ligne (network-first)", async () => {
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
+    const { cache } = installCacheMock();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [{ id: "u1" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const service = new ApiClientService();
+    const onlinePayload = await service.request<{ items: Array<{ id: string }> }>("GET", "/users");
+    const offlinePayload = await service.request<{ items: Array<{ id: string }> }>("GET", "/users");
+
+    expect(onlinePayload.items[0]?.id).toBe("u1");
+    expect(offlinePayload.items[0]?.id).toBe("u1");
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(cache.match).toHaveBeenCalledTimes(1);
   });
 });

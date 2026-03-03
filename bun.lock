@@ -39,6 +39,7 @@
         "@angular/forms": "^21.2.0",
         "@angular/platform-browser": "^21.2.0",
         "@angular/router": "^21.2.0",
+        "@angular/service-worker": "^21.2.0",
         "@fullcalendar/angular": "^6.1.20",
         "@fullcalendar/core": "^6.1.20",
         "@fullcalendar/daygrid": "^6.1.20",
@@ -135,6 +136,8 @@
     "@angular/platform-browser": ["@angular/platform-browser@21.2.0", "", { "dependencies": { "tslib": "^2.3.0" }, "peerDependencies": { "@angular/animations": "21.2.0", "@angular/common": "21.2.0", "@angular/core": "21.2.0" }, "optionalPeers": ["@angular/animations"] }, "sha512-IUGukpvvT2B5Dl76qzk6rY7UIHUT9u4BhT2AwVz+5JqcX9KwQtYD17Gt7wj6bvIgCXKWG+CfN8Zd9DECOCYWjg=="],
 
     "@angular/router": ["@angular/router@21.2.0", "", { "dependencies": { "tslib": "^2.3.0" }, "peerDependencies": { "@angular/common": "21.2.0", "@angular/core": "21.2.0", "@angular/platform-browser": "21.2.0", "rxjs": "^6.5.3 || ^7.4.0" } }, "sha512-siliJ+jJRUCRZ0cdkqc7zww9Didz56Z0Z2YPIuR2n5TZLiuJY+jAf6xotXKp/v6v8XoGJwLiRNipGgNDRIAlWA=="],
+
+    "@angular/service-worker": ["@angular/service-worker@21.2.0", "", { "dependencies": { "tslib": "^2.3.0" }, "peerDependencies": { "@angular/core": "21.2.0", "rxjs": "^6.5.3 || ^7.4.0" }, "bin": { "ngsw-config": "ngsw-config.js" } }, "sha512-XqLUmhXm1Btjk+9JxAwOH7L/6K7jCXlD3K+B0kNiAiQS1/XQK+FOzHcpoKegLDUv83dDplS0zpXMdSuBLGgF8w=="],
 
     "@asamuzakjp/css-color": ["@asamuzakjp/css-color@5.0.1", "", { "dependencies": { "@csstools/css-calc": "^3.1.1", "@csstools/css-color-parser": "^4.0.2", "@csstools/css-parser-algorithms": "^4.0.0", "@csstools/css-tokenizer": "^4.0.0", "lru-cache": "^11.2.6" } }, "sha512-2SZFvqMyvboVV1d15lMf7XiI3m7SDqXUuKaTymJYLN6dSGadqp+fVojqJlVoMlbZnlTmu3S0TLwLTJpvBMO1Aw=="],
 

@@ -19,6 +19,12 @@ cd front
 bun run build
 ```
 
+## PWA / Hors ligne
+
+- Le Service Worker Angular est active en build production.
+- Les requetes API GET sont en politique `network-first` avec fallback cache en hors ligne.
+- Pour valider le comportement PWA, servir le build `dist` en HTTPS (ou localhost), puis verifier l'installation et le mode hors ligne depuis les DevTools.
+
 ## Tests
 
 ```bash
