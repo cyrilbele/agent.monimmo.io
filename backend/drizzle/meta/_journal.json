@@ -141,6 +141,34 @@
       "when": 1772375600000,
       "tag": "0019_ready_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1772485200000,
+      "tag": "0020_azure_shinobi_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1772485800000,
+      "tag": "0021_lucky_virtuoso",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1772530800000,
+      "tag": "0022_global_provider_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1772550000000,
+      "tag": "0023_rgpd_alpha_hardening",
+      "breakpoints": true
     }
   ]
 }

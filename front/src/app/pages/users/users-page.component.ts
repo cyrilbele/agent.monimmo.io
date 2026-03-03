@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
+  OnDestroy,
   OnInit,
   computed,
   inject,
@@ -22,18 +23,22 @@ type CreatableAccountType = "CLIENT" | "NOTAIRE";
   templateUrl: "./users-page.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class UsersPageComponent implements OnInit {
+export class UsersPageComponent implements OnInit, OnDestroy {
   private readonly userService = inject(UserService);
   private readonly formBuilder = inject(FormBuilder);
+  private searchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
+  private latestRequestId = 0;
 
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly users = signal<AccountUserResponse[]>([]);
+  readonly searchQuery = signal("");
   readonly createModalOpen = signal(false);
   readonly createPending = signal(false);
   readonly createFeedback = signal<string | null>(null);
 
   readonly usersCount = computed(() => this.users().length);
+  readonly hasActiveSearch = computed(() => this.searchQuery().trim().length > 0);
   readonly createLabel = computed(() =>
     this.createPending() ? "Création..." : "Créer l'utilisateur",
   );
@@ -54,18 +59,48 @@ export class UsersPageComponent implements OnInit {
     void this.loadUsers();
   }
 
-  async loadUsers(): Promise<void> {
+  ngOnDestroy(): void {
+    if (this.searchDebounceHandle) {
+      clearTimeout(this.searchDebounceHandle);
+      this.searchDebounceHandle = null;
+    }
+  }
+
+  onSearchInput(value: string): void {
+    this.searchQuery.set(value);
+
+    if (this.searchDebounceHandle) {
+      clearTimeout(this.searchDebounceHandle);
+    }
+
+    this.searchDebounceHandle = setTimeout(() => {
+      void this.loadUsers();
+    }, 250);
+  }
+
+  async loadUsers(query = this.searchQuery()): Promise<void> {
+    const requestId = ++this.latestRequestId;
     this.loading.set(true);
     this.error.set(null);
 
     try {
-      const response = await this.userService.list(100);
+      const normalizedQuery = query.trim();
+      const response = await this.userService.list(100, normalizedQuery || undefined);
+      if (requestId !== this.latestRequestId) {
+        return;
+      }
       this.users.set(response.items);
     } catch (error) {
+      if (requestId !== this.latestRequestId) {
+        return;
+      }
       const message = error instanceof Error ? error.message : "Chargement impossible.";
       this.error.set(message);
+      this.users.set([]);
     } finally {
-      this.loading.set(false);
+      if (requestId === this.latestRequestId) {
+        this.loading.set(false);
+      }
     }
   }
 
@@ -147,11 +182,9 @@ export class UsersPageComponent implements OnInit {
         personalNotes: this.normalizeOptionalField(this.createUserForm.controls.personalNotes.value),
       };
 
-      const created = await this.userService.create(payload);
-      this.users.update((items) =>
-        [created, ...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      );
+      await this.userService.create(payload);
       this.createModalOpen.set(false);
+      await this.loadUsers();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Création impossible.";
       this.createFeedback.set(message);

@@ -1,14 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  ACCESS_TOKEN_STORAGE_KEY,
-  REFRESH_TOKEN_STORAGE_KEY,
-  SESSION_EMAIL_STORAGE_KEY,
-} from "./constants";
 import { ApiClientService } from "./api-client.service";
+import { sessionStore } from "./session-store";
 
 describe("ApiClientService", () => {
   beforeEach(() => {
-    localStorage.clear();
+    sessionStore.clear();
     (window as Window & { MONIMMO_API_BASE_URL?: string }).MONIMMO_API_BASE_URL =
       "https://api.example.test///";
     vi.restoreAllMocks();
@@ -28,7 +24,7 @@ describe("ApiClientService", () => {
   });
 
   it("compose l'URL avec params filtrés et ajoute le header Authorization", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(
@@ -63,7 +59,7 @@ describe("ApiClientService", () => {
   });
 
   it("encode un body JSON quand ce n'est pas un FormData", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
@@ -81,7 +77,7 @@ describe("ApiClientService", () => {
   });
 
   it("n'ajoute pas content-type pour FormData", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
@@ -102,7 +98,7 @@ describe("ApiClientService", () => {
   });
 
   it("retourne undefined sur 204", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
 
     const service = new ApiClientService();
@@ -114,7 +110,7 @@ describe("ApiClientService", () => {
   });
 
   it("remonte le message d'erreur API quand disponible", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ message: "Boom explicite" }), {
         status: 400,
@@ -128,9 +124,7 @@ describe("ApiClientService", () => {
   });
 
   it("redirige vers login si l'API renvoie 'Token invalide'", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
-    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, "refresh_demo");
-    localStorage.setItem(SESSION_EMAIL_STORAGE_KEY, "agent@demo.test");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ message: "Token invalide" }), {
         status: 401,
@@ -149,14 +143,14 @@ describe("ApiClientService", () => {
       .mockImplementation(() => undefined);
 
     await expect(service.request("GET", "/secure")).rejects.toThrow("Token invalide");
-    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull();
-    expect(localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBeNull();
-    expect(localStorage.getItem(SESSION_EMAIL_STORAGE_KEY)).toBeNull();
+    expect(sessionStore.accessToken()).toBeNull();
+    expect(sessionStore.refreshToken()).toBeNull();
+    expect(sessionStore.userEmail()).toBeNull();
     expect(redirectSpy).toHaveBeenCalledTimes(1);
   });
 
   it("retombe sur le message HTTP générique si la réponse erreur n'est pas JSON", async () => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, "token_demo");
+    sessionStore.setTokens({ accessToken: "token_demo", refreshToken: "refresh_demo" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("erreur serveur", {
         status: 500,

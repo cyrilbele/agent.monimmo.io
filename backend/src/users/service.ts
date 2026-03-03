@@ -2,8 +2,10 @@ import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { properties, propertyParties, propertyUserLinks, users } from "../db/schema";
 import { HttpError } from "../http/errors";
+import { getSearchEngine } from "../search/factory";
 
 type UserRow = typeof users.$inferSelect;
+const searchEngine = getSearchEngine();
 
 type AccountType = "AGENT" | "CLIENT" | "NOTAIRE";
 
@@ -130,6 +132,15 @@ const toAccountUserResponse = (row: UserRow) => ({
   updatedAt: row.updatedAt.toISOString(),
 });
 
+const updateUserSearchDocumentSafe = async (user: UserRow): Promise<void> => {
+  try {
+    await searchEngine.upsertUserDocument(user);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[Search][users] impossible de synchroniser le document utilisateur ${user.id}: ${message}`);
+  }
+};
+
 const listLinkedPropertiesForUsers = async (
   orgId: string,
   userIds: readonly string[],
@@ -224,17 +235,26 @@ export const usersService = {
       clauses.push(eq(users.accountType, input.accountType));
     }
 
-    const normalizedQuery = input.query?.trim().toLowerCase();
+    const normalizedQuery = input.query?.trim();
     if (normalizedQuery) {
-      const likeValue = `%${normalizedQuery}%`;
-      clauses.push(
-        or(
-          sql`lower(${users.firstName}) like ${likeValue}`,
-          sql`lower(${users.lastName}) like ${likeValue}`,
-          sql`lower(coalesce(${users.email}, '')) like ${likeValue}`,
-          sql`lower(coalesce(${users.phone}, '')) like ${likeValue}`,
-        )!,
-      );
+      const likeValue = `%${normalizedQuery.toLowerCase()}%`;
+      const lexicalClause = or(
+        sql`lower(${users.firstName}) like ${likeValue}`,
+        sql`lower(${users.lastName}) like ${likeValue}`,
+        sql`lower(coalesce(${users.email}, '')) like ${likeValue}`,
+        sql`lower(coalesce(${users.phone}, '')) like ${likeValue}`,
+      )!;
+
+      const searchMatchedIds = await searchEngine.searchUserIds({
+        query: normalizedQuery,
+        limit: input.limit * 5,
+        orgId: input.orgId,
+      });
+      if (searchMatchedIds && searchMatchedIds.length > 0) {
+        clauses.push(or(inArray(users.id, searchMatchedIds), lexicalClause)!);
+      } else {
+        clauses.push(lexicalClause);
+      }
     }
 
     if (cursorValue) {
@@ -318,6 +338,13 @@ export const usersService = {
       createdAt: now,
       updatedAt: now,
     });
+
+    const created = await db.query.users.findFirst({
+      where: and(eq(users.id, id), eq(users.orgId, input.orgId)),
+    });
+    if (created) {
+      await updateUserSearchDocumentSafe(created);
+    }
 
     return this.getById({
       orgId: input.orgId,
@@ -411,6 +438,13 @@ export const usersService = {
         updatedAt: new Date(),
       })
       .where(and(eq(users.id, input.id), eq(users.orgId, input.orgId)));
+
+    const updated = await db.query.users.findFirst({
+      where: and(eq(users.id, input.id), eq(users.orgId, input.orgId)),
+    });
+    if (updated) {
+      await updateUserSearchDocumentSafe(updated);
+    }
 
     return this.getById({
       orgId: input.orgId,

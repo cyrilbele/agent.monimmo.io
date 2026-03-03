@@ -1,4 +1,9 @@
 import { eq } from "drizzle-orm";
+import { resolveAppAIProvider } from "../ai/factory";
+import {
+  getGlobalProviderSettings,
+  updateGlobalProviderSettings,
+} from "../config/provider-settings";
 import { db } from "../db/client";
 import { organizations, users } from "../db/schema";
 import { HttpError } from "../http/errors";
@@ -249,17 +254,25 @@ export const authService = {
     const payload = await verifyAccessToken(accessToken);
     assertRoleAllowed(payload.role);
     const user = await loadUserById(payload.sub, payload.orgId);
-    const organization = await loadOrganizationById(user.orgId);
+    const [organization, globalProviderSettings] = await Promise.all([
+      loadOrganizationById(user.orgId),
+      getGlobalProviderSettings(),
+    ]);
 
     return {
       notaryFeePct: resolveNotaryFeePct(organization),
+      aiProvider: globalProviderSettings.aiProvider,
       valuationAiOutputFormat: resolveValuationAiOutputFormat(organization?.valuationAiOutputFormat),
     };
   },
 
   async updateSettings(
     accessToken: string,
-    input: { notaryFeePct?: number; valuationAiOutputFormat?: string | null },
+    input: {
+      notaryFeePct?: number;
+      aiProvider?: "openai" | "anthropic";
+      valuationAiOutputFormat?: string | null;
+    },
   ) {
     const payload = await verifyAccessToken(accessToken);
     assertRoleAllowed(payload.role);
@@ -269,6 +282,10 @@ export const authService = {
       typeof input.notaryFeePct === "number"
         ? normalizeNotaryFeePct(input.notaryFeePct)
         : resolveNotaryFeePct(organization);
+    const aiProviderInput =
+      typeof input.aiProvider === "string"
+        ? resolveAppAIProvider(input.aiProvider)
+        : undefined;
     const persistedValuationAiOutputFormat =
       typeof input.valuationAiOutputFormat === "undefined"
         ? organization?.valuationAiOutputFormat ?? null
@@ -284,12 +301,19 @@ export const authService = {
       })
       .where(eq(organizations.id, user.orgId));
 
+    const globalProviderSettings = aiProviderInput
+      ? await updateGlobalProviderSettings({
+          aiProvider: aiProviderInput,
+        })
+      : await getGlobalProviderSettings();
+
     const resolvedValuationAiOutputFormat = resolveValuationAiOutputFormat(
       persistedValuationAiOutputFormat,
     );
 
     return {
       notaryFeePct: normalizedNotaryFeePct,
+      aiProvider: globalProviderSettings.aiProvider,
       valuationAiOutputFormat: resolvedValuationAiOutputFormat,
     };
   },

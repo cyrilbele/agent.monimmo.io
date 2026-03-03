@@ -17,8 +17,14 @@ import {
 } from "@angular/router";
 import { filter, map, startWith } from "rxjs";
 
-import type { PropertyVisitResponse, VocalResponse } from "../core/api.models";
+import type {
+  GlobalSearchItemResponse,
+  GlobalSearchItemType,
+  PropertyVisitResponse,
+  VocalResponse,
+} from "../core/api.models";
 import { AuthService } from "../core/auth.service";
+import { GlobalSearchService } from "../services/global-search.service";
 import { PropertyService } from "../services/property.service";
 import { UserService } from "../services/user.service";
 import { VocalService } from "../services/vocal.service";
@@ -42,12 +48,23 @@ interface BreadcrumbItem {
 export class AppShellComponent {
   readonly loggingOut = signal(false);
   readonly mobileNavOpen = signal(false);
+  readonly globalSearchQuery = signal("");
+  readonly globalSearchPending = signal(false);
+  readonly globalSearchOpen = signal(false);
+  readonly globalSearchItems = signal<GlobalSearchItemResponse[]>([]);
+  readonly showGlobalSearchDropdown = computed(
+    () => this.globalSearchOpen() && this.globalSearchQuery().trim().length > 0,
+  );
 
   readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly userService = inject(UserService);
   private readonly propertyService = inject(PropertyService);
   private readonly vocalService = inject(VocalService);
+  private readonly globalSearchService = inject(GlobalSearchService);
+  private globalSearchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
+  private globalSearchBlurHandle: ReturnType<typeof setTimeout> | null = null;
+  private lastGlobalSearchRequestId = 0;
   private readonly userLabelsById = signal<Record<string, string>>({});
   private readonly propertyLabelsById = signal<Record<string, string>>({});
   private readonly visitLabelsById = signal<Record<string, string>>({});
@@ -89,6 +106,11 @@ export class AppShellComponent {
       const url = this.currentUrl();
       void this.prefetchBreadcrumbLabel(url);
     });
+
+    effect(() => {
+      this.currentUrl();
+      this.resetGlobalSearchUi();
+    });
   }
 
   toggleMobileNav(): void {
@@ -117,6 +139,82 @@ export class AppShellComponent {
     } finally {
       this.loggingOut.set(false);
     }
+  }
+
+  onGlobalSearchInputEvent(event: Event): void {
+    const target = event.target;
+    const value = target instanceof HTMLInputElement ? target.value : "";
+    this.onGlobalSearchInput(value);
+  }
+
+  onGlobalSearchInput(value: string): void {
+    this.globalSearchQuery.set(value);
+    const normalized = value.trim();
+
+    this.clearGlobalSearchDebounce();
+
+    if (!normalized) {
+      this.globalSearchItems.set([]);
+      this.globalSearchPending.set(false);
+      this.globalSearchOpen.set(false);
+      return;
+    }
+
+    this.globalSearchOpen.set(true);
+    this.globalSearchDebounceHandle = setTimeout(() => {
+      void this.runGlobalSearch(normalized);
+    }, 180);
+  }
+
+  onGlobalSearchFocus(): void {
+    this.clearGlobalSearchBlur();
+    if (this.globalSearchQuery().trim()) {
+      this.globalSearchOpen.set(true);
+    }
+  }
+
+  onGlobalSearchBlur(): void {
+    this.clearGlobalSearchBlur();
+    this.globalSearchBlurHandle = setTimeout(() => {
+      this.globalSearchOpen.set(false);
+    }, 140);
+  }
+
+  onGlobalSearchEnter(event: Event): void {
+    const keyboard = event as KeyboardEvent;
+    if (keyboard.key !== "Enter") {
+      return;
+    }
+
+    keyboard.preventDefault();
+    const first = this.globalSearchItems()[0];
+    if (!first) {
+      return;
+    }
+
+    this.selectGlobalSearchItem(first);
+  }
+
+  selectGlobalSearchItem(item: GlobalSearchItemResponse): void {
+    this.resetGlobalSearchUi();
+    void this.router.navigateByUrl(item.route);
+  }
+
+  trackGlobalSearchItem(_index: number, item: GlobalSearchItemResponse): string {
+    return `${item.type}:${item.id}`;
+  }
+
+  globalSearchTypeLabel(type: GlobalSearchItemType): string {
+    if (type === "PROPERTY") {
+      return "Bien";
+    }
+    if (type === "USER") {
+      return "Contact";
+    }
+    if (type === "VOCAL") {
+      return "Vocal";
+    }
+    return "Visite";
   }
 
   private buildBreadcrumbs(url: string): BreadcrumbItem[] {
@@ -179,6 +277,29 @@ export class AppShellComponent {
     }
 
     return crumbs;
+  }
+
+  private async runGlobalSearch(query: string): Promise<void> {
+    const requestId = ++this.lastGlobalSearchRequestId;
+    this.globalSearchPending.set(true);
+
+    try {
+      const response = await this.globalSearchService.search(query, 20);
+      if (requestId !== this.lastGlobalSearchRequestId) {
+        return;
+      }
+
+      this.globalSearchItems.set(response.items);
+    } catch {
+      if (requestId !== this.lastGlobalSearchRequestId) {
+        return;
+      }
+      this.globalSearchItems.set([]);
+    } finally {
+      if (requestId === this.lastGlobalSearchRequestId) {
+        this.globalSearchPending.set(false);
+      }
+    }
   }
 
   private async prefetchBreadcrumbLabel(url: string): Promise<void> {
@@ -351,5 +472,33 @@ export class AppShellComponent {
       dateStyle: "short",
       timeStyle: "short",
     }).format(value);
+  }
+
+  private clearGlobalSearchDebounce(): void {
+    if (!this.globalSearchDebounceHandle) {
+      return;
+    }
+
+    clearTimeout(this.globalSearchDebounceHandle);
+    this.globalSearchDebounceHandle = null;
+  }
+
+  private clearGlobalSearchBlur(): void {
+    if (!this.globalSearchBlurHandle) {
+      return;
+    }
+
+    clearTimeout(this.globalSearchBlurHandle);
+    this.globalSearchBlurHandle = null;
+  }
+
+  private resetGlobalSearchUi(): void {
+    this.clearGlobalSearchDebounce();
+    this.clearGlobalSearchBlur();
+    this.lastGlobalSearchRequestId += 1;
+    this.globalSearchPending.set(false);
+    this.globalSearchOpen.set(false);
+    this.globalSearchQuery.set("");
+    this.globalSearchItems.set([]);
   }
 }

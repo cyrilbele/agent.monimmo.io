@@ -236,7 +236,7 @@ describe("OpenAIProvider", () => {
             transcript: "texte",
             summary: "",
           }),
-        ).rejects.toThrow("OpenAI responses failed (502)");
+        ).rejects.toThrow("OpenAI responses failed");
       },
     );
   });

@@ -13,6 +13,16 @@ export const organizations = sqliteTable("organizations", {
   ...timestampColumns,
 });
 
+export const platformSettings = sqliteTable("platform_settings", {
+  id: text("id").primaryKey(),
+  aiProvider: text("ai_provider").notNull().default("openai"),
+  searchEngine: text("search_engine").notNull().default("qmd"),
+  storageProvider: text("storage_provider").notNull().default("local"),
+  emailProvider: text("email_provider").notNull().default("smtp-server"),
+  calendarProvider: text("calendar_provider").notNull().default("google"),
+  ...timestampColumns,
+});
+
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -239,6 +249,75 @@ export const reviewQueueItems = sqliteTable("review_queue_items", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
 });
+
+export const aiCallLogs = sqliteTable(
+  "ai_call_logs",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    useCase: text("use_case").notNull(),
+    prompt: text("prompt").notNull(),
+    responseText: text("response_text").notNull(),
+    promptRedacted: text("prompt_redacted").notNull().default(""),
+    responseTextRedacted: text("response_text_redacted").notNull().default(""),
+    redactionVersion: text("redaction_version").notNull().default("v1"),
+    price: real("price").notNull().default(0),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    totalTokens: integer("total_tokens"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    orgCreatedAtIdx: index("ai_call_logs_org_created_at_idx").on(table.orgId, table.createdAt),
+    orgUseCaseIdx: index("ai_call_logs_org_use_case_idx").on(table.orgId, table.useCase),
+    expiresAtIdx: index("ai_call_logs_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
+export const gdprAuditEvents = sqliteTable(
+  "gdpr_audit_events",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    actorUserId: text("actor_user_id"),
+    action: text("action").notNull(),
+    status: text("status").notNull(),
+    details: text("details"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    orgCreatedAtIdx: index("gdpr_audit_events_org_created_at_idx").on(table.orgId, table.createdAt),
+    orgActionIdx: index("gdpr_audit_events_org_action_idx").on(table.orgId, table.action),
+  }),
+);
+
+export const privacyExports = sqliteTable(
+  "privacy_exports",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    requestedByUserId: text("requested_by_user_id").notNull(),
+    status: text("status").notNull(),
+    resultJson: text("result_json"),
+    errorMessage: text("error_message"),
+    requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    orgRequestedAtIdx: index("privacy_exports_org_requested_at_idx").on(table.orgId, table.requestedAt),
+    orgStatusIdx: index("privacy_exports_org_status_idx").on(table.orgId, table.status),
+    expiresAtIdx: index("privacy_exports_expires_at_idx").on(table.expiresAt),
+  }),
+);
 
 export const integrations = sqliteTable(
   "integrations",

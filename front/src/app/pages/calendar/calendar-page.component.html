@@ -2,10 +2,10 @@
   <header class="panel p-5">
     <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Planning</p>
     <h2 id="calendar-title" class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
-      Calendrier des visites
+      Calendrier des visites et rendez-vous
     </h2>
     <p class="mt-1 text-sm text-slate-500">
-      Cliquez sur une visite pour ouvrir sa fiche visite.
+      Cliquez sur une visite pour ouvrir sa fiche. Glissez sur le calendrier pour creer un rendez-vous.
     </p>
   </header>
 
@@ -21,5 +21,151 @@
     <section class="panel p-3">
       <full-calendar [options]="calendarOptions()"></full-calendar>
     </section>
+  }
+
+  @if (appointmentModalOpen()) {
+    <div
+      class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/55 p-3"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calendar-appointment-modal-title"
+      (click)="onAppointmentBackdropClick($event)"
+    >
+      <section class="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl">
+        <header class="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="calendar-appointment-modal-title" class="text-xl font-semibold text-slate-900">
+              Creer un rendez-vous
+            </h3>
+            <p class="mt-1 text-sm text-slate-500">
+              Le creneau est pre-rempli depuis votre selection dans le calendrier.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="rounded-lg px-2 py-1 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            (click)="closeAppointmentModal()"
+          >
+            Fermer
+          </button>
+        </header>
+
+        <form class="mt-4 space-y-3" [formGroup]="appointmentForm" (ngSubmit)="createAppointment()" novalidate>
+          <div>
+            <label class="field-label" for="calendar-appointment-title">Titre</label>
+            <input
+              id="calendar-appointment-title"
+              class="field-input"
+              type="text"
+              formControlName="title"
+              placeholder="Rendez-vous notaire"
+            />
+          </div>
+
+          <div>
+            <label class="field-label" for="calendar-appointment-property">Bien concerne</label>
+            <select
+              id="calendar-appointment-property"
+              class="field-input"
+              formControlName="propertyId"
+            >
+              <option value="" disabled>Selectionner un bien</option>
+              @for (property of properties(); track property.id) {
+                <option [value]="property.id">{{ property.label }}</option>
+              }
+            </select>
+            @if (selectedPropertyAddress()) {
+              <p class="mt-1 text-xs text-slate-500">Adresse du bien: {{ selectedPropertyAddress() }}</p>
+            }
+          </div>
+
+          <div>
+            <label class="field-label" for="calendar-appointment-client">Client concerne (optionnel)</label>
+            <select id="calendar-appointment-client" class="field-input" formControlName="clientUserId">
+              <option value="">Aucun client</option>
+              @for (client of clients(); track client.id) {
+                <option [value]="client.id">{{ client.label }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="field-label" for="calendar-appointment-starts-at">Heure debut</label>
+              <input
+                id="calendar-appointment-starts-at"
+                class="field-input"
+                type="datetime-local"
+                formControlName="startsAt"
+              />
+            </div>
+
+            <div>
+              <label class="field-label" for="calendar-appointment-ends-at">Heure fin</label>
+              <input
+                id="calendar-appointment-ends-at"
+                class="field-input"
+                type="datetime-local"
+                formControlName="endsAt"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="field-label" for="calendar-appointment-address">
+              Adresse (si differente du bien)
+            </label>
+            <input
+              id="calendar-appointment-address"
+              class="field-input"
+              type="text"
+              formControlName="address"
+              placeholder="Ex: Office notarial Dupont, 8 rue du Notariat, Paris"
+            />
+          </div>
+
+          <div>
+            <label class="field-label" for="calendar-appointment-comment">Commentaire</label>
+            <textarea
+              id="calendar-appointment-comment"
+              class="field-input min-h-24"
+              formControlName="comment"
+              placeholder="Notes utiles pour ce rendez-vous"
+            ></textarea>
+          </div>
+
+          @if (!hasProperties()) {
+            <p class="rounded-xl bg-amber-100 px-3 py-2 text-sm text-amber-800" role="alert">
+              Aucun bien disponible. Creez un bien avant d'ajouter un rendez-vous.
+            </p>
+          }
+
+          @if (appointmentFeedback()) {
+            <p class="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+              {{ appointmentFeedback() }}
+            </p>
+          }
+
+          <div class="flex flex-wrap justify-end gap-2 pt-1">
+            <button
+              type="button"
+              class="btn btn-ghost"
+              [disabled]="appointmentPending()"
+              (click)="closeAppointmentModal()"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              class="btn"
+              [disabled]="appointmentPending() || !hasProperties()"
+              [attr.aria-busy]="appointmentPending() ? 'true' : 'false'"
+            >
+              {{ appointmentPending() ? "Creation..." : "Creer le rendez-vous" }}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   }
 </section>

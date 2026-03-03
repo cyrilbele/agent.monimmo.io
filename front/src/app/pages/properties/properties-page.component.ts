@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
+  OnDestroy,
   OnInit,
   computed,
   inject,
@@ -19,13 +20,17 @@ import { PropertyService } from "../../services/property.service";
   templateUrl: "./properties-page.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class PropertiesPageComponent implements OnInit {
+export class PropertiesPageComponent implements OnInit, OnDestroy {
   private readonly propertyService = inject(PropertyService);
+  private searchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
+  private latestRequestId = 0;
 
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly properties = signal<PropertyResponse[]>([]);
+  readonly searchQuery = signal("");
   readonly propertiesCount = computed(() => this.properties().length);
+  readonly hasActiveSearch = computed(() => this.searchQuery().trim().length > 0);
   readonly sortedProperties = computed(() =>
     this.properties()
       .slice()
@@ -36,19 +41,48 @@ export class PropertiesPageComponent implements OnInit {
     void this.loadProperties();
   }
 
-  async loadProperties(): Promise<void> {
+  ngOnDestroy(): void {
+    if (this.searchDebounceHandle) {
+      clearTimeout(this.searchDebounceHandle);
+      this.searchDebounceHandle = null;
+    }
+  }
+
+  onSearchInput(value: string): void {
+    this.searchQuery.set(value);
+
+    if (this.searchDebounceHandle) {
+      clearTimeout(this.searchDebounceHandle);
+    }
+
+    this.searchDebounceHandle = setTimeout(() => {
+      void this.loadProperties();
+    }, 250);
+  }
+
+  async loadProperties(query = this.searchQuery()): Promise<void> {
+    const requestId = ++this.latestRequestId;
     this.loading.set(true);
     this.error.set(null);
 
     try {
-      const response = await this.propertyService.list(100);
+      const normalizedQuery = query.trim();
+      const response = await this.propertyService.list(100, normalizedQuery || undefined);
+      if (requestId !== this.latestRequestId) {
+        return;
+      }
       this.properties.set(response.items);
     } catch (error) {
+      if (requestId !== this.latestRequestId) {
+        return;
+      }
       const message = error instanceof Error ? error.message : "Chargement des biens impossible.";
       this.error.set(message);
       this.properties.set([]);
     } finally {
-      this.loading.set(false);
+      if (requestId === this.latestRequestId) {
+        this.loading.set(false);
+      }
     }
   }
 

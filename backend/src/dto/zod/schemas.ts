@@ -105,26 +105,62 @@ export const MeResponseSchema = z.object({
 
 export const AppSettingsResponseSchema = z.object({
   notaryFeePct: z.number(),
+  aiProvider: z.enum(["openai", "anthropic"]),
   valuationAiOutputFormat: z.string(),
 });
 
 export const AppSettingsPatchRequestSchema = z
   .object({
     notaryFeePct: z.number().optional(),
+    aiProvider: z.enum(["openai", "anthropic"]).optional(),
     valuationAiOutputFormat: z.string().nullable().optional(),
   })
   .superRefine((value, context) => {
     if (
       typeof value.notaryFeePct === "undefined" &&
+      typeof value.aiProvider === "undefined" &&
       typeof value.valuationAiOutputFormat === "undefined"
     ) {
       context.addIssue({
         code: "custom",
-        message: "notaryFeePct ou valuationAiOutputFormat est obligatoire",
+        message: "notaryFeePct ou aiProvider ou valuationAiOutputFormat est obligatoire",
         path: ["notaryFeePct"],
       });
     }
   });
+
+export const AICallLogResponseSchema = z.object({
+  id: z.string(),
+  datetime: z.iso.datetime(),
+  orgId: z.string(),
+  useCase: z.string(),
+  prompt: z.string(),
+  textResponse: z.string(),
+  price: z.number(),
+  inputTokens: z.number().int().nullable(),
+  outputTokens: z.number().int().nullable(),
+  totalTokens: z.number().int().nullable(),
+  redactionVersion: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const AICallLogListResponseSchema = z.object({
+  items: z.array(AICallLogResponseSchema),
+});
+
+export const GlobalSearchItemTypeSchema = z.enum(["PROPERTY", "USER", "VOCAL", "VISIT"]);
+
+export const GlobalSearchItemResponseSchema = z.object({
+  type: GlobalSearchItemTypeSchema,
+  id: z.string(),
+  label: z.string(),
+  subtitle: z.string(),
+  route: z.string(),
+});
+
+export const GlobalSearchResponseSchema = z.object({
+  items: z.array(GlobalSearchItemResponseSchema),
+});
 
 export const LoginRequestSchema = z.object({
   email: z.email(),
@@ -150,6 +186,29 @@ export const RefreshResponseSchema = z.object({
 
 export const LogoutRequestSchema = z.object({
   refreshToken: z.string(),
+});
+
+export const PrivacyExportStatusSchema = z.enum(["PENDING", "RUNNING", "COMPLETED", "FAILED"]);
+
+export const PrivacyExportRequestSchema = z.object({});
+
+export const PrivacyExportResponseSchema = z.object({
+  id: z.string(),
+  status: PrivacyExportStatusSchema,
+  requestedAt: z.iso.datetime(),
+  startedAt: z.iso.datetime().nullable(),
+  completedAt: z.iso.datetime().nullable(),
+  expiresAt: z.iso.datetime(),
+  errorMessage: z.string().nullable(),
+  data: z.unknown().nullable(),
+});
+
+export const PrivacyEraseRequestSchema = z.object({});
+
+export const PrivacyEraseResponseSchema = z.object({
+  requestId: z.string(),
+  status: z.literal("PENDING"),
+  requestedAt: z.iso.datetime(),
 });
 
 export const RegisterRequestSchema = z.object({
@@ -315,6 +374,36 @@ export const PropertyVisitResponseSchema = z.object({
 
 export const PropertyVisitListResponseSchema = z.object({
   items: z.array(PropertyVisitResponseSchema),
+});
+
+export const CalendarAppointmentCreateRequestSchema = z.object({
+  title: z.string().min(1),
+  propertyId: z.string().min(1),
+  clientUserId: z.string().nullable().optional(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+  address: z.string().nullable().optional(),
+  comment: z.string().nullable().optional(),
+});
+
+export const CalendarAppointmentResponseSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  propertyId: z.string(),
+  propertyTitle: z.string(),
+  clientUserId: z.string().nullable(),
+  clientFirstName: z.string().nullable(),
+  clientLastName: z.string().nullable(),
+  address: z.string().nullable(),
+  comment: z.string().nullable(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const CalendarAppointmentListResponseSchema = z.object({
+  items: z.array(CalendarAppointmentResponseSchema),
 });
 
 export const PropertyRiskStatusSchema = z.enum(["OK", "NO_DATA", "UNAVAILABLE"]);
@@ -690,6 +779,11 @@ export const DtoSchemaMap = {
   RefreshRequest: RefreshRequestSchema,
   RefreshResponse: RefreshResponseSchema,
   LogoutRequest: LogoutRequestSchema,
+  PrivacyExportStatus: PrivacyExportStatusSchema,
+  PrivacyExportRequest: PrivacyExportRequestSchema,
+  PrivacyExportResponse: PrivacyExportResponseSchema,
+  PrivacyEraseRequest: PrivacyEraseRequestSchema,
+  PrivacyEraseResponse: PrivacyEraseResponseSchema,
   RegisterRequest: RegisterRequestSchema,
   ForgotPasswordRequest: ForgotPasswordRequestSchema,
   ResetPasswordRequest: ResetPasswordRequestSchema,
@@ -710,6 +804,9 @@ export const DtoSchemaMap = {
   PropertyVisitPatchRequest: PropertyVisitPatchRequestSchema,
   PropertyVisitResponse: PropertyVisitResponseSchema,
   PropertyVisitListResponse: PropertyVisitListResponseSchema,
+  CalendarAppointmentCreateRequest: CalendarAppointmentCreateRequestSchema,
+  CalendarAppointmentResponse: CalendarAppointmentResponseSchema,
+  CalendarAppointmentListResponse: CalendarAppointmentListResponseSchema,
   PropertyRiskStatus: PropertyRiskStatusSchema,
   PropertyRiskLocation: PropertyRiskLocationSchema,
   PropertyRiskItemResponse: PropertyRiskItemResponseSchema,

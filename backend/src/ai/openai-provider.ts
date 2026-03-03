@@ -1,6 +1,10 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateText } from "ai";
 import { MockAIProvider } from "./mock-provider";
+import { clampPriceUsd, estimatePriceUsdFromUsage } from "./pricing";
 import { externalFetch } from "../http/external-fetch";
 import type {
+  AICallTelemetry,
   AIProvider,
   ClassifyFileInput,
   ClassifyFileResult,
@@ -137,12 +141,17 @@ export class OpenAIProvider implements AIProvider {
   private readonly baseUrl: string;
   private readonly whisperModel: string;
   private readonly chatModel: string;
+  private readonly openai: ReturnType<typeof createOpenAI>;
 
   constructor(options: OpenAIProviderOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
     this.whisperModel = options.whisperModel ?? "whisper-1";
-    this.chatModel = options.chatModel ?? "chatgpt-5.2";
+    this.chatModel = options.chatModel ?? "gpt-5.2";
+    this.openai = createOpenAI({
+      apiKey: this.apiKey,
+      baseURL: this.baseUrl,
+    });
   }
 
   async matchMessageToProperty(
@@ -188,13 +197,25 @@ export class OpenAIProvider implements AIProvider {
       transcript,
       summary: transcript ? transcript.slice(0, 280) : "",
       confidence: transcript ? 0.9 : 0.2,
+      telemetry: {
+        provider: "openai",
+        model: this.whisperModel,
+        prompt: [
+          "Transcription audio OpenAI",
+          `fileName: ${input.fileName}`,
+          `mimeType: ${input.mimeType}`,
+          `audioBytes: ${input.audioData.byteLength}`,
+        ].join("\n"),
+        responseText: transcript,
+        price: 0,
+      },
     };
   }
 
   async extractVocalInsights(
     input: ExtractVocalInsightsInput,
   ): Promise<ExtractVocalInsightsResult> {
-    const raw = await this.requestJsonText([
+    const generated = await this.requestJsonText([
       "Tu extrais des insights métier immobilier à partir d'une transcription d'appel vocal.",
       "Réponds uniquement en JSON: {\"insights\":object,\"confidence\":number}.",
       "confidence est entre 0 et 1.",
@@ -203,11 +224,12 @@ export class OpenAIProvider implements AIProvider {
       `Summary: ${input.summary ?? ""}`,
     ]);
 
-    const parsed = extractJsonObject(raw);
+    const parsed = extractJsonObject(generated.text);
     if (!parsed) {
       return {
         insights: {},
         confidence: 0.2,
+        telemetry: generated.telemetry,
       };
     }
 
@@ -218,11 +240,12 @@ export class OpenAIProvider implements AIProvider {
           ? (rawInsights as Record<string, unknown>)
           : {},
       confidence: clampConfidence(parsed.confidence, 0.45),
+      telemetry: generated.telemetry,
     };
   }
 
   async detectVocalType(input: DetectVocalTypeInput): Promise<DetectVocalTypeResult> {
-    const raw = await this.requestJsonText([
+    const generated = await this.requestJsonText([
       "Tu classes le type d'un vocal immobilier.",
       "Types autorisés: VISITE_INITIALE, VISITE_SUIVI, COMPTE_RENDU_VISITE_CLIENT.",
       "Réponds uniquement en JSON: {\"vocalType\":\"...|null\",\"confidence\":number,\"reasoning\":string}.",
@@ -231,12 +254,13 @@ export class OpenAIProvider implements AIProvider {
       `Summary: ${input.summary ?? ""}`,
     ]);
 
-    const parsed = extractJsonObject(raw);
+    const parsed = extractJsonObject(generated.text);
     if (!parsed) {
       return {
         vocalType: null,
         confidence: 0.2,
         reasoning: "Réponse IA invalide",
+        telemetry: generated.telemetry,
       };
     }
 
@@ -247,13 +271,14 @@ export class OpenAIProvider implements AIProvider {
         typeof parsed.reasoning === "string" && parsed.reasoning.trim()
           ? parsed.reasoning
           : "Classification IA",
+      telemetry: generated.telemetry,
     };
   }
 
   async extractInitialVisitPropertyParams(
     input: ExtractInitialVisitPropertyParamsInput,
   ): Promise<ExtractInitialVisitPropertyParamsResult> {
-    const raw = await this.requestJsonText([
+    const generated = await this.requestJsonText([
       "Tu extrais des paramètres de bien depuis une transcription de visite initiale immobilière.",
       "Réponds uniquement en JSON:",
       "{\"title\":string|null,\"address\":string|null,\"city\":string|null,\"postalCode\":string|null,\"price\":number|null,\"details\":object,\"confidence\":number}.",
@@ -263,7 +288,7 @@ export class OpenAIProvider implements AIProvider {
       `Summary: ${input.summary ?? ""}`,
     ]);
 
-    const parsed = extractJsonObject(raw);
+    const parsed = extractJsonObject(generated.text);
     if (!parsed) {
       return {
         title: null,
@@ -273,6 +298,7 @@ export class OpenAIProvider implements AIProvider {
         price: null,
         details: {},
         confidence: 0.2,
+        telemetry: generated.telemetry,
       };
     }
 
@@ -292,12 +318,13 @@ export class OpenAIProvider implements AIProvider {
           ? (rawDetails as Record<string, unknown>)
           : {},
       confidence: clampConfidence(parsed.confidence, 0.45),
+      telemetry: generated.telemetry,
     };
   }
 
   async computePropertyValuation(input: PropertyValuationInput): Promise<PropertyValuationResult> {
     try {
-      const raw = await this.requestJsonText([
+      const generated = await this.requestJsonText([
         "Tu es un expert en valorisation immobilière en France.",
         "À partir des données fournies, propose une valorisation cohérente et justifiée.",
         "Réponds uniquement en JSON:",
@@ -309,9 +336,13 @@ export class OpenAIProvider implements AIProvider {
         input.prompt,
       ]);
 
-      const parsed = extractJsonObject(raw);
+      const parsed = extractJsonObject(generated.text);
       if (!parsed) {
-        return this.fallbackProvider.computePropertyValuation(input);
+        const fallback = await this.fallbackProvider.computePropertyValuation(input);
+        return {
+          ...fallback,
+          telemetry: generated.telemetry,
+        };
       }
 
       const rawValuation = parsed.calculatedValuation;
@@ -327,13 +358,76 @@ export class OpenAIProvider implements AIProvider {
       return {
         calculatedValuation,
         justification,
+        telemetry: generated.telemetry,
       };
     } catch {
       return this.fallbackProvider.computePropertyValuation(input);
     }
   }
 
-  private async requestJsonText(promptLines: string[]): Promise<string> {
+  private async requestJsonText(promptLines: string[]): Promise<{
+    text: string;
+    telemetry: AICallTelemetry;
+  }> {
+    const prompt = promptLines.join("\n");
+
+    try {
+      const result = await generateText({
+        model: this.openai(this.chatModel),
+        prompt,
+        maxRetries: 0,
+      });
+      const responseText = result.text.trim();
+      const usage = result.usage;
+      const price = estimatePriceUsdFromUsage({
+        provider: "openai",
+        model: this.chatModel,
+        usage,
+        prompt,
+        responseText,
+      });
+
+      return {
+        text: responseText,
+        telemetry: {
+          provider: "openai",
+          model: this.chatModel,
+          prompt,
+          responseText,
+          price: clampPriceUsd(price),
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+        },
+      };
+    } catch {
+      try {
+        const legacyText = await this.requestJsonTextLegacy(prompt);
+        const price = estimatePriceUsdFromUsage({
+          provider: "openai",
+          model: this.chatModel,
+          prompt,
+          responseText: legacyText,
+        });
+
+        return {
+          text: legacyText,
+          telemetry: {
+            provider: "openai",
+            model: this.chatModel,
+            prompt,
+            responseText: legacyText,
+            price: clampPriceUsd(price),
+          },
+        };
+      } catch (legacyError) {
+        const details = legacyError instanceof Error ? legacyError.message : String(legacyError);
+        throw new Error(`OpenAI responses failed: ${details}`);
+      }
+    }
+  }
+
+  private async requestJsonTextLegacy(prompt: string): Promise<string> {
     const response = await externalFetch({
       service: "openai",
       url: `${this.baseUrl}/responses`,
@@ -344,7 +438,7 @@ export class OpenAIProvider implements AIProvider {
       },
       body: JSON.stringify({
         model: this.chatModel,
-        input: promptLines.join("\n"),
+        input: prompt,
       }),
     });
 

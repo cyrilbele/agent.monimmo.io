@@ -8,6 +8,7 @@ servers:
 tags:
   - name: Health
   - name: Auth
+  - name: Search
   - name: Users
   - name: Properties
   - name: Visits
@@ -16,6 +17,7 @@ tags:
   - name: Vocals
   - name: ReviewQueue
   - name: Integrations
+  - name: Privacy
 paths:
   /health:
     get:
@@ -47,6 +49,12 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "401":
           description: Identifiants invalides.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Trop de tentatives.
           content:
             application/json:
               schema:
@@ -143,6 +151,148 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppSettingsResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /me/ai-calls:
+    get:
+      tags: [Auth]
+      operationId: getMeAICalls
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Historique des appels IA de l'organisation courante.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICallLogListResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /privacy/exports:
+    post:
+      tags: [Privacy]
+      operationId: postPrivacyExports
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrivacyExportRequest"
+      responses:
+        "202":
+          description: Export RGPD demandé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacyExportResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Rôle insuffisant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /privacy/exports/{id}:
+    get:
+      tags: [Privacy]
+      operationId: getPrivacyExportById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: État export RGPD.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacyExportResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Rôle insuffisant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Export introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /privacy/erase:
+    post:
+      tags: [Privacy]
+      operationId: postPrivacyErase
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrivacyEraseRequest"
+      responses:
+        "202":
+          description: Effacement RGPD demandé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacyEraseResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Rôle insuffisant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search:
+    get:
+      tags: [Search]
+      operationId: getSearch
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Résultats de recherche globaux multi-objets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalSearchResponse"
         "401":
           description: Non authentifié.
           content:
@@ -270,6 +420,12 @@ paths:
       responses:
         "202":
           description: Demande acceptée.
+        "429":
+          description: Trop de tentatives.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/reset-password:
     post:
       tags: [Auth]
@@ -289,6 +445,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Trop de tentatives.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /properties:
     get:
       tags: [Properties]
@@ -298,6 +460,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Liste des biens.
@@ -632,6 +799,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyVisitListResponse"
+  /calendar-events:
+    get:
+      tags: [Visits]
+      operationId: getCalendarEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Liste des rendez-vous manuels du calendrier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarAppointmentListResponse"
+    post:
+      tags: [Visits]
+      operationId: postCalendarEvent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarAppointmentCreateRequest"
+      responses:
+        "201":
+          description: Rendez-vous créé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarAppointmentResponse"
+        "400":
+          description: Payload invalide.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Bien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /visits/{id}:
     get:
       tags: [Visits]
@@ -1336,12 +1559,16 @@ components:
           $ref: "#/components/schemas/UserResponse"
     AppSettingsResponse:
       type: object
-      required: [notaryFeePct, valuationAiOutputFormat]
+      required: [notaryFeePct, aiProvider, valuationAiOutputFormat]
       properties:
         notaryFeePct:
           type: number
           minimum: 0
           maximum: 100
+        aiProvider:
+          type: string
+          enum: [openai, anthropic]
+          description: Provider IA global (partagé par toutes les organisations).
         valuationAiOutputFormat:
           type: string
           description: Format Markdown attendu pour la clé justification de la valorisation IA.
@@ -1352,13 +1579,96 @@ components:
           type: number
           minimum: 0
           maximum: 100
+        aiProvider:
+          type: string
+          enum: [openai, anthropic]
         valuationAiOutputFormat:
           type: string
           nullable: true
           description: Null ou chaîne vide pour revenir au format par défaut.
       anyOf:
         - required: [notaryFeePct]
+        - required: [aiProvider]
         - required: [valuationAiOutputFormat]
+    AICallLogResponse:
+      type: object
+      required:
+        - id
+        - datetime
+        - orgId
+        - useCase
+        - prompt
+        - textResponse
+        - price
+        - inputTokens
+        - outputTokens
+        - totalTokens
+        - redactionVersion
+        - expiresAt
+      properties:
+        id:
+          type: string
+        datetime:
+          type: string
+          format: date-time
+        orgId:
+          type: string
+        useCase:
+          type: string
+        prompt:
+          type: string
+        textResponse:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        inputTokens:
+          type: integer
+          nullable: true
+        outputTokens:
+          type: integer
+          nullable: true
+        totalTokens:
+          type: integer
+          nullable: true
+        redactionVersion:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    AICallLogListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AICallLogResponse"
+    GlobalSearchItemType:
+      type: string
+      enum: [PROPERTY, USER, VOCAL, VISIT]
+    GlobalSearchItemResponse:
+      type: object
+      required: [type, id, label, subtitle, route]
+      properties:
+        type:
+          $ref: "#/components/schemas/GlobalSearchItemType"
+        id:
+          type: string
+        label:
+          type: string
+        subtitle:
+          type: string
+        route:
+          type: string
+    GlobalSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalSearchItemResponse"
     LoginRequest:
       type: object
       required: [email, password]
@@ -1404,6 +1714,62 @@ components:
       properties:
         refreshToken:
           type: string
+    PrivacyExportStatus:
+      type: string
+      enum: [PENDING, RUNNING, COMPLETED, FAILED]
+    PrivacyExportRequest:
+      type: object
+      additionalProperties: false
+    PrivacyExportResponse:
+      type: object
+      required:
+        - id
+        - status
+        - requestedAt
+        - startedAt
+        - completedAt
+        - expiresAt
+        - errorMessage
+        - data
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/PrivacyExportStatus"
+        requestedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        errorMessage:
+          type: string
+          nullable: true
+        data:
+          nullable: true
+    PrivacyEraseRequest:
+      type: object
+      additionalProperties: false
+    PrivacyEraseResponse:
+      type: object
+      required: [requestId, status, requestedAt]
+      properties:
+        requestId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING]
+        requestedAt:
+          type: string
+          format: date-time
     RegisterRequest:
       type: object
       required: [email, password, firstName, lastName]
@@ -1737,6 +2103,76 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PropertyVisitResponse"
+    CalendarAppointmentCreateRequest:
+      type: object
+      required: [title, propertyId, startsAt, endsAt]
+      properties:
+        title:
+          type: string
+        propertyId:
+          type: string
+        clientUserId:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        address:
+          type: string
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+    CalendarAppointmentResponse:
+      type: object
+      required: [id, title, propertyId, propertyTitle, clientUserId, clientFirstName, clientLastName, address, comment, startsAt, endsAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        propertyId:
+          type: string
+        propertyTitle:
+          type: string
+        clientUserId:
+          type: string
+          nullable: true
+        clientFirstName:
+          type: string
+          nullable: true
+        clientLastName:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CalendarAppointmentListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarAppointmentResponse"
     PropertyRiskStatus:
       type: string
       enum: [OK, NO_DATA, UNAVAILABLE]

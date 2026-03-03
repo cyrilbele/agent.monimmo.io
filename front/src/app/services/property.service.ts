@@ -18,6 +18,9 @@ import type {
   PropertyVisitListResponse,
   PropertyVisitPatchRequest,
   PropertyVisitResponse,
+  CalendarAppointmentCreateRequest,
+  CalendarAppointmentListResponse,
+  CalendarAppointmentResponse,
   PropertyResponse,
   PropertyStatus,
   ComparablePropertyType,
@@ -28,9 +31,12 @@ import { ApiClientService } from "../core/api-client.service";
 export class PropertyService {
   private readonly api = inject(ApiClientService);
 
-  list(limit = 100): Promise<PropertyListResponse> {
+  list(limit = 100, query?: string): Promise<PropertyListResponse> {
+    const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 100;
+    const safeLimit = Math.min(100, Math.max(1, normalizedLimit || 100));
+
     return this.api.request<PropertyListResponse>("GET", "/properties", {
-      params: { limit },
+      params: { limit: safeLimit, q: query },
     });
   }
 
@@ -178,6 +184,23 @@ export class PropertyService {
   listCalendarVisits(from?: string, to?: string): Promise<PropertyVisitListResponse> {
     return this.api.request<PropertyVisitListResponse>("GET", "/visits", {
       params: { from, to },
+    });
+  }
+
+  listCalendarAppointments(
+    from?: string,
+    to?: string,
+  ): Promise<CalendarAppointmentListResponse> {
+    return this.api.request<CalendarAppointmentListResponse>("GET", "/calendar-events", {
+      params: { from, to },
+    });
+  }
+
+  createCalendarAppointment(
+    payload: CalendarAppointmentCreateRequest,
+  ): Promise<CalendarAppointmentResponse> {
+    return this.api.request<CalendarAppointmentResponse>("POST", "/calendar-events", {
+      body: payload,
     });
   }
 }

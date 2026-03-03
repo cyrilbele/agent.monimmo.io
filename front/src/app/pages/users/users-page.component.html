@@ -10,20 +10,21 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
+        <label class="sr-only" for="users-search-input">Rechercher un contact</label>
+        <input
+          id="users-search-input"
+          type="search"
+          class="field-input w-full min-w-[16rem] sm:w-auto"
+          [value]="searchQuery()"
+          (input)="onSearchInput($any($event.target).value)"
+          placeholder="Rechercher un contact (nom, email, téléphone)"
+        />
         <button
           type="button"
           class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
           (click)="openCreateModal()"
         >
           Ajouter un client/notaire
-        </button>
-
-        <button
-          type="button"
-          class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-          (click)="loadUsers()"
-        >
-          Rafraîchir
         </button>
       </div>
     </div>
@@ -37,10 +38,12 @@
 
   @if (loading()) {
     <p class="panel p-4 text-sm text-slate-700" role="status" aria-live="polite">
-      Chargement des utilisateurs...
+      {{ hasActiveSearch() ? "Recherche des contacts..." : "Chargement des utilisateurs..." }}
     </p>
   } @else if (users().length === 0) {
-    <p class="panel p-4 text-sm text-slate-600">Aucun utilisateur sur ce compte.</p>
+    <p class="panel p-4 text-sm text-slate-600">
+      {{ hasActiveSearch() ? "Aucun contact ne correspond à la recherche." : "Aucun utilisateur sur ce compte." }}
+    </p>
   } @else {
     <section class="panel overflow-x-auto p-0">
       <table class="min-w-full border-collapse text-sm">

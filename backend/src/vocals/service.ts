@@ -3,6 +3,7 @@ import { db } from "../db/client";
 import { files, properties, vocals } from "../db/schema";
 import { filesService } from "../files/service";
 import { HttpError } from "../http/errors";
+import { validateVocalAudioFormat } from "./audio-format";
 
 type VocalRow = typeof vocals.$inferSelect;
 export type VocalType =
@@ -79,6 +80,27 @@ export const vocalsService = {
     size: number;
     contentBase64?: string;
   }) {
+    const formatValidation = validateVocalAudioFormat({
+      fileName: input.fileName,
+      mimeType: input.mimeType,
+    });
+    if (!formatValidation.valid) {
+      throw new HttpError(400, "INVALID_VOCAL_AUDIO_FORMAT", formatValidation.message);
+    }
+
+    const contentBase64 = input.contentBase64?.trim() ?? "";
+    if (!contentBase64) {
+      throw new HttpError(
+        400,
+        "VOCAL_CONTENT_REQUIRED",
+        "Le contenu audio du vocal est requis pour la transcription",
+      );
+    }
+
+    if (input.size <= 0) {
+      throw new HttpError(400, "VOCAL_EMPTY_CONTENT", "Le vocal ne peut pas être vide");
+    }
+
     await assertPropertyScope(input.orgId, input.propertyId);
 
     const file = await filesService.upload({
@@ -87,7 +109,7 @@ export const vocalsService = {
       fileName: input.fileName,
       mimeType: input.mimeType,
       size: input.size,
-      contentBase64: input.contentBase64,
+      contentBase64,
     });
 
     const id = crypto.randomUUID();

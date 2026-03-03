@@ -6,6 +6,17 @@ export type PropertyCandidate = {
   address?: string | null;
 };
 
+export type AICallTelemetry = {
+  provider: string;
+  model: string;
+  prompt: string;
+  responseText: string;
+  price: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+};
+
 export type MatchMessageToPropertyInput = {
   subject?: string | null;
   body: string;
@@ -17,6 +28,7 @@ export type MatchMessageToPropertyResult = {
   confidence: number;
   ambiguousPropertyIds: string[];
   reasoning: string;
+  telemetry?: AICallTelemetry;
 };
 
 export type ClassifyFileInput = {
@@ -28,6 +40,7 @@ export type ClassifyFileResult = {
   typeDocument: string | null;
   confidence: number;
   reasoning: string;
+  telemetry?: AICallTelemetry;
 };
 
 export type TranscribeVocalInput = {
@@ -40,6 +53,7 @@ export type TranscribeVocalResult = {
   transcript: string;
   summary: string;
   confidence: number;
+  telemetry?: AICallTelemetry;
 };
 
 export type ExtractVocalInsightsInput = {
@@ -50,6 +64,7 @@ export type ExtractVocalInsightsInput = {
 export type ExtractVocalInsightsResult = {
   insights: Record<string, unknown>;
   confidence: number;
+  telemetry?: AICallTelemetry;
 };
 
 export type VocalType =
@@ -67,6 +82,7 @@ export type DetectVocalTypeResult = {
   vocalType: VocalType | null;
   confidence: number;
   reasoning: string;
+  telemetry?: AICallTelemetry;
 };
 
 export type ExtractInitialVisitPropertyParamsInput = {
@@ -82,6 +98,7 @@ export type ExtractInitialVisitPropertyParamsResult = {
   price?: number | null;
   details: Record<string, unknown>;
   confidence: number;
+  telemetry?: AICallTelemetry;
 };
 
 export type PropertyValuationInput = {
@@ -91,6 +108,7 @@ export type PropertyValuationInput = {
 export type PropertyValuationResult = {
   calculatedValuation: number | null;
   justification: string;
+  telemetry?: AICallTelemetry;
 };
 
 export interface AIProvider {

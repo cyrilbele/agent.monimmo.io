@@ -4,13 +4,15 @@ export interface ErrorResponse {
   details?: unknown;
 }
 
+export type UserRole = "AGENT" | "MANAGER" | "ADMIN";
+
 export interface UserResponse {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   orgId: string;
-  role: "AGENT" | "MANAGER" | "ADMIN";
+  role: UserRole;
   createdAt: string;
 }
 
@@ -84,14 +86,70 @@ export interface AuthResponse {
   user: UserResponse;
 }
 
+export type AiProvider = "openai" | "anthropic";
+
 export interface AppSettingsResponse {
   notaryFeePct: number;
+  aiProvider: AiProvider;
   valuationAiOutputFormat: string;
 }
 
 export interface AppSettingsPatchRequest {
   notaryFeePct?: number;
+  aiProvider?: AiProvider;
   valuationAiOutputFormat?: string | null;
+}
+
+export interface AICallLogResponse {
+  id: string;
+  datetime: string;
+  orgId: string;
+  useCase: string;
+  prompt: string;
+  textResponse: string;
+  price: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  redactionVersion: string;
+  expiresAt: string;
+}
+
+export interface AICallLogListResponse {
+  items: AICallLogResponse[];
+}
+
+export type PrivacyExportStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+
+export interface PrivacyExportResponse {
+  id: string;
+  status: PrivacyExportStatus;
+  requestedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string;
+  errorMessage: string | null;
+  data: unknown | null;
+}
+
+export interface PrivacyEraseResponse {
+  requestId: string;
+  status: "PENDING";
+  requestedAt: string;
+}
+
+export type GlobalSearchItemType = "PROPERTY" | "USER" | "VOCAL" | "VISIT";
+
+export interface GlobalSearchItemResponse {
+  type: GlobalSearchItemType;
+  id: string;
+  label: string;
+  subtitle: string;
+  route: string;
+}
+
+export interface GlobalSearchResponse {
+  items: GlobalSearchItemResponse[];
 }
 
 export interface PropertyOwner {
@@ -234,6 +292,36 @@ export interface PropertyVisitResponse {
 
 export interface PropertyVisitListResponse {
   items: PropertyVisitResponse[];
+}
+
+export interface CalendarAppointmentCreateRequest {
+  title: string;
+  propertyId: string;
+  clientUserId?: string | null;
+  startsAt: string;
+  endsAt: string;
+  address?: string | null;
+  comment?: string | null;
+}
+
+export interface CalendarAppointmentResponse {
+  id: string;
+  title: string;
+  propertyId: string;
+  propertyTitle: string;
+  clientUserId: string | null;
+  clientFirstName: string | null;
+  clientLastName: string | null;
+  address: string | null;
+  comment: string | null;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CalendarAppointmentListResponse {
+  items: CalendarAppointmentResponse[];
 }
 
 export type PropertyRiskStatus = "OK" | "NO_DATA" | "UNAVAILABLE";

@@ -6,6 +6,7 @@ import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
 import {
   files,
+  organizations,
   properties,
   propertyParties,
   propertyTimelineEvents,
@@ -43,6 +44,19 @@ const toJsonResponse = (body: unknown, status = 200): Response =>
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+
+const ensureOrganization = async (orgId: string): Promise<void> => {
+  const now = new Date();
+  await db
+    .insert(organizations)
+    .values({
+      id: orgId,
+      name: `Organisation ${orgId}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing({ target: organizations.id });
+};
 
 describe("properties endpoints", () => {
   beforeAll(async () => {
@@ -171,6 +185,105 @@ describe("properties endpoints", () => {
     expect(page2.status).toBe(200);
     const page2Payload = await page2.json();
     expect(page2Payload.items.length).toBeGreaterThan(0);
+  });
+
+  it("filtre les biens avec le paramètre q", async () => {
+    const token = await loginAndGetAccessToken();
+    const marker = crypto.randomUUID();
+
+    const matchingCreateResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: `Recherche ${marker}`,
+          city: "Montpellier",
+          postalCode: "34000",
+          address: "2 place de la Comédie",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(matchingCreateResponse.status).toBe(201);
+    const matchingProperty = await matchingCreateResponse.json();
+
+    const otherCreateResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: `Sans rapport ${crypto.randomUUID()}`,
+          city: "Nîmes",
+          postalCode: "30000",
+          address: "1 boulevard Victor-Hugo",
+          owner: ownerPayload(),
+        }),
+      }),
+    );
+    expect(otherCreateResponse.status).toBe(201);
+    const otherProperty = await otherCreateResponse.json();
+
+    const searchResponse = await createApp().fetch(
+      new Request(`http://localhost/properties?limit=100&q=${encodeURIComponent(marker)}`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(searchResponse.status).toBe(200);
+    const searchPayload = await searchResponse.json();
+    expect(
+      searchPayload.items.some((item: { id: string }) => item.id === matchingProperty.id),
+    ).toBe(true);
+    expect(
+      searchPayload.items.some((item: { id: string }) => item.id === otherProperty.id),
+    ).toBe(false);
+  });
+
+  it("n'expose pas en recherche les biens indexes d'une autre organisation", async () => {
+    const token = await loginAndGetAccessToken();
+    const marker = `cross-org-${crypto.randomUUID()}`;
+    const otherOrgId = `org_other_${crypto.randomUUID()}`;
+    const now = new Date();
+
+    await ensureOrganization(otherOrgId);
+    await db.insert(properties).values({
+      id: crypto.randomUUID(),
+      orgId: otherOrgId,
+      title: `Bien externe ${marker}`,
+      city: "Toulouse",
+      postalCode: "31000",
+      address: "1 allée Jean Jaurès",
+      price: 350000,
+      details: "{}",
+      hiddenExpectedDocumentKeys: "[]",
+      status: "PROSPECTION",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const response = await createApp().fetch(
+      new Request(`http://localhost/properties?limit=100&q=${encodeURIComponent(marker)}`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(
+      payload.items.some((item: { title: string }) =>
+        String(item.title).toLowerCase().includes(marker.toLowerCase()),
+      ),
+    ).toBe(false);
   });
 
   it("lit et met à jour un bien", async () => {

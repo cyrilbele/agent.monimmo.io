@@ -1,4 +1,4 @@
-import { CommonModule } from "@angular/common";
+import { CommonModule, DatePipe } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
@@ -13,11 +13,13 @@ import {
   ReactiveFormsModule,
 } from "@angular/forms";
 
-import type { IntegrationPath } from "../../core/api.models";
+import type { AICallLogResponse, AiProvider, IntegrationPath } from "../../core/api.models";
+import { AICallsService } from "../../services/ai-calls.service";
 import { AppSettingsService } from "../../services/app-settings.service";
 import { IntegrationService } from "../../services/integration.service";
 
 type FeedbackTone = "info" | "success" | "error";
+type ConfigurationTab = "settings" | "aiCalls";
 
 type ConnectFormGroup = FormGroup<{
   code: FormControl<string>;
@@ -30,6 +32,7 @@ type SyncFormGroup = FormGroup<{
 
 type ValuationSettingsFormGroup = FormGroup<{
   notaryFeePct: FormControl<string>;
+  aiProvider: FormControl<AiProvider>;
   valuationAiOutputFormat: FormControl<string>;
 }>;
 
@@ -59,7 +62,7 @@ const PROVIDERS: readonly IntegrationCard[] = [
 
 @Component({
   selector: "app-configuration-page",
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, DatePipe],
   templateUrl: "./configuration-page.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -68,7 +71,14 @@ export class ConfigurationPageComponent {
 
   private readonly integrationService = inject(IntegrationService);
   private readonly appSettingsService = inject(AppSettingsService);
+  private readonly aiCallsService = inject(AICallsService);
   private readonly formBuilder = inject(FormBuilder);
+
+  readonly activeTab = signal<ConfigurationTab>("settings");
+  readonly aiCalls = signal<AICallLogResponse[]>([]);
+  readonly aiCallsPending = signal(false);
+  readonly aiCallsFeedback = signal<string | null>(null);
+  readonly selectedAICall = signal<AICallLogResponse | null>(null);
 
   readonly connectForms: Record<IntegrationPath, ConnectFormGroup> = {
     gmail: this.createConnectForm(),
@@ -84,6 +94,7 @@ export class ConfigurationPageComponent {
 
   readonly valuationSettingsForm: ValuationSettingsFormGroup = this.formBuilder.nonNullable.group({
     notaryFeePct: [this.formatNotaryFeePct(this.appSettingsService.notaryFeePct())],
+    aiProvider: [this.appSettingsService.aiProvider()],
     valuationAiOutputFormat: [this.appSettingsService.valuationAiOutputFormat()],
   });
 
@@ -125,6 +136,14 @@ export class ConfigurationPageComponent {
 
   constructor() {
     void this.loadValuationSettings();
+  }
+
+  selectTab(tab: ConfigurationTab): void {
+    this.activeTab.set(tab);
+
+    if (tab === "aiCalls" && this.aiCalls().length === 0) {
+      void this.refreshAICalls();
+    }
   }
 
   async connect(path: IntegrationPath): Promise<void> {
@@ -178,8 +197,75 @@ export class ConfigurationPageComponent {
     }
   }
 
+  async refreshAICalls(): Promise<void> {
+    if (this.aiCallsPending()) {
+      return;
+    }
+
+    this.aiCallsPending.set(true);
+    this.aiCallsFeedback.set(null);
+
+    try {
+      const response = await this.aiCallsService.list(100);
+      this.aiCalls.set(response.items);
+
+      if (response.items.length === 0) {
+        this.aiCallsFeedback.set("Aucun appel IA enregistré pour le moment.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Chargement impossible.";
+      this.aiCallsFeedback.set(message);
+    } finally {
+      this.aiCallsPending.set(false);
+    }
+  }
+
+  openAICallDetails(call: AICallLogResponse): void {
+    this.selectedAICall.set(call);
+  }
+
+  closeAICallDetails(): void {
+    this.selectedAICall.set(null);
+  }
+
   feedbackId(path: IntegrationPath): string {
     return `${path}-feedback`;
+  }
+
+  formatPrice(value: number): string {
+    if (!Number.isFinite(value)) {
+      return "0,00 €";
+    }
+
+    return value.toLocaleString("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    });
+  }
+
+  getUseCaseLabel(useCase: string): string {
+    switch (useCase) {
+      case "MESSAGE_PROPERTY_MATCH":
+        return "Rattachement message";
+      case "FILE_CLASSIFICATION":
+        return "Classification document";
+      case "VOCAL_TRANSCRIPTION":
+        return "Transcription vocal";
+      case "VOCAL_PROPERTY_MATCH":
+        return "Rattachement vocal";
+      case "VOCAL_TYPE_DETECTION":
+        return "Détection type vocal";
+      case "VOCAL_INITIAL_VISIT_EXTRACTION":
+        return "Extraction visite initiale";
+      case "VOCAL_INSIGHTS_EXTRACTION":
+        return "Insights vocal";
+      case "PROPERTY_VALUATION":
+        return "Valorisation";
+      default:
+        return useCase;
+    }
   }
 
   async saveValuationSettings(): Promise<void> {
@@ -202,11 +288,13 @@ export class ConfigurationPageComponent {
     try {
       const persisted = await this.appSettingsService.updateSettings({
         notaryFeePct: parsed,
+        aiProvider: this.valuationSettingsForm.controls.aiProvider.value,
         valuationAiOutputFormat: normalizedOutputFormat || null,
       });
       this.valuationSettingsForm.controls.notaryFeePct.setValue(
         this.formatNotaryFeePct(persisted.notaryFeePct),
       );
+      this.valuationSettingsForm.controls.aiProvider.setValue(persisted.aiProvider);
       this.valuationSettingsForm.controls.valuationAiOutputFormat.setValue(
         persisted.valuationAiOutputFormat,
       );
@@ -276,6 +364,7 @@ export class ConfigurationPageComponent {
     this.valuationSettingsForm.controls.notaryFeePct.setValue(
       this.formatNotaryFeePct(loaded.notaryFeePct),
     );
+    this.valuationSettingsForm.controls.aiProvider.setValue(loaded.aiProvider);
     this.valuationSettingsForm.controls.valuationAiOutputFormat.setValue(
       loaded.valuationAiOutputFormat,
     );

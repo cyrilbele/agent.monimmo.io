@@ -38,9 +38,11 @@ Variables importantes:
 - `ENABLE_QUEUE`: `true` pour activer les enqueues BullMQ reelles
 - `VOCAL_RECOVERY_STALE_AFTER_MS` / `VOCAL_RECOVERY_INTERVAL_MS`: cadence de reprise vocaux abandonnes
 - `VOCAL_RECOVERY_MAX_ATTEMPTS`: nombre max de relances avant `ERREUR_TRAITEMENT`
-- `AI_PROVIDER`: provider IA (`mock` ou `openai`)
-- `OPENAI_API_KEY`: clé API OpenAI (si `AI_PROVIDER=openai`)
+- `AI_PROVIDER`: provider IA par défaut (`openai`, `anthropic`, `mock`)
+- `OPENAI_API_KEY`: clé API OpenAI (si provider `openai`)
+- `ANTHROPIC_API_KEY`: clé API Anthropic (si provider `anthropic`)
 - `CONNECTOR_RUNTIME`: runtime des connecteurs externes (`mock`)
+- `SEARCH_ENGINE`: moteur de recherche (`qmd` ou `meilisearch`, defaut `qmd`)
 - `INTEGRATION_TOKEN_SECRET`: secret de chiffrement tokens OAuth
 - `CORS_ALLOWED_ORIGINS`: origines front autorisées (liste séparée par virgules)
 

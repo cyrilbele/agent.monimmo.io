@@ -1,7 +1,12 @@
 import { z } from "zod";
+import { aiCallLogsService } from "./ai/call-logs";
+import { enforceAuthRateLimit } from "./auth/rate-limit";
+import { assertManagerOrAdmin } from "./auth/rbac";
 import { authService } from "./auth/service";
 import {
   AppSettingsPatchRequestSchema,
+  AICallLogListResponseSchema,
+  CalendarAppointmentCreateRequestSchema,
   ForgotPasswordRequestSchema,
   FileUpdateRequestSchema,
   FileUploadRequestSchema,
@@ -19,6 +24,10 @@ import {
   PropertyStatusUpdateRequestSchema,
   PropertyValuationAIPromptResponseSchema,
   PropertyValuationAIRequestSchema,
+  PrivacyEraseRequestSchema,
+  PrivacyEraseResponseSchema,
+  PrivacyExportRequestSchema,
+  PrivacyExportResponseSchema,
   ReviewQueueResolveRequestSchema,
   RegisterRequestSchema,
   RefreshRequestSchema,
@@ -29,10 +38,12 @@ import {
   VocalUploadRequestSchema,
 } from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
+import { calendarService } from "./calendar/service";
 import { filesService } from "./files/service";
 import { integrationsService } from "./integrations/service";
 import { messagesService } from "./messages/service";
 import { propertiesService } from "./properties/service";
+import { privacyService } from "./privacy/service";
 import { MARKET_PROPERTY_TYPES, type MarketPropertyType } from "./properties/dvf-client";
 import {
   enqueueFileAiJob,
@@ -41,6 +52,7 @@ import {
   enqueueVocalTranscriptionJob,
 } from "./queues";
 import { reviewQueueService } from "./review-queue/service";
+import { globalSearchService } from "./search/global-search";
 import { getStorageProvider } from "./storage";
 import {
   STORAGE_URL_SIGNATURE_QUERY_PARAM,
@@ -144,15 +156,25 @@ const buildCorsHeaders = (request: Request): Headers | null => {
   return headers;
 };
 
+const applySecurityHeaders = (headers: Headers): void => {
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
+  headers.set(
+    "content-security-policy",
+    "default-src 'self' https://unpkg.com; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  );
+};
+
 const withCors = (request: Request, response: Response): Response => {
   const corsHeaders = buildCorsHeaders(request);
-  if (!corsHeaders) {
-    return response;
-  }
-
   const headers = new Headers(response.headers);
-  for (const [key, value] of corsHeaders.entries()) {
-    headers.set(key, value);
+  applySecurityHeaders(headers);
+
+  if (corsHeaders) {
+    for (const [key, value] of corsHeaders.entries()) {
+      headers.set(key, value);
+    }
   }
 
   return new Response(response.body, {
@@ -160,6 +182,49 @@ const withCors = (request: Request, response: Response): Response => {
     statusText: response.statusText,
     headers,
   });
+};
+
+const isLoopbackHost = (host: string): boolean => {
+  const normalized = host.toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
+};
+
+const isHttpsRequest = (request: Request, url: URL): boolean => {
+  if (url.protocol === "https:") {
+    return true;
+  }
+
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (!forwardedProto) {
+    return false;
+  }
+
+  return forwardedProto
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .includes("https");
+};
+
+const shouldEnforceHttps = (request: Request, url: URL): boolean => {
+  const explicit = process.env.ENFORCE_HTTPS;
+  if (explicit === "false") {
+    return false;
+  }
+
+  if (isLoopbackHost(url.hostname)) {
+    return false;
+  }
+
+  if (request.headers.get("x-forwarded-host")?.includes("localhost")) {
+    return false;
+  }
+
+  return true;
 };
 
 export const createApp = (options?: { openapiPath?: string }) => ({
@@ -171,6 +236,9 @@ export const createApp = (options?: { openapiPath?: string }) => ({
     try {
       const url = new URL(request.url);
       const openapiPath = options?.openapiPath ?? "openapi/openapi.yaml";
+      if (shouldEnforceHttps(request, url) && !isHttpsRequest(request, url)) {
+        throw new HttpError(400, "HTTPS_REQUIRED", "HTTPS est requis pour accéder à cette API");
+      }
 
       const parseJson = async <T extends z.ZodTypeAny>(schema: T): Promise<z.infer<T>> => {
         const contentLength = request.headers.get("content-length");
@@ -334,6 +402,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       }
 
       if (request.method === "POST" && url.pathname === "/auth/login") {
+        enforceAuthRateLimit({ action: "login", request });
         const payload = await parseJson(LoginRequestSchema);
         const response = await authService.login(payload);
         return withCors(request, json(response, { status: 200 }));
@@ -358,12 +427,14 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       }
 
       if (request.method === "POST" && url.pathname === "/auth/forgot-password") {
+        enforceAuthRateLimit({ action: "forgot-password", request });
         const payload = await parseJson(ForgotPasswordRequestSchema);
         await authService.forgotPassword(payload);
         return withCors(request, new Response(null, { status: 202 }));
       }
 
       if (request.method === "POST" && url.pathname === "/auth/reset-password") {
+        enforceAuthRateLimit({ action: "reset-password", request });
         const payload = await parseJson(ResetPasswordRequestSchema);
         await authService.resetPassword(payload);
         return withCors(request, new Response(null, { status: 204 }));
@@ -385,6 +456,65 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         const accessToken = getBearerToken();
         const payload = await parseJson(AppSettingsPatchRequestSchema);
         const response = await authService.updateSettings(accessToken, payload);
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/me/ai-calls") {
+        const user = await getAuthenticatedUser();
+        const response = AICallLogListResponseSchema.parse(await aiCallLogsService.list({
+          orgId: user.orgId,
+          limit: parseLimit(),
+        }));
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/privacy/exports") {
+        const user = await getAuthenticatedUser();
+        assertManagerOrAdmin(user.role);
+        await parseOptionalJson(PrivacyExportRequestSchema);
+        const response = PrivacyExportResponseSchema.parse(
+          await privacyService.requestExport({
+            orgId: user.orgId,
+            requestedByUserId: user.id,
+          }),
+        );
+        return withCors(request, json(response, { status: 202 }));
+      }
+
+      const privacyExportByIdMatch = url.pathname.match(/^\/privacy\/exports\/([^/]+)$/);
+      if (privacyExportByIdMatch && request.method === "GET") {
+        const exportId = decodeURIComponent(privacyExportByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+        assertManagerOrAdmin(user.role);
+        const response = PrivacyExportResponseSchema.parse(
+          await privacyService.getExportById({
+            orgId: user.orgId,
+            id: exportId,
+          }),
+        );
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/privacy/erase") {
+        const user = await getAuthenticatedUser();
+        assertManagerOrAdmin(user.role);
+        await parseOptionalJson(PrivacyEraseRequestSchema);
+        const response = PrivacyEraseResponseSchema.parse(
+          await privacyService.requestErase({
+            orgId: user.orgId,
+            requestedByUserId: user.id,
+          }),
+        );
+        return withCors(request, json(response, { status: 202 }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/search") {
+        const user = await getAuthenticatedUser();
+        const response = await globalSearchService.search({
+          orgId: user.orgId,
+          query: url.searchParams.get("q") ?? "",
+          limit: parseLimit(),
+        });
         return withCors(request, json(response, { status: 200 }));
       }
 
@@ -433,6 +563,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           limit: parseLimit(),
           cursor: url.searchParams.get("cursor") ?? undefined,
+          query: url.searchParams.get("q") ?? undefined,
         });
         return withCors(request, json(response, { status: 200 }));
       }
@@ -455,6 +586,32 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           to: url.searchParams.get("to") ?? undefined,
         });
         return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/calendar-events") {
+        const user = await getAuthenticatedUser();
+        const response = await calendarService.listManualAppointments({
+          orgId: user.orgId,
+          from: url.searchParams.get("from") ?? undefined,
+          to: url.searchParams.get("to") ?? undefined,
+        });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/calendar-events") {
+        const user = await getAuthenticatedUser();
+        const payload = await parseJson(CalendarAppointmentCreateRequestSchema);
+        const response = await calendarService.createManualAppointment({
+          orgId: user.orgId,
+          title: payload.title,
+          propertyId: payload.propertyId,
+          clientUserId: payload.clientUserId ?? null,
+          startsAt: payload.startsAt,
+          endsAt: payload.endsAt,
+          address: payload.address ?? null,
+          comment: payload.comment ?? null,
+        });
+        return withCors(request, json(response, { status: 201 }));
       }
 
       const visitByIdMatch = url.pathname.match(/^\/visits\/([^/]+)$/);

@@ -1,14 +1,25 @@
 import { HttpError } from "../http/errors";
 
 const allowedRoles = ["AGENT", "MANAGER", "ADMIN"] as const;
+const managerOrAdminRoles = ["MANAGER", "ADMIN"] as const;
 
 export type AppRole = (typeof allowedRoles)[number];
+export type ManagerOrAdminRole = (typeof managerOrAdminRoles)[number];
 
 export function assertRoleAllowed(role: string): asserts role is AppRole {
   if (!allowedRoles.includes(role as AppRole)) {
     throw new HttpError(403, "FORBIDDEN_ROLE", "Rôle non autorisé", {
       role,
       allowedRoles,
+    });
+  }
+}
+
+export function assertManagerOrAdmin(role: string): asserts role is ManagerOrAdminRole {
+  if (!managerOrAdminRoles.includes(role as ManagerOrAdminRole)) {
+    throw new HttpError(403, "FORBIDDEN_ROLE", "Rôle insuffisant", {
+      role,
+      allowedRoles: managerOrAdminRoles,
     });
   }
 }

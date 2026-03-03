@@ -1,5 +1,9 @@
 import { and, eq } from "drizzle-orm";
-import { getAIProvider } from ".";
+import { getAIProviderForOrg } from ".";
+import {
+  serializeAICallValue,
+  trackAICallFromTelemetrySafe,
+} from "./call-logs";
 import { db } from "../db/client";
 import { files, messages, properties } from "../db/schema";
 import { filesService } from "../files/service";
@@ -14,6 +18,7 @@ import {
 import { reviewQueueService } from "../review-queue/service";
 import { getStorageProvider } from "../storage";
 import { vocalsService } from "../vocals/service";
+import { validateVocalAudioFormat } from "../vocals/audio-format";
 
 const MIN_MESSAGE_MATCH_CONFIDENCE = 0.6;
 const MIN_FILE_CLASSIFICATION_CONFIDENCE = 0.65;
@@ -25,6 +30,23 @@ const MIN_INITIAL_VISIT_EXTRACTION_CONFIDENCE = 0.55;
 const isQueueEnabled = (): boolean => process.env.ENABLE_QUEUE === "true";
 const toJobIdPart = (value: string): string => value.replaceAll(":", "_");
 const buildJobId = (...parts: string[]): string => parts.map(toJobIdPart).join("__");
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  return "Erreur inconnue";
+};
+
+const isInvalidAudioFormatTranscriptionError = (error: unknown): boolean => {
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes("transcription failed (400)") && message.includes("invalid file format");
+};
 
 const listPropertyCandidates = async (orgId: string) => {
   const rows = await db
@@ -43,7 +65,7 @@ const listPropertyCandidates = async (orgId: string) => {
 
 export const aiJobsService = {
   async processMessage(input: { orgId: string; messageId: string }) {
-    const provider = getAIProvider();
+    const provider = await getAIProviderForOrg(input.orgId);
     const message = await db.query.messages.findFirst({
       where: and(eq(messages.id, input.messageId), eq(messages.orgId, input.orgId)),
     });
@@ -82,6 +104,18 @@ export const aiJobsService = {
       subject: message.subject,
       body: message.body,
       properties: candidates,
+    });
+    await trackAICallFromTelemetrySafe({
+      orgId: input.orgId,
+      useCase: "MESSAGE_PROPERTY_MATCH",
+      fallbackPrompt: [
+        "Message -> bien",
+        `subject: ${message.subject ?? ""}`,
+        `body: ${message.body}`,
+        `candidates: ${serializeAICallValue(candidates)}`,
+      ].join("\n"),
+      fallbackResponse: match,
+      telemetry: match.telemetry,
     });
 
     if (
@@ -122,7 +156,7 @@ export const aiJobsService = {
   },
 
   async processFile(input: { orgId: string; fileId: string }) {
-    const provider = getAIProvider();
+    const provider = await getAIProviderForOrg(input.orgId);
     const file = await db.query.files.findFirst({
       where: and(eq(files.id, input.fileId), eq(files.orgId, input.orgId)),
     });
@@ -134,6 +168,17 @@ export const aiJobsService = {
     const classification = await provider.classifyFile({
       fileName: file.fileName,
       mimeType: file.mimeType,
+    });
+    await trackAICallFromTelemetrySafe({
+      orgId: input.orgId,
+      useCase: "FILE_CLASSIFICATION",
+      fallbackPrompt: [
+        "Classification document",
+        `fileName: ${file.fileName}`,
+        `mimeType: ${file.mimeType}`,
+      ].join("\n"),
+      fallbackResponse: classification,
+      telemetry: classification.telemetry,
     });
 
     if (
@@ -172,18 +217,117 @@ export const aiJobsService = {
   },
 
   async transcribeVocal(input: { orgId: string; vocalId: string }) {
-    const provider = getAIProvider();
+    const provider = await getAIProviderForOrg(input.orgId);
     const vocal = await vocalsService.getByIdForProcessing({
       orgId: input.orgId,
       id: input.vocalId,
     });
+
+    const formatValidation = validateVocalAudioFormat({
+      fileName: vocal.fileName,
+      mimeType: vocal.mimeType,
+    });
+
+    if (!formatValidation.valid) {
+      await vocalsService.markProcessingFailure({
+        orgId: input.orgId,
+        id: vocal.id,
+        step: "TRANSCRIBE",
+        message: formatValidation.message,
+        isFinal: true,
+      });
+
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_INVALID_AUDIO_SOURCE",
+        payload: {
+          fileName: vocal.fileName,
+          mimeType: vocal.mimeType,
+          validationMessage: formatValidation.message,
+        },
+      });
+
+      return { status: "REVIEW_REQUIRED" as const };
+    }
+
     const storage = getStorageProvider();
     const audioObject = await storage.getObject(vocal.storageKey);
 
-    const transcription = await provider.transcribeVocal({
-      fileName: vocal.fileName,
-      mimeType: vocal.mimeType,
-      audioData: audioObject.data,
+    if (audioObject.data.byteLength === 0) {
+      const message = "Le fichier vocal est vide et ne peut pas être transcrit";
+      await vocalsService.markProcessingFailure({
+        orgId: input.orgId,
+        id: vocal.id,
+        step: "TRANSCRIBE",
+        message,
+        isFinal: true,
+      });
+
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_INVALID_AUDIO_SOURCE",
+        payload: {
+          fileName: vocal.fileName,
+          mimeType: vocal.mimeType,
+          validationMessage: message,
+        },
+      });
+
+      return { status: "REVIEW_REQUIRED" as const };
+    }
+
+    let transcription;
+    try {
+      transcription = await provider.transcribeVocal({
+        fileName: vocal.fileName,
+        mimeType: vocal.mimeType,
+        audioData: audioObject.data,
+      });
+    } catch (error) {
+      if (!isInvalidAudioFormatTranscriptionError(error)) {
+        throw error;
+      }
+
+      const message = getErrorMessage(error);
+      await vocalsService.markProcessingFailure({
+        orgId: input.orgId,
+        id: vocal.id,
+        step: "TRANSCRIBE",
+        message,
+        isFinal: true,
+      });
+
+      await reviewQueueService.createOpenItem({
+        orgId: input.orgId,
+        itemType: "VOCAL",
+        itemId: vocal.id,
+        reason: "VOCAL_INVALID_AUDIO_SOURCE",
+        payload: {
+          fileName: vocal.fileName,
+          mimeType: vocal.mimeType,
+          audioBytes: audioObject.data.byteLength,
+          providerError: message,
+        },
+      });
+
+      return { status: "REVIEW_REQUIRED" as const };
+    }
+
+    await trackAICallFromTelemetrySafe({
+      orgId: input.orgId,
+      useCase: "VOCAL_TRANSCRIPTION",
+      fallbackPrompt: [
+        "Transcription vocal",
+        `fileName: ${vocal.fileName}`,
+        `mimeType: ${vocal.mimeType}`,
+        `audioBytes: ${audioObject.data.byteLength}`,
+      ].join("\n"),
+      fallbackResponse: transcription,
+      telemetry: transcription.telemetry,
     });
 
     const reasons: string[] = [];
@@ -199,6 +343,16 @@ export const aiJobsService = {
       const match = await provider.matchMessageToProperty({
         body: transcription.transcript,
         properties: await listPropertyCandidates(input.orgId),
+      });
+      await trackAICallFromTelemetrySafe({
+        orgId: input.orgId,
+        useCase: "VOCAL_PROPERTY_MATCH",
+        fallbackPrompt: [
+          "Vocal -> bien",
+          `transcript: ${transcription.transcript}`,
+        ].join("\n"),
+        fallbackResponse: match,
+        telemetry: match.telemetry,
       });
 
       if (
@@ -271,7 +425,7 @@ export const aiJobsService = {
   },
 
   async detectVocalType(input: { orgId: string; vocalId: string }) {
-    const provider = getAIProvider();
+    const provider = await getAIProviderForOrg(input.orgId);
     const vocal = await vocalsService.getByIdForProcessing({
       orgId: input.orgId,
       id: input.vocalId,
@@ -296,6 +450,17 @@ export const aiJobsService = {
     const result = await provider.detectVocalType({
       transcript: vocal.transcript,
       summary: vocal.summary,
+    });
+    await trackAICallFromTelemetrySafe({
+      orgId: input.orgId,
+      useCase: "VOCAL_TYPE_DETECTION",
+      fallbackPrompt: [
+        "Détection type vocal",
+        `transcript: ${vocal.transcript}`,
+        `summary: ${vocal.summary ?? ""}`,
+      ].join("\n"),
+      fallbackResponse: result,
+      telemetry: result.telemetry,
     });
 
     if (!result.vocalType || result.confidence < MIN_VOCAL_TYPE_CONFIDENCE) {
@@ -361,7 +526,7 @@ export const aiJobsService = {
   },
 
   async extractInitialVisitPropertyParams(input: { orgId: string; vocalId: string }) {
-    const provider = getAIProvider();
+    const provider = await getAIProviderForOrg(input.orgId);
     const vocal = await vocalsService.getByIdForProcessing({
       orgId: input.orgId,
       id: input.vocalId,
@@ -394,6 +559,17 @@ export const aiJobsService = {
     const extracted = await provider.extractInitialVisitPropertyParams({
       transcript: vocal.transcript,
       summary: vocal.summary,
+    });
+    await trackAICallFromTelemetrySafe({
+      orgId: input.orgId,
+      useCase: "VOCAL_INITIAL_VISIT_EXTRACTION",
+      fallbackPrompt: [
+        "Extraction paramètres bien (visite initiale)",
+        `transcript: ${vocal.transcript}`,
+        `summary: ${vocal.summary ?? ""}`,
+      ].join("\n"),
+      fallbackResponse: extracted,
+      telemetry: extracted.telemetry,
     });
 
     if (extracted.confidence < MIN_INITIAL_VISIT_EXTRACTION_CONFIDENCE) {
@@ -457,7 +633,7 @@ export const aiJobsService = {
   },
 
   async extractVocalInsights(input: { orgId: string; vocalId: string }) {
-    const provider = getAIProvider();
+    const provider = await getAIProviderForOrg(input.orgId);
     const vocal = await vocalsService.getByIdForProcessing({
       orgId: input.orgId,
       id: input.vocalId,
@@ -482,6 +658,17 @@ export const aiJobsService = {
     const extracted = await provider.extractVocalInsights({
       transcript: vocal.transcript,
       summary: vocal.summary,
+    });
+    await trackAICallFromTelemetrySafe({
+      orgId: input.orgId,
+      useCase: "VOCAL_INSIGHTS_EXTRACTION",
+      fallbackPrompt: [
+        "Extraction insights vocal",
+        `transcript: ${vocal.transcript}`,
+        `summary: ${vocal.summary ?? ""}`,
+      ].join("\n"),
+      fallbackResponse: extracted,
+      telemetry: extracted.telemetry,
     });
 
     const hasInsights = Object.keys(extracted.insights).length > 0;

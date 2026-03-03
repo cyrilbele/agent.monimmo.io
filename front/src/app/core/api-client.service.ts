@@ -1,12 +1,8 @@
 import { Injectable } from "@angular/core";
 
 import type { ErrorResponse } from "./api.models";
-import {
-  ACCESS_TOKEN_STORAGE_KEY,
-  REFRESH_TOKEN_STORAGE_KEY,
-  SESSION_EMAIL_STORAGE_KEY,
-} from "./constants";
 import { normalizeApiBaseUrl } from "./auth-helpers";
+import { sessionStore } from "./session-store";
 
 interface RequestOptions {
   auth?: boolean;
@@ -116,11 +112,7 @@ export class ApiClientService {
   }
 
   private getAccessToken(): string {
-    if (typeof localStorage === "undefined") {
-      return "";
-    }
-
-    return localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? "";
+    return sessionStore.accessToken() ?? "";
   }
 
   private handleInvalidTokenError(message: string | null): void {
@@ -137,13 +129,7 @@ export class ApiClientService {
   }
 
   private clearStoredSession(): void {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-    localStorage.removeItem(SESSION_EMAIL_STORAGE_KEY);
+    sessionStore.clear();
   }
 
   private redirectToLogin(): void {

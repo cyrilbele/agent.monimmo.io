@@ -1,148 +1,323 @@
-<section class="space-y-4" aria-labelledby="integration-title">
-  <article class="panel p-6" aria-labelledby="valuation-settings-title">
-    <h2 id="valuation-settings-title" class="font-serif text-2xl text-slate-900">Paramètres valorisation</h2>
-    <p class="mt-2 text-sm text-slate-600">
-      Taux appliqué pour les frais de notaire utilisés dans le module de rentabilité locative.
-    </p>
-
-    <form
-      class="mt-4 flex flex-col gap-3 sm:max-w-sm"
-      [formGroup]="valuationSettingsForm"
-      (ngSubmit)="saveValuationSettings()"
-      novalidate
-    >
-      <div>
-        <label class="field-label" for="valuation-notary-fee">Frais de notaire (%)</label>
-        <input
-          id="valuation-notary-fee"
-          class="field-input"
-          type="number"
-          formControlName="notaryFeePct"
-          min="0"
-          step="0.1"
-        />
-      </div>
-      <div>
-        <label class="field-label" for="valuation-ai-output-format">
-          Format de sortie de l'analyse IA (Markdown)
-        </label>
-        <textarea
-          id="valuation-ai-output-format"
-          class="field-input min-h-80"
-          formControlName="valuationAiOutputFormat"
-        ></textarea>
-        <p class="mt-1 text-xs text-slate-500">
-          Ce format définit uniquement la structure attendue dans le champ
-          <code>justification</code> de la réponse IA.
-        </p>
-      </div>
-      <button
-        class="btn w-full sm:w-auto"
-        type="submit"
-        [disabled]="valuationPending()"
-        [attr.aria-busy]="valuationPending() ? 'true' : 'false'"
-      >
-        {{ valuationPending() ? "Enregistrement..." : "Enregistrer" }}
-      </button>
-    </form>
-
-    @if (valuationFeedback()) {
-      <p class="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
-        {{ valuationFeedback() }}
-      </p>
-    }
-  </article>
-
+<section class="space-y-4" aria-labelledby="configuration-title">
   <header class="panel p-6">
-    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Connecteurs</p>
-    <h2 id="integration-title" class="mt-2 font-serif text-3xl text-slate-900">Configuration des intégrations</h2>
+    <h2 id="configuration-title" class="font-serif text-3xl text-slate-900">Configuration</h2>
     <p class="mt-2 text-sm text-slate-600">
-      Branchez vos canaux externes puis déclenchez des synchronisations incrémentales.
+      Paramètres généraux, intégrations externes et suivi des appels IA.
     </p>
+    <p class="mt-2 text-xs text-slate-500">
+      Les journaux d'appels IA sont conservés 90 jours. Voir
+      <a class="font-semibold text-brand-700 hover:text-brand-800" href="/legal/privacy" target="_blank" rel="noopener noreferrer">
+        politique de confidentialité
+      </a>
+      et
+      <a class="font-semibold text-brand-700 hover:text-brand-800" href="/legal/ai-transparency" target="_blank" rel="noopener noreferrer">
+        information traitement IA
+      </a>.
+    </p>
+
+    <div class="mt-4 inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Onglets configuration">
+      <button
+        type="button"
+        role="tab"
+        class="rounded-lg px-4 py-2 text-sm font-medium"
+        [ngClass]="activeTab() === 'settings' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'"
+        [attr.aria-selected]="activeTab() === 'settings'"
+        (click)="selectTab('settings')"
+      >
+        Paramètres
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="rounded-lg px-4 py-2 text-sm font-medium"
+        [ngClass]="activeTab() === 'aiCalls' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'"
+        [attr.aria-selected]="activeTab() === 'aiCalls'"
+        (click)="selectTab('aiCalls')"
+      >
+        Appels IA
+      </button>
+    </div>
   </header>
 
-  <div class="grid gap-4 xl:grid-cols-3">
-    @for (provider of providers; track provider.key) {
-      <article class="panel space-y-4 p-5" [attr.aria-labelledby]="provider.key + '-title'">
-        <header>
-          <h3 [id]="provider.key + '-title'" class="font-serif text-2xl text-slate-900">{{ provider.title }}</h3>
-          <p class="mt-1 text-sm text-slate-600">{{ provider.description }}</p>
-        </header>
+  @if (activeTab() === "settings") {
+    <article class="panel p-6" aria-labelledby="valuation-settings-title">
+      <h3 id="valuation-settings-title" class="font-serif text-2xl text-slate-900">Paramètres valorisation</h3>
+      <p class="mt-2 text-sm text-slate-600">
+        Taux appliqué pour les frais de notaire utilisés dans le module de rentabilité locative.
+      </p>
 
-        <form
-          class="space-y-3 border-t border-slate-200 pt-3"
-          [formGroup]="connectForms[provider.key]"
-          (ngSubmit)="connect(provider.key)"
-          novalidate
-          [attr.aria-describedby]="feedback()[provider.key] ? feedbackId(provider.key) : null"
-        >
-          <h4 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Connexion</h4>
+      <form
+        class="mt-4 flex flex-col gap-3 sm:max-w-xl"
+        [formGroup]="valuationSettingsForm"
+        (ngSubmit)="saveValuationSettings()"
+        novalidate
+      >
+        <div>
+          <label class="field-label" for="valuation-notary-fee">Frais de notaire (%)</label>
+          <input
+            id="valuation-notary-fee"
+            class="field-input"
+            type="number"
+            formControlName="notaryFeePct"
+            min="0"
+            step="0.1"
+          />
+        </div>
 
-          <div>
-            <label class="field-label" [for]="provider.key + '-code'">Code OAuth</label>
-            <input
-              class="field-input"
-              type="text"
-              [id]="provider.key + '-code'"
-              formControlName="code"
-            />
-          </div>
-
-          <div>
-            <label class="field-label" [for]="provider.key + '-redirect'">Redirect URI</label>
-            <input
-              class="field-input"
-              type="text"
-              [id]="provider.key + '-redirect'"
-              formControlName="redirectUri"
-            />
-          </div>
-
-          <button
-            class="btn w-full"
-            type="submit"
-            [disabled]="connectPending()[provider.key]"
-            [attr.aria-busy]="connectPending()[provider.key] ? 'true' : 'false'"
-          >
-            {{ connectPending()[provider.key] ? "Connexion..." : "Connecter" }}
-          </button>
-        </form>
-
-        <form
-          class="space-y-3 border-t border-slate-200 pt-3"
-          [formGroup]="syncForms[provider.key]"
-          (ngSubmit)="sync(provider.key)"
-          novalidate
-          [attr.aria-describedby]="feedback()[provider.key] ? feedbackId(provider.key) : null"
-        >
-          <h4 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Synchronisation</h4>
-
-          <div>
-            <label class="field-label" [for]="provider.key + '-cursor'">Cursor (optionnel)</label>
-            <input
-              class="field-input"
-              type="text"
-              [id]="provider.key + '-cursor'"
-              formControlName="cursor"
-            />
-          </div>
-
-          <button
-            class="btn btn-ghost w-full"
-            type="submit"
-            [disabled]="syncPending()[provider.key]"
-            [attr.aria-busy]="syncPending()[provider.key] ? 'true' : 'false'"
-          >
-            {{ syncPending()[provider.key] ? "Synchronisation..." : "Lancer la sync" }}
-          </button>
-        </form>
-
-        @if (feedback()[provider.key]) {
-          <p [id]="feedbackId(provider.key)" role="status" aria-live="polite" [class]="feedbackClasses()[provider.key]">
-            {{ feedback()[provider.key] }}
+        <div>
+          <label class="field-label" for="valuation-ai-provider">Moteur IA global</label>
+          <select id="valuation-ai-provider" class="field-input" formControlName="aiProvider">
+            <option value="openai">OpenAI (défaut)</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+          <p class="mt-1 text-xs text-slate-500">
+            Ce choix est partagé par toutes les organisations.
           </p>
-        }
-      </article>
-    }
-  </div>
+        </div>
+
+        <div>
+          <label class="field-label" for="valuation-ai-output-format">
+            Format de sortie de l'analyse IA (Markdown)
+          </label>
+          <textarea
+            id="valuation-ai-output-format"
+            class="field-input min-h-80"
+            formControlName="valuationAiOutputFormat"
+          ></textarea>
+          <p class="mt-1 text-xs text-slate-500">
+            Ce format définit uniquement la structure attendue dans le champ
+            <code>justification</code> de la réponse IA.
+          </p>
+        </div>
+
+        <button
+          class="btn w-full sm:w-auto"
+          type="submit"
+          [disabled]="valuationPending()"
+          [attr.aria-busy]="valuationPending() ? 'true' : 'false'"
+        >
+          {{ valuationPending() ? "Enregistrement..." : "Enregistrer" }}
+        </button>
+      </form>
+
+      @if (valuationFeedback()) {
+        <p class="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+          {{ valuationFeedback() }}
+        </p>
+      }
+    </article>
+
+    <header class="panel p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Connecteurs</p>
+      <h3 class="mt-2 font-serif text-3xl text-slate-900">Configuration des intégrations</h3>
+      <p class="mt-2 text-sm text-slate-600">
+        Branchez vos canaux externes puis déclenchez des synchronisations incrémentales.
+      </p>
+    </header>
+
+    <div class="grid gap-4 xl:grid-cols-3">
+      @for (provider of providers; track provider.key) {
+        <article class="panel space-y-4 p-5" [attr.aria-labelledby]="provider.key + '-title'">
+          <header>
+            <h4 [id]="provider.key + '-title'" class="font-serif text-2xl text-slate-900">{{ provider.title }}</h4>
+            <p class="mt-1 text-sm text-slate-600">{{ provider.description }}</p>
+          </header>
+
+          <form
+            class="space-y-3 border-t border-slate-200 pt-3"
+            [formGroup]="connectForms[provider.key]"
+            (ngSubmit)="connect(provider.key)"
+            novalidate
+            [attr.aria-describedby]="feedback()[provider.key] ? feedbackId(provider.key) : null"
+          >
+            <h5 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Connexion</h5>
+
+            <div>
+              <label class="field-label" [for]="provider.key + '-code'">Code OAuth</label>
+              <input
+                class="field-input"
+                type="text"
+                [id]="provider.key + '-code'"
+                formControlName="code"
+              />
+            </div>
+
+            <div>
+              <label class="field-label" [for]="provider.key + '-redirect'">Redirect URI</label>
+              <input
+                class="field-input"
+                type="text"
+                [id]="provider.key + '-redirect'"
+                formControlName="redirectUri"
+              />
+            </div>
+
+            <button
+              class="btn w-full"
+              type="submit"
+              [disabled]="connectPending()[provider.key]"
+              [attr.aria-busy]="connectPending()[provider.key] ? 'true' : 'false'"
+            >
+              {{ connectPending()[provider.key] ? "Connexion..." : "Connecter" }}
+            </button>
+          </form>
+
+          <form
+            class="space-y-3 border-t border-slate-200 pt-3"
+            [formGroup]="syncForms[provider.key]"
+            (ngSubmit)="sync(provider.key)"
+            novalidate
+            [attr.aria-describedby]="feedback()[provider.key] ? feedbackId(provider.key) : null"
+          >
+            <h5 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Synchronisation</h5>
+
+            <div>
+              <label class="field-label" [for]="provider.key + '-cursor'">Cursor (optionnel)</label>
+              <input
+                class="field-input"
+                type="text"
+                [id]="provider.key + '-cursor'"
+                formControlName="cursor"
+              />
+            </div>
+
+            <button
+              class="btn btn-ghost w-full"
+              type="submit"
+              [disabled]="syncPending()[provider.key]"
+              [attr.aria-busy]="syncPending()[provider.key] ? 'true' : 'false'"
+            >
+              {{ syncPending()[provider.key] ? "Synchronisation..." : "Lancer la sync" }}
+            </button>
+          </form>
+
+          @if (feedback()[provider.key]) {
+            <p [id]="feedbackId(provider.key)" role="status" aria-live="polite" [class]="feedbackClasses()[provider.key]">
+              {{ feedback()[provider.key] }}
+            </p>
+          }
+        </article>
+      }
+    </div>
+  } @else {
+    <article class="panel p-6" aria-labelledby="ai-calls-title">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 id="ai-calls-title" class="font-serif text-2xl text-slate-900">Appels IA</h3>
+          <p class="mt-1 text-sm text-slate-600">
+            Historique des appels IA (version caviardée) avec conservation de 90 jours.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-ghost"
+          [disabled]="aiCallsPending()"
+          [attr.aria-busy]="aiCallsPending() ? 'true' : 'false'"
+          (click)="refreshAICalls()"
+        >
+          {{ aiCallsPending() ? "Chargement..." : "Rafraîchir" }}
+        </button>
+      </div>
+
+      @if (aiCallsFeedback()) {
+        <p class="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700" role="status" aria-live="polite">
+          {{ aiCallsFeedback() }}
+        </p>
+      }
+
+      <div class="mt-4 overflow-x-auto">
+        <table class="min-w-full border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+              <th class="px-3 py-2 font-semibold">Date</th>
+              <th class="px-3 py-2 font-semibold">Use case</th>
+              <th class="px-3 py-2 font-semibold">Prompt</th>
+              <th class="px-3 py-2 font-semibold">Réponse</th>
+              <th class="px-3 py-2 font-semibold">Prix</th>
+              <th class="px-3 py-2 font-semibold">Détail</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (call of aiCalls(); track call.id) {
+              <tr class="border-b border-slate-100 align-top">
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">
+                  {{ call.datetime | date: "dd/MM/yyyy HH:mm:ss" }}
+                </td>
+                <td class="px-3 py-3 text-slate-700">{{ getUseCaseLabel(call.useCase) }}</td>
+                <td class="px-3 py-3 text-slate-700">
+                  <p
+                    class="max-w-[28rem] whitespace-pre-wrap break-words text-xs [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden"
+                  >
+                    {{ call.prompt }}
+                  </p>
+                </td>
+                <td class="px-3 py-3 text-slate-700">
+                  <p
+                    class="max-w-[28rem] whitespace-pre-wrap break-words text-xs [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden"
+                  >
+                    {{ call.textResponse }}
+                  </p>
+                </td>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ formatPrice(call.price) }}</td>
+                <td class="px-3 py-3 whitespace-nowrap">
+                  <button
+                    type="button"
+                    class="text-sm font-medium text-brand-700 underline decoration-brand-400 underline-offset-2 hover:text-brand-800"
+                    (click)="openAICallDetails(call)"
+                  >
+                    Voir détails
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </article>
+  }
 </section>
+
+@if (selectedAICall(); as selectedCall) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="ai-call-details-title"
+    (click)="closeAICallDetails()"
+  >
+    <article
+      class="panel max-h-[85vh] w-full max-w-4xl overflow-y-auto p-6"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h4 id="ai-call-details-title" class="font-serif text-2xl text-slate-900">Détails appel IA</h4>
+          <p class="mt-1 text-sm text-slate-600">
+            {{ selectedCall.datetime | date: "dd/MM/yyyy HH:mm:ss" }} ·
+            {{ getUseCaseLabel(selectedCall.useCase) }} ·
+            {{ formatPrice(selectedCall.price) }}
+          </p>
+        </div>
+
+        <button type="button" class="btn btn-ghost" (click)="closeAICallDetails()">Fermer</button>
+      </div>
+
+      <div class="mt-5 space-y-4">
+        <section>
+          <h5 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Prompt</h5>
+          <pre class="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 whitespace-pre-wrap break-words">{{
+            selectedCall.prompt
+          }}</pre>
+        </section>
+
+        <section>
+          <h5 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Réponse</h5>
+          <pre class="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 whitespace-pre-wrap break-words">{{
+            selectedCall.textResponse
+          }}</pre>
+        </section>
+      </div>
+    </article>
+  </div>
+}

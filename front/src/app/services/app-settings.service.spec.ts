@@ -20,12 +20,14 @@ describe("AppSettingsService", () => {
               if (args[0] === "GET") {
                 return Promise.resolve({
                   notaryFeePct: 7.4,
+                  aiProvider: "openai",
                   valuationAiOutputFormat: defaultFormat,
                 });
               }
               if (args[0] === "PATCH") {
                 return Promise.resolve({
                   notaryFeePct: 6.9,
+                  aiProvider: "openai",
                   valuationAiOutputFormat: defaultFormat,
                 });
               }
@@ -38,13 +40,16 @@ describe("AppSettingsService", () => {
 
     const service = TestBed.inject(AppSettingsService);
     expect(service.notaryFeePct()).toBe(DEFAULT_NOTARY_FEE_PCT);
+    expect(service.aiProvider()).toBe("openai");
     expect(service.valuationAiOutputFormat()).toBe("");
     await service.refresh();
     expect(service.notaryFeePct()).toBe(7.4);
+    expect(service.aiProvider()).toBe("openai");
     expect(service.valuationAiOutputFormat()).toBe(defaultFormat);
 
     await service.updateNotaryFeePct(6.9);
     expect(service.notaryFeePct()).toBe(6.9);
+    expect(service.aiProvider()).toBe("openai");
     expect(service.valuationAiOutputFormat()).toBe(defaultFormat);
     expect(calls).toEqual([
       ["GET", "/me/settings"],
@@ -63,6 +68,7 @@ describe("AppSettingsService", () => {
             request: (_method: string, _path: string, options?: { body?: { notaryFeePct?: number } }) =>
               Promise.resolve({
                 notaryFeePct: options?.body?.notaryFeePct ?? DEFAULT_NOTARY_FEE_PCT,
+                aiProvider: "openai",
                 valuationAiOutputFormat: "## Format",
               }),
           },
@@ -91,12 +97,14 @@ describe("AppSettingsService", () => {
               if (args[0] === "GET") {
                 return Promise.resolve({
                   notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
+                  aiProvider: "openai",
                   valuationAiOutputFormat: "## Format initial",
                 });
               }
 
               return Promise.resolve({
                 notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
+                aiProvider: "openai",
                 valuationAiOutputFormat: "## Format personnalisé",
               });
             },
@@ -114,6 +122,47 @@ describe("AppSettingsService", () => {
       "PATCH",
       "/me/settings",
       { body: { valuationAiOutputFormat: "## Format personnalisé" } },
+    ]);
+  });
+
+  it("met a jour le provider IA", async () => {
+    const calls: unknown[][] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        AppSettingsService,
+        {
+          provide: ApiClientService,
+          useValue: {
+            request: (...args: unknown[]) => {
+              calls.push(args);
+              if (args[0] === "GET") {
+                return Promise.resolve({
+                  notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
+                  aiProvider: "openai",
+                  valuationAiOutputFormat: "## Format initial",
+                });
+              }
+
+              return Promise.resolve({
+                notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
+                aiProvider: "anthropic",
+                valuationAiOutputFormat: "## Format initial",
+              });
+            },
+          },
+        },
+      ],
+    });
+
+    const service = TestBed.inject(AppSettingsService);
+    await service.refresh();
+    await service.updateSettings({ aiProvider: "anthropic" });
+
+    expect(service.aiProvider()).toBe("anthropic");
+    expect(calls).toContainEqual([
+      "PATCH",
+      "/me/settings",
+      { body: { aiProvider: "anthropic" } },
     ]);
   });
 });

@@ -39,9 +39,35 @@ Fais une tache à la fois du fichier TASKS.md et coche la tache une fois réalis
 - Validation : Zod
 - Auth : JWT access+refresh
 - Jobs : Redis + BullMQ
-- Stockage fichiers : **abstraction** (S3 prod, local dev)
-- Mets de l abstraction pour les connecteurs externe pour qu on puisse plugguer un autre outil de mail, autre calendrier...
-- Connecteurs : Gmail, Google Calendar, WhatsApp, Telegram
+- Stockage fichiers : **abstraction/plugin**
+- Recherche : **abstraction/plugin**
+- IA : **abstraction/plugin**
+- Connecteurs externes : **abstraction/plugin**
+
+### 3.1 Système de plugins (runtime configurable)
+
+Le backend doit rester découplé des providers concrets.  
+Chaque domaine doit passer par une interface + factory, avec sélection via configuration.
+
+La sélection du provider est **globale plateforme** (une seule valeur partagée), jamais customisable par organisation.  
+Les paramètres techniques peuvent rester configurables (ex: hôte SMTP, credentials, endpoints).
+
+- `fileStore` :
+  - `filesystem` (local/dev)
+  - `aws-s3` (prod)
+- `searchEngine` :
+  - `qmd`
+  - `meilisearch`
+- `aiEngine` :
+  - `openai` (défaut)
+  - `anthropic`
+- `email` (TODO connecteurs) :
+  - `smtp-server`
+  - `google`
+- `calendar` (TODO connecteurs) :
+  - `google`
+
+Règle : l’ajout d’un nouveau provider ne doit pas impacter le domaine métier, uniquement la couche plugin concernée.
 
 ---
 

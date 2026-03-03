@@ -100,6 +100,86 @@ export interface paths {
         patch: operations["patchMeSettings"];
         trace?: never;
     };
+    "/me/ai-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMeAICalls"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/privacy/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postPrivacyExports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/privacy/exports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPrivacyExportById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/privacy/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postPrivacyErase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -350,6 +430,22 @@ export interface paths {
         get: operations["getVisits"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/calendar-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCalendarEvents"];
+        put?: never;
+        post: operations["postCalendarEvent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -800,11 +896,51 @@ export interface components {
         };
         AppSettingsResponse: {
             notaryFeePct: number;
+            /**
+             * @description Provider IA global (partagé par toutes les organisations).
+             * @enum {string}
+             */
+            aiProvider: "openai" | "anthropic";
+            /** @description Format Markdown attendu pour la clé justification de la valorisation IA. */
             valuationAiOutputFormat: string;
         };
         AppSettingsPatchRequest: {
             notaryFeePct?: number;
+            /** @enum {string} */
+            aiProvider?: "openai" | "anthropic";
+            /** @description Null ou chaîne vide pour revenir au format par défaut. */
             valuationAiOutputFormat?: string | null;
+        } | unknown | unknown | unknown;
+        AICallLogResponse: {
+            id: string;
+            /** Format: date-time */
+            datetime: string;
+            orgId: string;
+            useCase: string;
+            prompt: string;
+            textResponse: string;
+            price: number;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            totalTokens: number | null;
+            redactionVersion: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        AICallLogListResponse: {
+            items: components["schemas"]["AICallLogResponse"][];
+        };
+        /** @enum {string} */
+        GlobalSearchItemType: "PROPERTY" | "USER" | "VOCAL" | "VISIT";
+        GlobalSearchItemResponse: {
+            type: components["schemas"]["GlobalSearchItemType"];
+            id: string;
+            label: string;
+            subtitle: string;
+            route: string;
+        };
+        GlobalSearchResponse: {
+            items: components["schemas"]["GlobalSearchItemResponse"][];
         };
         LoginRequest: {
             /** Format: email */
@@ -828,6 +964,31 @@ export interface components {
         };
         LogoutRequest: {
             refreshToken: string;
+        };
+        /** @enum {string} */
+        PrivacyExportStatus: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+        PrivacyExportRequest: Record<string, never>;
+        PrivacyExportResponse: {
+            id: string;
+            status: components["schemas"]["PrivacyExportStatus"];
+            /** Format: date-time */
+            requestedAt: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            errorMessage: string | null;
+            data: unknown;
+        };
+        PrivacyEraseRequest: Record<string, never>;
+        PrivacyEraseResponse: {
+            requestId: string;
+            /** @enum {string} */
+            status: "PENDING";
+            /** Format: date-time */
+            requestedAt: string;
         };
         RegisterRequest: {
             /** Format: email */
@@ -971,6 +1132,39 @@ export interface components {
         };
         PropertyVisitListResponse: {
             items: components["schemas"]["PropertyVisitResponse"][];
+        };
+        CalendarAppointmentCreateRequest: {
+            title: string;
+            propertyId: string;
+            clientUserId?: string | null;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            address?: string | null;
+            comment?: string | null;
+        };
+        CalendarAppointmentResponse: {
+            id: string;
+            title: string;
+            propertyId: string;
+            propertyTitle: string;
+            clientUserId: string | null;
+            clientFirstName: string | null;
+            clientLastName: string | null;
+            address: string | null;
+            comment: string | null;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CalendarAppointmentListResponse: {
+            items: components["schemas"]["CalendarAppointmentResponse"][];
         };
         /** @enum {string} */
         PropertyRiskStatus: "OK" | "NO_DATA" | "UNAVAILABLE";
@@ -1301,6 +1495,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Trop de tentatives. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     postAuthRefresh: {
@@ -1436,6 +1639,202 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppSettingsResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMeAICalls: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Historique des appels IA de l'organisation courante. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AICallLogListResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postPrivacyExports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PrivacyExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Export RGPD demandé. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacyExportResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rôle insuffisant. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPrivacyExportById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description État export RGPD. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacyExportResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rôle insuffisant. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Export introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postPrivacyErase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PrivacyEraseRequest"];
+            };
+        };
+        responses: {
+            /** @description Effacement RGPD demandé. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacyEraseResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rôle insuffisant. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSearch: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["LimitParam"];
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Résultats de recherche globaux multi-objets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalSearchResponse"];
                 };
             };
             /** @description Non authentifié. */
@@ -1608,6 +2007,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Trop de tentatives. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     postAuthResetPassword: {
@@ -1639,6 +2047,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Trop de tentatives. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     getProperties: {
@@ -1646,6 +2063,7 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["LimitParam"];
                 cursor?: components["parameters"]["CursorParam"];
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -2083,6 +2501,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PropertyVisitListResponse"];
+                };
+            };
+        };
+    };
+    getCalendarEvents: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des rendez-vous manuels du calendrier. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarAppointmentListResponse"];
+                };
+            };
+        };
+    };
+    postCalendarEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarAppointmentCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Rendez-vous créé. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarAppointmentResponse"];
+                };
+            };
+            /** @description Payload invalide. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -108,9 +108,12 @@ Variables principales:
 - `VOCAL_RECOVERY_INTERVAL_MS`
 - `VOCAL_RECOVERY_MAX_ATTEMPTS`
 - `VOCAL_RECOVERY_BATCH_SIZE`
-- `AI_PROVIDER` (`mock` ou `openai`)
+- `AI_PROVIDER` (`openai`, `anthropic` ou `mock`)
 - `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_WHISPER_MODEL`, `OPENAI_BASE_URL`
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL`
 - `CONNECTOR_RUNTIME` (`mock`)
+- `SEARCH_ENGINE` (`qmd` ou `meilisearch`, defaut `qmd`)
+- `MEILISEARCH_HOST`, `MEILISEARCH_API_KEY` (si `SEARCH_ENGINE=meilisearch`)
 - `INTEGRATION_TOKEN_SECRET`
 - `GEOCODING_TIMEOUT_MS` (timeout appel geocodage en ms, defaut `6000`)
 - Stockage: `STORAGE_PROVIDER`, `LOCAL_STORAGE_DIR`, `APP_BASE_URL`, `S3_*`, `AWS_*`

@@ -72,9 +72,22 @@ describe("PropertyService", () => {
       agentAdjustedPrice: 350000,
     });
     await service.listCalendarVisits("2026-01-01T00:00:00.000Z", "2026-12-31T00:00:00.000Z");
+    await service.listCalendarAppointments(
+      "2026-01-01T00:00:00.000Z",
+      "2026-12-31T00:00:00.000Z",
+    );
+    await service.createCalendarAppointment({
+      title: "Rendez-vous notaire",
+      propertyId: "property:1",
+      clientUserId: "user_2",
+      startsAt: "2026-02-03T09:00:00.000Z",
+      endsAt: "2026-02-03T10:00:00.000Z",
+      address: "8 rue du Notariat, 75001 Paris",
+      comment: "Signer le compromis",
+    });
 
     expect(calls).toEqual([
-      ["GET", "/properties", { params: { limit: 100 } }],
+      ["GET", "/properties", { params: { limit: 100, q: undefined } }],
       ["GET", "/properties/property%3A1"],
       [
         "POST",
@@ -154,6 +167,26 @@ describe("PropertyService", () => {
         "GET",
         "/visits",
         { params: { from: "2026-01-01T00:00:00.000Z", to: "2026-12-31T00:00:00.000Z" } },
+      ],
+      [
+        "GET",
+        "/calendar-events",
+        { params: { from: "2026-01-01T00:00:00.000Z", to: "2026-12-31T00:00:00.000Z" } },
+      ],
+      [
+        "POST",
+        "/calendar-events",
+        {
+          body: {
+            title: "Rendez-vous notaire",
+            propertyId: "property:1",
+            clientUserId: "user_2",
+            startsAt: "2026-02-03T09:00:00.000Z",
+            endsAt: "2026-02-03T10:00:00.000Z",
+            address: "8 rue du Notariat, 75001 Paris",
+            comment: "Signer le compromis",
+          },
+        },
       ],
     ]);
   });

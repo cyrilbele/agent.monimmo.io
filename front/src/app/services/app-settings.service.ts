@@ -1,9 +1,14 @@
 import { inject, Injectable, signal } from "@angular/core";
 
-import type { AppSettingsPatchRequest, AppSettingsResponse } from "../core/api.models";
+import type {
+  AiProvider,
+  AppSettingsPatchRequest,
+  AppSettingsResponse,
+} from "../core/api.models";
 import { ApiClientService } from "../core/api-client.service";
 
 const DEFAULT_NOTARY_FEE_PCT = 8;
+const DEFAULT_AI_PROVIDER: AiProvider = "openai";
 const MIN_NOTARY_FEE_PCT = 0;
 const MAX_NOTARY_FEE_PCT = 100;
 
@@ -12,6 +17,7 @@ export class AppSettingsService {
   private readonly api = inject(ApiClientService);
 
   readonly notaryFeePct = signal<number>(DEFAULT_NOTARY_FEE_PCT);
+  readonly aiProvider = signal<AiProvider>(DEFAULT_AI_PROVIDER);
   readonly valuationAiOutputFormat = signal<string>("");
   readonly loaded = signal(false);
 
@@ -28,6 +34,7 @@ export class AppSettingsService {
     } catch {
       return {
         notaryFeePct: this.notaryFeePct(),
+        aiProvider: this.aiProvider(),
         valuationAiOutputFormat: this.valuationAiOutputFormat(),
       };
     } finally {
@@ -39,6 +46,9 @@ export class AppSettingsService {
     const payload: AppSettingsPatchRequest = {};
     if (typeof input.notaryFeePct === "number") {
       payload.notaryFeePct = this.normalizeNotaryFeePct(input.notaryFeePct);
+    }
+    if (typeof input.aiProvider === "string") {
+      payload.aiProvider = this.normalizeAiProvider(input.aiProvider);
     }
     if (typeof input.valuationAiOutputFormat !== "undefined") {
       payload.valuationAiOutputFormat = this.normalizeValuationAiOutputFormatInput(
@@ -80,6 +90,7 @@ export class AppSettingsService {
   private normalizeResponse(response: AppSettingsResponse): AppSettingsResponse {
     return {
       notaryFeePct: this.normalizeNotaryFeePct(response.notaryFeePct),
+      aiProvider: this.normalizeAiProvider(response.aiProvider),
       valuationAiOutputFormat: this.normalizeValuationAiOutputFormatResponse(
         response.valuationAiOutputFormat,
       ),
@@ -88,7 +99,16 @@ export class AppSettingsService {
 
   private applySettings(response: AppSettingsResponse): void {
     this.notaryFeePct.set(response.notaryFeePct);
+    this.aiProvider.set(response.aiProvider);
     this.valuationAiOutputFormat.set(response.valuationAiOutputFormat);
+  }
+
+  private normalizeAiProvider(value: unknown): AiProvider {
+    if (value === "anthropic") {
+      return "anthropic";
+    }
+
+    return DEFAULT_AI_PROVIDER;
   }
 
   private normalizeValuationAiOutputFormatResponse(value: unknown): string {

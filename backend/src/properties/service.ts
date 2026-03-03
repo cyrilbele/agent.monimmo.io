@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
   files,
@@ -23,7 +23,9 @@ import {
 } from "./dvf-client";
 import { findCoordinatesForAddress, type PropertyCoordinates } from "./geocoding";
 import { getPropertyRisks, type PropertyRisksResponse } from "./georisques";
-import { getAIProvider } from "../ai/factory";
+import { trackAICallFromTelemetrySafe } from "../ai/call-logs";
+import { getAIProviderForOrg } from "../ai/factory";
+import { getSearchEngine } from "../search/factory";
 
 type PropertyRow = typeof properties.$inferSelect;
 
@@ -31,6 +33,7 @@ type ListPropertiesInput = {
   orgId: string;
   limit: number;
   cursor?: string;
+  query?: string;
 };
 
 type OwnerContactInput = {
@@ -56,6 +59,7 @@ const COMPARABLE_SUBJECT_SURFACE_MAX_FACTOR = 2;
 const COMPARABLE_MIN_PRICE_PER_M2 = 500;
 const COMPARABLE_CACHE_VERSION = "dvf-open-v5-min-price-per-m2-500";
 const VALUATION_AI_SNAPSHOT_KEY = "valuationAiSnapshot";
+const searchEngine = getSearchEngine();
 
 const toDvfUnavailableDetails = (error: unknown): Record<string, unknown> => {
   if (error instanceof DvfClientError) {
@@ -334,6 +338,15 @@ const toPropertyResponse = (row: PropertyRow) => ({
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
+
+const updateSearchDocumentSafe = async (property: PropertyRow): Promise<void> => {
+  try {
+    await searchEngine.upsertPropertyDocument(property);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[Search][properties] impossible de synchroniser le document du bien ${property.id}: ${message}`);
+  }
+};
 
 const toPropertyVisitResponse = (row: {
   id: string;
@@ -1456,13 +1469,35 @@ const parseCachedComparables = (rawJson: string): PropertyComparablesResponse | 
 export const propertiesService = {
   async list(input: ListPropertiesInput) {
     const cursorValue = parseCursor(input.cursor);
+    const clauses = [eq(properties.orgId, input.orgId)];
 
-    const whereClause = cursorValue
-      ? and(
-          eq(properties.orgId, input.orgId),
-          lt(properties.createdAt, new Date(cursorValue)),
-        )
-      : eq(properties.orgId, input.orgId);
+    const normalizedQuery = input.query?.trim();
+    if (normalizedQuery) {
+      const likeValue = `%${normalizedQuery.toLowerCase()}%`;
+      const lexicalClause = or(
+        sql`lower(${properties.title}) like ${likeValue}`,
+        sql`lower(${properties.city}) like ${likeValue}`,
+        sql`lower(${properties.postalCode}) like ${likeValue}`,
+        sql`lower(coalesce(${properties.address}, '')) like ${likeValue}`,
+      )!;
+
+      const searchMatchedIds = await searchEngine.searchPropertyIds({
+        query: normalizedQuery,
+        limit: input.limit * 5,
+        orgId: input.orgId,
+      });
+      if (searchMatchedIds && searchMatchedIds.length > 0) {
+        clauses.push(or(inArray(properties.id, searchMatchedIds), lexicalClause)!);
+      } else {
+        clauses.push(lexicalClause);
+      }
+    }
+
+    if (cursorValue) {
+      clauses.push(lt(properties.createdAt, new Date(cursorValue)));
+    }
+
+    const whereClause = clauses.length === 1 ? clauses[0]! : and(...clauses)!;
 
     const rows = await db
       .select()
@@ -1625,6 +1660,8 @@ export const propertiesService = {
       throw new HttpError(500, "PROPERTY_CREATE_FAILED", "Création du bien impossible");
     }
 
+    await updateSearchDocumentSafe(created);
+
     return toPropertyResponse(created);
   },
 
@@ -1713,6 +1750,8 @@ export const propertiesService = {
       throw new HttpError(500, "PROPERTY_PATCH_FAILED", "Mise à jour impossible");
     }
 
+    await updateSearchDocumentSafe(updated);
+
     return toPropertyResponse(updated);
   },
 
@@ -1757,6 +1796,8 @@ export const propertiesService = {
     if (!updated) {
       throw new HttpError(500, "PROPERTY_PATCH_FAILED", "Mise à jour impossible");
     }
+
+    await updateSearchDocumentSafe(updated);
 
     return toPropertyResponse(updated);
   },
@@ -2806,7 +2847,7 @@ export const propertiesService = {
   }): Promise<PropertyValuationAIResponse> {
     const context = await this.prepareValuationAIContext(input);
 
-    const aiProvider = getAIProvider();
+    const aiProvider = await getAIProviderForOrg(input.orgId);
     const fallbackValuation =
       context.summary.medianPrice ??
       context.comparables.subject.predictedPrice ??
@@ -2819,6 +2860,13 @@ export const propertiesService = {
 
     try {
       const aiResult = await aiProvider.computePropertyValuation({ prompt: context.promptUsed });
+      await trackAICallFromTelemetrySafe({
+        orgId: input.orgId,
+        useCase: "PROPERTY_VALUATION",
+        fallbackPrompt: context.promptUsed,
+        fallbackResponse: aiResult,
+        telemetry: aiResult.telemetry,
+      });
       aiCalculatedValuation =
         typeof aiResult.calculatedValuation === "number" &&
         Number.isFinite(aiResult.calculatedValuation) &&

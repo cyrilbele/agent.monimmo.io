@@ -1,9 +1,5 @@
 import type { ParticipantRole, PropertyStatus, TypeDocument } from "./api.models";
 
-export const ACCESS_TOKEN_STORAGE_KEY = "monimmo.accessToken";
-export const REFRESH_TOKEN_STORAGE_KEY = "monimmo.refreshToken";
-export const SESSION_EMAIL_STORAGE_KEY = "monimmo.userEmail";
-
 export const MIN_PASSWORD_LENGTH = 8;
 
 export const PROPERTY_STATUSES: readonly PropertyStatus[] = [

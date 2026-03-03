@@ -9,13 +9,17 @@
         <p class="mt-1 text-sm text-slate-500">{{ propertiesCount() }} bien(s)</p>
       </div>
 
-      <button
-        type="button"
-        class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-        (click)="loadProperties()"
-      >
-        Rafraîchir
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="sr-only" for="properties-search-input">Rechercher un bien</label>
+        <input
+          id="properties-search-input"
+          type="search"
+          class="field-input w-full min-w-[16rem] sm:w-auto"
+          [value]="searchQuery()"
+          (input)="onSearchInput($any($event.target).value)"
+          placeholder="Rechercher (titre, ville, code postal, adresse)"
+        />
+      </div>
     </div>
   </header>
 
@@ -27,10 +31,12 @@
 
   @if (loading()) {
     <p class="panel p-4 text-sm text-slate-700" role="status" aria-live="polite">
-      Chargement des biens...
+      {{ hasActiveSearch() ? "Recherche des biens..." : "Chargement des biens..." }}
     </p>
   } @else if (sortedProperties().length === 0) {
-    <p class="panel p-4 text-sm text-slate-600">Aucun bien disponible.</p>
+    <p class="panel p-4 text-sm text-slate-600">
+      {{ hasActiveSearch() ? "Aucun bien ne correspond à la recherche." : "Aucun bien disponible." }}
+    </p>
   } @else {
     <section class="panel overflow-x-auto p-0">
       <table class="min-w-full border-collapse text-sm">

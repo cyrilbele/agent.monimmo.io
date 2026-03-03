@@ -1,17 +1,46 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
 import { passwordResetStore } from "../src/auth/password-reset-store";
+import { resetAuthRateLimiterForTests } from "../src/auth/rate-limit";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { organizations, users } from "../src/db/schema";
+import { organizations, platformSettings, users } from "../src/db/schema";
 import { createApp } from "../src/server";
 
 describe("auth endpoints", () => {
   beforeAll(async () => {
     runMigrations();
     await runSeed();
+  });
+
+  beforeEach(() => {
+    resetAuthRateLimiterForTests();
+  });
+
+  afterAll(async () => {
+    const now = new Date();
+    await db
+      .insert(platformSettings)
+      .values({
+        id: "global",
+        aiProvider: "openai",
+        searchEngine: "qmd",
+        storageProvider: "local",
+        emailProvider: "smtp-server",
+        calendarProvider: "google",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: platformSettings.id,
+        set: {
+          aiProvider: "openai",
+          updatedAt: now,
+        },
+      });
+
   });
 
   it("authentifie un utilisateur et renvoie access+refresh", async () => {
@@ -133,6 +162,9 @@ describe("auth endpoints", () => {
     const initialSettings = await getInitialResponse.json();
     expect(typeof initialSettings.notaryFeePct).toBe("number");
     expect(Number.isFinite(initialSettings.notaryFeePct)).toBe(true);
+    expect(initialSettings.aiProvider === "openai" || initialSettings.aiProvider === "anthropic").toBe(
+      true,
+    );
     expect(typeof initialSettings.valuationAiOutputFormat).toBe("string");
     expect(initialSettings.valuationAiOutputFormat.trim().length).toBeGreaterThan(0);
 
@@ -145,6 +177,7 @@ describe("auth endpoints", () => {
         },
         body: JSON.stringify({
           notaryFeePct: 7.35,
+          aiProvider: "anthropic",
           valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
         }),
       }),
@@ -153,6 +186,7 @@ describe("auth endpoints", () => {
     expect(updateResponse.status).toBe(200);
     expect(await updateResponse.json()).toEqual({
       notaryFeePct: 7.35,
+      aiProvider: "anthropic",
       valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
     });
 
@@ -168,6 +202,7 @@ describe("auth endpoints", () => {
     expect(getUpdatedResponse.status).toBe(200);
     expect(await getUpdatedResponse.json()).toEqual({
       notaryFeePct: 7.35,
+      aiProvider: "anthropic",
       valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
     });
 
@@ -187,6 +222,7 @@ describe("auth endpoints", () => {
     expect(resetFormatResponse.status).toBe(200);
     const resetFormatPayload = await resetFormatResponse.json();
     expect(resetFormatPayload.notaryFeePct).toBe(7.35);
+    expect(resetFormatPayload.aiProvider).toBe("anthropic");
     expect(resetFormatPayload.valuationAiOutputFormat).toContain("## 1️⃣ Synthèse exécutive");
 
     const getResetFormatResponse = await createApp().fetch(
@@ -201,10 +237,94 @@ describe("auth endpoints", () => {
     expect(getResetFormatResponse.status).toBe(200);
     const resetSettings = await getResetFormatResponse.json();
     expect(resetSettings.notaryFeePct).toBe(7.35);
+    expect(resetSettings.aiProvider).toBe("anthropic");
     expect(resetSettings.valuationAiOutputFormat).toContain("## 1️⃣ Synthèse exécutive");
     expect(resetSettings.valuationAiOutputFormat).toContain(
       "Fourchette de commercialisation conseillée",
     );
+  });
+
+  it("partage le provider IA entre organisations (scope global)", async () => {
+    const demoLoginResponse = await createApp().fetch(
+      new Request("http://localhost/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_AUTH_EMAIL,
+          password: DEMO_AUTH_PASSWORD,
+        }),
+      }),
+    );
+    expect(demoLoginResponse.status).toBe(200);
+    const demoLoginPayload = await demoLoginResponse.json();
+
+    const secondEmail = `global-ai.${crypto.randomUUID()}@monimmo.fr`;
+    const secondRegisterResponse = await createApp().fetch(
+      new Request("http://localhost/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: secondEmail,
+          password: "MonimmoPwd123!",
+          firstName: "Lina",
+          lastName: "Petit",
+        }),
+      }),
+    );
+    expect(secondRegisterResponse.status).toBe(201);
+    const secondRegisterPayload = await secondRegisterResponse.json();
+
+    const demoSetAnthropicResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${demoLoginPayload.accessToken}`,
+        },
+        body: JSON.stringify({
+          aiProvider: "anthropic",
+        }),
+      }),
+    );
+    expect(demoSetAnthropicResponse.status).toBe(200);
+    expect((await demoSetAnthropicResponse.json()).aiProvider).toBe("anthropic");
+
+    const secondReadSettingsResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${secondRegisterPayload.accessToken}`,
+        },
+      }),
+    );
+    expect(secondReadSettingsResponse.status).toBe(200);
+    expect((await secondReadSettingsResponse.json()).aiProvider).toBe("anthropic");
+
+    const secondSetOpenAIResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${secondRegisterPayload.accessToken}`,
+        },
+        body: JSON.stringify({
+          aiProvider: "openai",
+        }),
+      }),
+    );
+    expect(secondSetOpenAIResponse.status).toBe(200);
+    expect((await secondSetOpenAIResponse.json()).aiProvider).toBe("openai");
+
+    const demoReadBackResponse = await createApp().fetch(
+      new Request("http://localhost/me/settings", {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${demoLoginPayload.accessToken}`,
+        },
+      }),
+    );
+    expect(demoReadBackResponse.status).toBe(200);
+    expect((await demoReadBackResponse.json()).aiProvider).toBe("openai");
   });
 
   it("refuse /me/settings PATCH sans champ modifié", async () => {
@@ -537,5 +657,63 @@ describe("auth endpoints", () => {
         updatedAt: new Date(),
       })
       .where(eq(users.email, DEMO_AUTH_EMAIL));
+  });
+
+  it("applique les headers de sécurité", async () => {
+    const response = await createApp().fetch(
+      new Request("http://localhost/health", {
+        method: "GET",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+    expect(response.headers.get("strict-transport-security")).toContain("max-age=31536000");
+    expect(response.headers.get("content-security-policy")).toContain("default-src");
+  });
+
+  it("active le rate limiting sur /auth/login", async () => {
+    const previousMax = process.env.AUTH_RATE_LIMIT_LOGIN_MAX;
+    const previousWindow = process.env.AUTH_RATE_LIMIT_LOGIN_WINDOW_MS;
+    process.env.AUTH_RATE_LIMIT_LOGIN_MAX = "2";
+    process.env.AUTH_RATE_LIMIT_LOGIN_WINDOW_MS = "60000";
+
+    try {
+      const doLogin = () =>
+        createApp().fetch(
+          new Request("http://localhost/auth/login", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-forwarded-for": "203.0.113.42",
+            },
+            body: JSON.stringify({
+              email: DEMO_AUTH_EMAIL,
+              password: "mauvais-pass",
+            }),
+          }),
+        );
+
+      const first = await doLogin();
+      const second = await doLogin();
+      const third = await doLogin();
+
+      expect(first.status).toBe(401);
+      expect(second.status).toBe(401);
+      expect(third.status).toBe(429);
+      expect((await third.json()).code).toBe("RATE_LIMIT_EXCEEDED");
+    } finally {
+      if (typeof previousMax === "undefined") {
+        delete process.env.AUTH_RATE_LIMIT_LOGIN_MAX;
+      } else {
+        process.env.AUTH_RATE_LIMIT_LOGIN_MAX = previousMax;
+      }
+      if (typeof previousWindow === "undefined") {
+        delete process.env.AUTH_RATE_LIMIT_LOGIN_WINDOW_MS;
+      } else {
+        process.env.AUTH_RATE_LIMIT_LOGIN_WINDOW_MS = previousWindow;
+      }
+    }
   });
 });
