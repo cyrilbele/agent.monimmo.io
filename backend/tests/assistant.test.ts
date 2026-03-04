@@ -5,7 +5,7 @@ import { assistantWebSearchProvider } from "../src/assistant/web-search";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { aiCallLogs, assistantMessages, users } from "../src/db/schema";
+import { aiCallLogs, assistantMessages, properties, users } from "../src/db/schema";
 import { propertiesService } from "../src/properties/service";
 import { createApp } from "../src/server";
 import { usersService } from "../src/users/service";
@@ -124,7 +124,6 @@ describe("assistant endpoints", () => {
     expect(resetConversation.id).toBe(initialConversation.id);
     expect(resetConversation.messages.length).toBe(1);
     expect(resetConversation.messages[0]?.role).toBe("ASSISTANT");
-    expect(resetConversation.messages[0]?.pendingAction).toBeNull();
   });
 
   it("stream les réponses assistant avec deltas puis payload final", async () => {
@@ -176,17 +175,14 @@ describe("assistant endpoints", () => {
     expect((finalPayload.assistantMessage?.text ?? "").length).toBeGreaterThan(0);
   });
 
-  it("propose une action create client puis permet cancel et confirm", async () => {
+  it("crée un client directement depuis une demande assistant", async () => {
     const token = await registerAndGetToken("actions");
     const orgId = await getOrgIdFromToken(token);
-    const cancelPhone = `06${Math.floor(Math.random() * 10_000_0000)
-      .toString()
-      .padStart(8, "0")}`;
-    const confirmPhone = `06${Math.floor(Math.random() * 10_000_0000)
+    const phone = `06${Math.floor(Math.random() * 10_000_0000)
       .toString()
       .padStart(8, "0")}`;
 
-    const proposeCancel = await createApp().fetch(
+    const createResponse = await createApp().fetch(
       new Request("http://localhost/assistant/messages", {
         method: "POST",
         headers: {
@@ -194,73 +190,19 @@ describe("assistant endpoints", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          message: `Ajoute un nouveau client Annule Test ${cancelPhone}`,
+          message: `Ajoute un nouveau client Direct Test ${phone}`,
         }),
       }),
     );
-    expect(proposeCancel.status).toBe(200);
-    const cancelDraft = await proposeCancel.json();
-    const cancelActionId = cancelDraft.assistantMessage?.pendingAction?.id as string | undefined;
-    expect(cancelActionId).toBeString();
-
-    const cancelResponse = await createApp().fetch(
-      new Request(`http://localhost/assistant/actions/${encodeURIComponent(cancelActionId ?? "")}/cancel`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      }),
-    );
-    expect(cancelResponse.status).toBe(200);
-    const canceled = await cancelResponse.json();
-    expect(canceled.action.status).toBe("CANCELED");
-
-    const confirmCanceled = await createApp().fetch(
-      new Request(`http://localhost/assistant/actions/${encodeURIComponent(cancelActionId ?? "")}/confirm`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      }),
-    );
-    expect(confirmCanceled.status).toBe(404);
-
-    const proposeConfirm = await createApp().fetch(
-      new Request("http://localhost/assistant/messages", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `Ajoute un nouveau client Confirme Test ${confirmPhone}`,
-        }),
-      }),
-    );
-    expect(proposeConfirm.status).toBe(200);
-    const confirmDraft = await proposeConfirm.json();
-    const confirmActionId = confirmDraft.assistantMessage?.pendingAction?.id as string | undefined;
-    expect(confirmActionId).toBeString();
-
-    const confirmResponse = await createApp().fetch(
-      new Request(`http://localhost/assistant/actions/${encodeURIComponent(confirmActionId ?? "")}/confirm`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      }),
-    );
-    expect(confirmResponse.status).toBe(200);
-    const confirmed = await confirmResponse.json();
-    expect(confirmed.action.status).toBe("EXECUTED");
-    expect(confirmed.action.objectType).toBe("client");
-    expect(confirmed.action.objectId).toBeString();
+    expect(createResponse.status).toBe(200);
+    const payload = await createResponse.json();
+    expect(payload.assistantMessage?.text).toContain("Client créé");
 
     const createdUser = await db.query.users.findFirst({
-      where: and(eq(users.orgId, orgId), eq(users.phone, confirmPhone)),
+      where: and(eq(users.orgId, orgId), eq(users.phone, phone)),
     });
     expect(createdUser).toBeDefined();
-    expect(createdUser?.firstName).toBe("Confirme");
+    expect(createdUser?.firstName).toBe("Direct");
   });
 
   it("n'utilise pas le web search sans demande explicite et ne renvoie pas la soul dans chaque réponse", async () => {
@@ -360,7 +302,7 @@ describe("assistant endpoints", () => {
     expect(leakedVisible).toBe(false);
   });
 
-  it("expose toolCreate et toolUpdate avec confirmation mixte", async () => {
+  it("expose toolCreate et toolUpdate en exécution directe", async () => {
     const token = await registerAndGetToken("tools-create-update");
     const me = await getMeFromToken(token);
     const phone = `06${Math.floor(Math.random() * 10_000_0000)
@@ -388,46 +330,14 @@ describe("assistant endpoints", () => {
         phone,
       },
     });
-    expect(createResult.status).toBe("PENDING_CONFIRMATION");
-    if (createResult.status !== "PENDING_CONFIRMATION") {
-      throw new Error("createResult should require confirmation");
+    expect(createResult.status).toBe("EXECUTED");
+    if (createResult.status !== "EXECUTED") {
+      throw new Error("createResult should execute directly");
     }
-    expect(createResult.pendingAction.objectType).toBe("client");
-
-    const confirmCreateResponse = await createApp().fetch(
-      new Request(
-        `http://localhost/assistant/actions/${encodeURIComponent(createResult.pendingAction.id)}/confirm`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
-        },
-      ),
-    );
-    expect(confirmCreateResponse.status).toBe(200);
-    const confirmedCreate = await confirmCreateResponse.json();
-    expect(confirmedCreate.action.status).toBe("EXECUTED");
-    const createdClientId = confirmedCreate.action.objectId as string;
+    const createdClientId = createResult.objectId;
     expect(createdClientId).toBeString();
 
-    const safeUpdateResult = await assistantService.toolUpdate({
-      orgId: me.orgId,
-      userId: me.userId,
-      conversationId,
-      objectType: "client",
-      objectId: createdClientId,
-      params: {
-        personalNotes: "Note safe",
-      },
-    });
-    expect(safeUpdateResult.status).toBe("EXECUTED");
-    if (safeUpdateResult.status !== "EXECUTED") {
-      throw new Error("safe update should execute directly");
-    }
-    expect(safeUpdateResult.objectId).toBe(createdClientId);
-
-    const unsafeUpdateResult = await assistantService.toolUpdate({
+    const updateResult = await assistantService.toolUpdate({
       orgId: me.orgId,
       userId: me.userId,
       conversationId,
@@ -437,11 +347,17 @@ describe("assistant endpoints", () => {
         phone: "0611223344",
       },
     });
-    expect(unsafeUpdateResult.status).toBe("PENDING_CONFIRMATION");
-    if (unsafeUpdateResult.status !== "PENDING_CONFIRMATION") {
-      throw new Error("unsafe update should require confirmation");
+    expect(updateResult.status).toBe("EXECUTED");
+    if (updateResult.status !== "EXECUTED") {
+      throw new Error("update should execute directly");
     }
-    expect(unsafeUpdateResult.pendingAction.operation).toBe("update");
+    expect(updateResult.objectId).toBe(createdClientId);
+
+    const refreshedClient = await usersService.getById({
+      orgId: me.orgId,
+      id: createdClientId,
+    });
+    expect(refreshedClient.phone).toBe("0611223344");
   });
 
   it("normalise les aliases de mise à jour bien (surface/typebien) et conserve les autres details", async () => {
@@ -491,51 +407,37 @@ describe("assistant endpoints", () => {
       },
     });
 
-    expect(updateResult.status).toBe("PENDING_CONFIRMATION");
-    if (updateResult.status !== "PENDING_CONFIRMATION") {
-      throw new Error("updateResult should require confirmation");
+    expect(updateResult.status).toBe("EXECUTED");
+    if (updateResult.status !== "EXECUTED") {
+      throw new Error("updateResult should execute directly");
     }
-
-    const confirmResponse = await createApp().fetch(
-      new Request(
-        `http://localhost/assistant/actions/${encodeURIComponent(updateResult.pendingAction.id)}/confirm`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
-        },
-      ),
-    );
-    expect(confirmResponse.status).toBe(200);
 
     const refreshed = await propertiesService.getById({
       orgId: me.orgId,
       id: property.id,
     });
     const details = refreshed.details as Record<string, unknown>;
-    const general = details.general as Record<string, unknown>;
-    const characteristics = details.characteristics as Record<string, unknown>;
-
-    expect(general.propertyType).toBe("MAISON");
-    expect(characteristics.livingArea).toBe(200);
-    expect(characteristics.rooms).toBe(4);
+    expect(details.propertyType).toBe("MAISON");
+    expect(details.livingArea).toBe(200);
+    expect(details.rooms).toBe(4);
   });
 
   it("retourne des paramètres bien typés avec options pour getParams(bien)", () => {
-    const params = assistantService.toolGetParams({ objectType: "bien" }) as {
-      update?: { fields?: Array<{ path?: string; options?: unknown[] }> };
-    };
+    const fields = assistantService.toolGetParams({
+      objectType: "bien",
+    }) as Array<{ key?: string; options?: unknown[] }>;
 
-    const fields = params.update?.fields ?? [];
     expect(fields.length).toBeGreaterThan(0);
-    const propertyTypeField = fields.find((field) => field.path === "details.general.propertyType");
+    const propertyTypeField = fields.find((field) => field.key === "propertyType");
     expect(propertyTypeField).toBeDefined();
     expect(Array.isArray(propertyTypeField?.options)).toBe(true);
-    expect((propertyTypeField?.options ?? []).includes("MAISON")).toBe(true);
+    const optionValues = (propertyTypeField?.options ?? []).map((option) =>
+      typeof option === "object" && option !== null ? (option as { value?: unknown }).value : option,
+    );
+    expect(optionValues.includes("MAISON")).toBe(true);
   });
 
-  it("prépare une update structurée depuis un long descriptif quand le contexte bien est fourni", async () => {
+  it("applique une update structurée depuis un long descriptif quand le contexte bien est fourni", async () => {
     const token = await registerAndGetToken("listing-structured-update");
     const me = await getMeFromToken(token);
 
@@ -606,45 +508,27 @@ describe("assistant endpoints", () => {
 
     expect(response.status).toBe(200);
     const payload = await response.json();
-    expect(payload.assistantMessage.text).toContain("Mise à jour technique préparée");
-    const actionId = payload.assistantMessage.pendingAction?.id as string | undefined;
-    expect(actionId).toBeString();
-
-    const confirmResponse = await createApp().fetch(
-      new Request(`http://localhost/assistant/actions/${encodeURIComponent(actionId ?? "")}/confirm`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      }),
-    );
-    expect(confirmResponse.status).toBe(200);
+    expect(payload.assistantMessage.text).toContain("Mise à jour technique appliquée");
 
     const refreshed = await propertiesService.getById({
       orgId: me.orgId,
       id: property.id,
     });
     const details = refreshed.details as Record<string, unknown>;
-    const general = details.general as Record<string, unknown>;
-    const characteristics = details.characteristics as Record<string, unknown>;
-    const regulation = details.regulation as Record<string, unknown>;
-    const finance = details.finance as Record<string, unknown>;
-    const amenities = details.amenities as Record<string, unknown>;
-    const copropriete = details.copropriete as Record<string, unknown>;
 
-    expect(general.propertyType).toBe("MAISON");
-    expect(characteristics.rooms).toBe(4);
-    expect(characteristics.livingArea).toBe(100);
-    expect(characteristics.carrezArea).toBe(93.79);
-    expect(characteristics.landArea).toBe(527);
-    expect(regulation.dpeClass).toBe("C");
-    expect(regulation.energyConsumption).toBe(147);
-    expect(regulation.gesClass).toBe("A");
-    expect(regulation.co2Emission).toBe(5);
-    expect(finance.propertyTax).toBe(964);
-    expect(amenities.parking).toBe("true");
-    expect(amenities.fiber).toBe("true");
-    expect(copropriete.isCopropriete).toBe("false");
+    expect(details.propertyType).toBe("MAISON");
+    expect(details.rooms).toBe(4);
+    expect(details.livingArea).toBe(100);
+    expect(details.carrezArea).toBe(93.79);
+    expect(details.landArea).toBe(527);
+    expect(details.dpeClass).toBe("C");
+    expect(details.energyConsumption).toBe(147);
+    expect(details.gesClass).toBe("A");
+    expect(details.co2Emission).toBe(5);
+    expect(details.propertyTax).toBe(964);
+    expect(details.parking).toBe("true");
+    expect(details.fiber).toBe("true");
+    expect(details.isCopropriete).toBe("false");
   });
 
   it("envoie les définitions tools à OpenAI pour le tour assistant", async () => {
@@ -761,6 +645,10 @@ describe("assistant endpoints", () => {
       expect(toolNames.includes("create")).toBe(true);
       expect(toolNames.includes("update")).toBe(true);
 
+      const instructions = typeof firstBody.instructions === "string" ? firstBody.instructions : "";
+      expect(instructions).toContain("objectType=bien");
+      expect(instructions).toContain("objectId=3e4c1cee-465a-4da2-9544-e1ee2bcff85c");
+
       const firstInput = Array.isArray(firstBody.input) ? firstBody.input : [];
       const systemMessages = firstInput.filter(
         (entry) =>
@@ -768,21 +656,8 @@ describe("assistant endpoints", () => {
           typeof entry === "object" &&
           !Array.isArray(entry) &&
           (entry as { role?: unknown }).role === "system",
-      ) as Array<{ content?: unknown }>;
-      const systemTexts = systemMessages
-        .flatMap((entry) => (Array.isArray(entry.content) ? entry.content : []))
-        .map((content) =>
-          content && typeof content === "object" && !Array.isArray(content)
-            ? ((content as { text?: unknown }).text ?? "")
-            : "",
-        )
-        .filter((value): value is string => typeof value === "string" && value.length > 0);
-      const hasNavigationContext = systemTexts.some(
-        (text) =>
-          text.includes("objectType=bien") &&
-          text.includes("objectId=3e4c1cee-465a-4da2-9544-e1ee2bcff85c"),
       );
-      expect(hasNavigationContext).toBe(true);
+      expect(systemMessages.length).toBe(0);
 
       const assistantMessages = firstInput.filter(
         (entry) =>
@@ -802,6 +677,143 @@ describe("assistant endpoints", () => {
         .filter((value): value is string => typeof value === "string");
       expect(assistantContentTypes.includes("output_text")).toBe(true);
       expect(assistantContentTypes.includes("input_text")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.env.AI_PROVIDER = originalAiProvider;
+      process.env.OPENAI_API_KEY = originalOpenAIKey;
+    }
+  });
+
+  it("accepte un function_call create avec des champs à plat (sans params imbriqué)", async () => {
+    const token = await registerAndGetToken("openai-create-flat-args");
+    const orgId = await getOrgIdFromToken(token);
+    const originalFetch = globalThis.fetch;
+    const originalAiProvider = process.env.AI_PROVIDER;
+    const originalOpenAIKey = process.env.OPENAI_API_KEY;
+    let responseCallCount = 0;
+
+    process.env.AI_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url.endsWith("/responses")) {
+        responseCallCount += 1;
+        if (responseCallCount === 1) {
+          return new Response(
+            JSON.stringify({
+              id: "resp_flat_create_1",
+              output: [
+                {
+                  type: "function_call",
+                  name: "create",
+                  call_id: "call_flat_create_1",
+                  arguments: JSON.stringify({
+                    objectType: "bien",
+                    title: "Appartement centre-ville",
+                    propertyType: "APPARTEMENT",
+                    address: "11 rue des Tertres",
+                    postalCode: "06600",
+                    city: "Antibes",
+                    owner: {
+                      firstName: "Louise",
+                      lastName: "Martin",
+                      phone: "0601020304",
+                      email: `owner.flat.${crypto.randomUUID()}@monimmo.fr`,
+                    },
+                  }),
+                },
+              ],
+              usage: {
+                input_tokens: 200,
+                output_tokens: 40,
+                total_tokens: 240,
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        const rawBody = typeof init?.body === "string" ? init.body : "";
+        const parsedBody =
+          rawBody.trim().length > 0 ? (JSON.parse(rawBody) as Record<string, unknown>) : {};
+        const toolOutputCall = Array.isArray(parsedBody.input)
+          ? parsedBody.input.find(
+              (item) =>
+                item &&
+                typeof item === "object" &&
+                !Array.isArray(item) &&
+                (item as { call_id?: unknown }).call_id === "call_flat_create_1",
+            )
+          : null;
+        const toolOutputText =
+          toolOutputCall &&
+          typeof toolOutputCall === "object" &&
+          !Array.isArray(toolOutputCall) &&
+          typeof (toolOutputCall as { output?: unknown }).output === "string"
+            ? ((toolOutputCall as { output: string }).output ?? "")
+            : "";
+        const parsedToolOutput =
+          toolOutputText.trim().length > 0
+            ? (JSON.parse(toolOutputText) as Record<string, unknown>)
+            : {};
+        const summary =
+          typeof parsedToolOutput.summary === "string"
+            ? parsedToolOutput.summary
+            : "Bien créé.";
+
+        return new Response(
+          JSON.stringify({
+            id: "resp_flat_create_2",
+            output_text: summary,
+            usage: {
+              input_tokens: 120,
+              output_tokens: 22,
+              total_tokens: 142,
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const response = await createApp().fetch(
+        new Request("http://localhost/assistant/messages", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            message: "Crée un bien appartement centre-ville à Antibes",
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.assistantMessage.text).toContain("Bien créé");
+
+      const createdProperty = await db.query.properties.findFirst({
+        where: and(eq(properties.orgId, orgId), eq(properties.title, "Appartement centre-ville")),
+        orderBy: [desc(properties.createdAt), desc(properties.id)],
+      });
+      expect(createdProperty).toBeDefined();
     } finally {
       globalThis.fetch = originalFetch;
       process.env.AI_PROVIDER = originalAiProvider;

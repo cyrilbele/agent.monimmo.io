@@ -26,6 +26,21 @@ Objectifs principaux:
 4. toujours faire les tests et maintenir un coverage de 80%
 5. pour le front end, ne pas stocker dans le localStorage des données immobilières qui pourraient etre utile sur d autres front-end, toujours persister dans le back-end
 
+## Standard objets business (obligatoire)
+
+Pour tout nouvel objet business (`bien`, `client`, `rdv`, `visite`, etc.), appliquer le meme standard:
+
+1. **Stockage lineaire**: la donnée métier doit etre stockée en base dans un dictionnaire JSON `key:value` (pas de structure imbriquée).
+2. **Definition des champs**: exposer la structure via `GET /data-structure/{objectType}` (ou alias `GET /getdatastructure/{objectType}`) avec un tableau de definitions incluant:
+   - `key`, `name`, `group`, `subgroup` optionnel, `type`
+   - contraintes (`required`, `min`, `max`)
+   - choix possibles (`options`) pour les select
+   - regles conditionnelles de visibilité (`hide`)
+3. **Front**: l’affichage des champs doit etre piloté par la data-structure API (groupes/sous-groupes inclus), pas par une liste codée en dur.
+4. **IA tools**: `getParams(objectType)` doit reutiliser la meme data-structure, afin de garantir la coherence entre UI, API et assistant.
+5. **Suivi des modifications**: toute creation/mise a jour doit ecrire dans `object_changes` avec:
+   - `objectType`, `objectId`, `paramName`, `paramValue`, `date` (`createdAt`), `mode` (`USER` ou `AI`).
+
 ## Regles pour la UI
 
 Ne pas afficher les identifiants techniques, cela ne parle pas à l utilisateur

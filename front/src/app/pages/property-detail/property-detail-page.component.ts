@@ -32,6 +32,9 @@ import type {
   PropertyStatus,
   PropertyVisitResponse,
   TypeDocument,
+  ObjectDataFieldDefinition,
+  ObjectDataFieldType,
+  ObjectChangeEntryResponse,
 } from "../../core/api.models";
 import {
   DOCUMENT_TABS,
@@ -81,7 +84,7 @@ Chart.register(...registerables);
 type MainTabId =
   | "property"
   | "documents"
-  | "prospects"
+  | "clients"
   | "visits"
   | "messages"
   | "valuation";
@@ -166,6 +169,46 @@ const VALUATION_KEY_FIELD_REFERENCES: Array<{
   { categoryId: "characteristics", fieldKey: "lastRenovationYear" },
   { categoryId: "characteristics", fieldKey: "rooms" },
 ];
+
+const PROPERTY_GROUP_ORDER: Record<string, number> = {
+  general: 0,
+  location: 1,
+  characteristics: 2,
+  amenities: 3,
+  copropriete: 4,
+  finance: 5,
+  regulation: 6,
+  marketing: 7,
+};
+
+const PROPERTY_CLIENT_RELATION_OPTIONS: Array<{
+  value: "OWNER" | "PROSPECT" | "ACHETEUR";
+  label: string;
+}> = [
+  { value: "PROSPECT", label: "Prospect" },
+  { value: "OWNER", label: "Propriétaire" },
+  { value: "ACHETEUR", label: "Acheteur" },
+];
+
+const mapApiFieldTypeToDetailType = (type: ObjectDataFieldType): "text" | "number" | "select" | "textarea" | "date" => {
+  switch (type) {
+    case "int":
+    case "float":
+      return "number";
+    case "select":
+      return "select";
+    case "text":
+      return "textarea";
+    case "date":
+      return "date";
+    case "datetime":
+      return "text";
+    case "boolean":
+      return "select";
+    default:
+      return "text";
+  }
+};
 
 @Component({
   selector: "app-property-detail-page",
@@ -292,12 +335,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   readonly statusLabels = STATUS_LABELS;
 
-  readonly propertyCategories = PROPERTY_DETAILS_CATEGORIES;
+  readonly propertyCategories = signal<PropertyDetailsCategoryDefinition[]>([
+    ...PROPERTY_DETAILS_CATEGORIES,
+  ]);
   readonly documentTabs = DOCUMENT_TABS;
   readonly categoryForms = signal<Partial<CategoryForms>>({});
   readonly hiddenExpectedDocumentKeys = signal<string[]>([]);
+  readonly objectChangeHistoryByParam = signal<Record<string, ObjectChangeEntryResponse[]>>({});
 
   readonly prospectForm = this.formBuilder.nonNullable.group({
+    relationRole: ["PROSPECT" as "OWNER" | "PROSPECT" | "ACHETEUR"],
     existingLookup: [""],
     userId: [""],
     firstName: [""],
@@ -453,6 +500,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   });
   readonly prospectAutocompleteId = `prospect-autocomplete-${this.propertyId || "property"}`;
   readonly prospectAutocompleteListId = `prospect-autocomplete-list-${this.propertyId || "property"}`;
+  readonly prospectRelationOptions = PROPERTY_CLIENT_RELATION_OPTIONS;
   readonly filteredProspectClients = computed(() => {
     const clients = this.clients();
     const lookup = this.prospectForm.controls.existingLookup.value.trim().toLowerCase();
@@ -1340,18 +1388,39 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.valuationAiPromptText.set(null);
     this.salesPage.set(1);
     this.hiddenExpectedDocumentKeys.set([]);
+    this.objectChangeHistoryByParam.set({});
     this.destroyComparablesChart();
     this.didInitialValuationComparablesRefresh = false;
 
     try {
-      const [property, messagesResponse, filesResponse, prospectsResponse, visitsResponse] =
+      const propertyDataStructurePromise = Promise.resolve()
+        .then(() => this.propertyService.getDataStructure("bien"))
+        .catch(() => null);
+      const objectChangesPromise = Promise.resolve()
+        .then(() => this.propertyService.listObjectChanges("bien", this.propertyId, 300))
+        .catch(() => null);
+      const [
+        propertyDataStructure,
+        property,
+        messagesResponse,
+        filesResponse,
+        prospectsResponse,
+        visitsResponse,
+        objectChangesResponse,
+      ] =
         await Promise.all([
+          propertyDataStructurePromise,
           this.propertyService.getById(this.propertyId),
           this.messageService.listByProperty(this.propertyId, 100),
           this.fileService.listByProperty(this.propertyId, 100),
           this.propertyService.listProspects(this.propertyId),
           this.propertyService.listVisits(this.propertyId),
+          objectChangesPromise,
         ]);
+
+      if (propertyDataStructure && propertyDataStructure.length > 0) {
+        this.applyPropertyDataStructure(propertyDataStructure);
+      }
 
       this.property.set(property);
       this.valuationSalePriceInput.set(this.resolveValuationSalePriceInput(property));
@@ -1365,6 +1434,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.prospects.set(prospectsResponse.items);
       this.visits.set(visitsResponse.items);
       this.categoryForms.set(this.createCategoryForms(property));
+      this.objectChangeHistoryByParam.set(this.groupObjectChangesByParam(objectChangesResponse?.items ?? []));
       void this.loadPropertyRisks();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Chargement impossible.";
@@ -1423,15 +1493,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   shouldDisplayPropertyField(
-    categoryId: PropertyDetailsCategoryId,
+    _categoryId: PropertyDetailsCategoryId,
     field: PropertyDetailsFieldDefinition,
   ): boolean {
-    if (categoryId === "characteristics" && field.key === "septicTankCompliant") {
-      return this.resolveCurrentSanitationType() === "FOSSE_SEPTIQUE";
-    }
-
-    if (categoryId === "amenities" && field.key === "fenced") {
-      return this.resolveCurrentPropertyType() === "MAISON";
+    if (field.hide && field.hide.length > 0) {
+      for (const rule of field.hide) {
+        const currentValue = this.resolveCurrentRuleValue(rule.key);
+        if (this.evaluateFieldHideRule(currentValue, rule.operator, rule.value)) {
+          return false;
+        }
+      }
     }
 
     return true;
@@ -1482,9 +1553,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       }
     }
 
-    patchPayload.details = {
-      [category.id]: categoryDetailsPayload,
-    };
+    patchPayload.details = categoryDetailsPayload;
 
     this.patchPending.set(true);
     this.requestFeedback.set("Mise à jour des informations en cours...");
@@ -1584,38 +1653,147 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return !this.isFieldValueEmpty(rawValue);
   }
 
-  private resolveCurrentSanitationType(): string {
-    const property = this.property();
-    if (!property) {
-      return "";
-    }
-
-    if (this.isEditingActiveCategory() && this.activePropertyCategory() === "characteristics") {
-      const form = this.activePropertyForm();
-      const rawValue = form?.controls["sanitationType"]?.value;
-      return typeof rawValue === "string" ? rawValue.trim().toUpperCase() : "";
-    }
-
-    const characteristics = this.getCategoryDetails(property, "characteristics");
-    const rawValue = characteristics["sanitationType"];
-    return typeof rawValue === "string" ? rawValue.trim().toUpperCase() : "";
+  fieldHistoryCount(fieldKey: string): number {
+    return this.fieldHistoryItems(fieldKey).length;
   }
 
-  private resolveCurrentPropertyType(): string {
+  fieldHistoryItems(fieldKey: string): ObjectChangeEntryResponse[] {
+    const key = fieldKey.trim();
+    if (!key) {
+      return [];
+    }
+
+    return this.objectChangeHistoryByParam()[key] ?? [];
+  }
+
+  fieldHistoryPreview(fieldKey: string, limit = 6): ObjectChangeEntryResponse[] {
+    const safeLimit = Math.max(1, Math.min(20, Math.trunc(limit)));
+    return this.fieldHistoryItems(fieldKey).slice(0, safeLimit);
+  }
+
+  fieldHistoryLabel(entry: ObjectChangeEntryResponse): string {
+    const modeLabel = entry.mode === "AI" ? "IA" : "Utilisateur";
+    const dateLabel = this.formatDateTimeForHistory(entry.modifiedAt);
+    return `${dateLabel} • ${modeLabel}`;
+  }
+
+  fieldHistoryValue(entry: ObjectChangeEntryResponse): string {
+    const value = entry.paramValue.trim();
+    if (!value) {
+      return "Valeur vide";
+    }
+
+    return value;
+  }
+
+  private resolveCurrentRuleValue(key: string): unknown {
     const property = this.property();
     if (!property) {
-      return "";
+      return null;
     }
 
-    if (this.isEditingActiveCategory() && this.activePropertyCategory() === "general") {
-      const form = this.activePropertyForm();
-      const rawValue = form?.controls["propertyType"]?.value;
-      return typeof rawValue === "string" ? rawValue.trim().toUpperCase() : "";
+    const activeForm = this.activePropertyForm();
+    const formControl = activeForm?.controls[key];
+    if (this.isEditingActiveCategory() && formControl) {
+      return formControl.value;
     }
 
-    const general = this.getCategoryDetails(property, "general");
-    const rawValue = general["propertyType"];
-    return typeof rawValue === "string" ? rawValue.trim().toUpperCase() : "";
+    const propertyRecord = property as unknown as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(propertyRecord, key)) {
+      return propertyRecord[key];
+    }
+
+    const detailsRecord = this.isRecord(property.details)
+      ? (property.details as Record<string, unknown>)
+      : {};
+    if (Object.prototype.hasOwnProperty.call(detailsRecord, key)) {
+      return detailsRecord[key];
+    }
+
+    for (const category of this.propertyCategories()) {
+      const categoryDetails = detailsRecord[category.id];
+      if (!this.isRecord(categoryDetails)) {
+        continue;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(categoryDetails, key)) {
+        return categoryDetails[key];
+      }
+    }
+
+    return null;
+  }
+
+  private evaluateFieldHideRule(
+    rawCurrentValue: unknown,
+    operator: "=" | "!=" | "in" | "notIn",
+    rawRuleValue: string | number | boolean | Array<string | number | boolean>,
+  ): boolean {
+    const currentValue = this.normalizeRuleComparableValue(rawCurrentValue);
+    const ruleValue = this.normalizeRuleComparableValue(rawRuleValue);
+
+    if (operator === "=") {
+      return currentValue === ruleValue;
+    }
+
+    if (operator === "!=") {
+      return currentValue !== ruleValue;
+    }
+
+    if (operator === "in") {
+      if (!Array.isArray(ruleValue)) {
+        return false;
+      }
+      return ruleValue.some((candidate) => candidate === currentValue);
+    }
+
+    if (operator === "notIn") {
+      if (!Array.isArray(ruleValue)) {
+        return false;
+      }
+      return !ruleValue.some((candidate) => candidate === currentValue);
+    }
+
+    return false;
+  }
+
+  private formatDateTimeForHistory(value: string): string {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(parsed);
+  }
+
+  private normalizeRuleComparableValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.normalizeRuleComparableValue(entry));
+    }
+
+    if (typeof value === "string") {
+      const normalized = value.trim();
+      if (!normalized) {
+        return "";
+      }
+      const lowered = normalized.toLowerCase();
+      if (lowered === "true") {
+        return true;
+      }
+      if (lowered === "false") {
+        return false;
+      }
+      return normalized.toUpperCase();
+    }
+
+    return value;
   }
 
   async updateStatus(status: PropertyStatus): Promise<void> {
@@ -1942,6 +2120,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.prospectMode.set("existing");
     this.applyProspectModeConstraints("existing");
     this.prospectForm.reset({
+      relationRole: "PROSPECT",
       existingLookup: "",
       userId: "",
       firstName: "",
@@ -2031,8 +2210,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const mode = this.prospectMode();
+    const relationRole = this.prospectForm.controls.relationRole.value;
     this.prospectPending.set(true);
-    this.prospectFeedback.set("Ajout du prospect en cours...");
+    this.prospectFeedback.set("Ajout du client en cours...");
 
     try {
       let created: PropertyProspectResponse;
@@ -2049,6 +2229,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
         created = await this.propertyService.addProspect(this.propertyId, {
           userId: client.id,
+          relationRole,
         });
       } else {
         const firstName = this.prospectForm.controls.firstName.value.trim();
@@ -2071,13 +2252,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
             postalCode: this.normalizeEmptyAsNull(this.prospectForm.controls.postalCode.value),
             city: this.normalizeEmptyAsNull(this.prospectForm.controls.city.value),
           },
+          relationRole,
         });
       }
 
       this.prospects.update((items) =>
         [created, ...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       );
-      this.prospectFeedback.set("Prospect ajouté.");
+      this.prospectFeedback.set("Client lié.");
       this.closeProspectModal();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ajout impossible.";
@@ -2256,6 +2438,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
             postalCode: this.normalizeEmptyAsNull(this.visitForm.controls.postalCode.value),
             city: this.normalizeEmptyAsNull(this.visitForm.controls.city.value),
           },
+          relationRole: "PROSPECT",
         });
 
         prospectUserId = createdProspect.userId;
@@ -2302,8 +2485,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   prospectRelationLabel(relationRole: string): string {
     switch (relationRole) {
       case "PROSPECT":
-      case "ACHETEUR":
         return "Prospect";
+      case "ACHETEUR":
+        return "Acheteur";
       case "OWNER":
         return "Propriétaire";
       case "NOTAIRE":
@@ -3379,7 +3563,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     categoryId: PropertyDetailsCategoryId,
     fieldKey: string,
   ): PropertyDetailsFieldDefinition | null {
-    const category = this.propertyCategories.find((item) => item.id === categoryId);
+    const category = this.propertyCategories().find((item) => item.id === categoryId);
     if (!category) {
       return null;
     }
@@ -3497,12 +3681,15 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const details = property.details;
-    const characteristics = this.isRecord(details["characteristics"]) ? details["characteristics"] : null;
-    if (!characteristics) {
-      return null;
+    const directValue = this.parsePositiveNumber(details[fieldKey]);
+    if (directValue !== null) {
+      return directValue;
     }
 
-    return this.parsePositiveNumber(characteristics[fieldKey]);
+    const characteristics = this.isRecord(details["characteristics"])
+      ? (details["characteristics"] as Record<string, unknown>)
+      : null;
+    return characteristics ? this.parsePositiveNumber(characteristics[fieldKey]) : null;
   }
 
   private parseOptionalNumber(rawValue: string): number | null {
@@ -3672,20 +3859,36 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    const raw = property.details[VALUATION_COMPARABLE_FILTERS_DETAILS_KEY];
-    if (!this.isRecord(raw)) {
-      return null;
-    }
+    const details = property.details;
+    const flatSurfaceMin = details["valuationComparableFiltersSurfaceMinM2"];
+    const flatSurfaceMax = details["valuationComparableFiltersSurfaceMaxM2"];
+    const flatLandMin = details["valuationComparableFiltersLandSurfaceMinM2"];
+    const flatLandMax = details["valuationComparableFiltersLandSurfaceMaxM2"];
 
     const normalize = (value: unknown): number | null => {
       const parsed = this.parsePositiveNumber(value);
       return parsed !== null ? this.roundComparable(parsed) : null;
     };
 
-    const surfaceMinRaw = normalize(raw["surfaceMinM2"]);
-    const surfaceMaxRaw = normalize(raw["surfaceMaxM2"]);
-    const landMinRaw = normalize(raw["landSurfaceMinM2"]);
-    const landMaxRaw = normalize(raw["landSurfaceMaxM2"]);
+    let surfaceMinRaw = normalize(flatSurfaceMin);
+    let surfaceMaxRaw = normalize(flatSurfaceMax);
+    let landMinRaw = normalize(flatLandMin);
+    let landMaxRaw = normalize(flatLandMax);
+
+    if (
+      surfaceMinRaw === null &&
+      surfaceMaxRaw === null &&
+      landMinRaw === null &&
+      landMaxRaw === null
+    ) {
+      const legacyRaw = property.details[VALUATION_COMPARABLE_FILTERS_DETAILS_KEY];
+      if (this.isRecord(legacyRaw)) {
+        surfaceMinRaw = normalize(legacyRaw["surfaceMinM2"]);
+        surfaceMaxRaw = normalize(legacyRaw["surfaceMaxM2"]);
+        landMinRaw = normalize(legacyRaw["landSurfaceMinM2"]);
+        landMaxRaw = normalize(legacyRaw["landSurfaceMaxM2"]);
+      }
+    }
 
     return {
       surfaceMinM2:
@@ -3715,8 +3918,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private resolveComparableTypeFromProperty(property: PropertyResponse): ComparablePropertyType {
     const details = property.details ?? {};
+    const directType = typeof details["propertyType"] === "string" ? details["propertyType"] : "";
     const general = this.isRecord(details["general"]) ? details["general"] : {};
-    const rawType = typeof general["propertyType"] === "string" ? general["propertyType"] : "";
+    const rawType = directType || (typeof general["propertyType"] === "string" ? general["propertyType"] : "");
     const normalized = rawType.trim().toUpperCase();
     const match = COMPARABLE_TYPE_OPTIONS.find((option) => option.value === normalized);
     return match?.value ?? "APPARTEMENT";
@@ -3851,9 +4055,108 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     categoryId: PropertyDetailsCategoryId,
   ): PropertyDetailsCategoryDefinition {
     return (
-      this.propertyCategories.find((category) => category.id === categoryId) ??
-      this.propertyCategories[0]
+      this.propertyCategories().find((category) => category.id === categoryId) ??
+      this.propertyCategories()[0]
     );
+  }
+
+  private applyPropertyDataStructure(fields: ObjectDataFieldDefinition[]): void {
+    const grouped = new Map<PropertyDetailsCategoryId, PropertyDetailsFieldDefinition[]>();
+
+    for (const field of fields) {
+      const group = this.normalizePropertyGroup(field.group);
+      const mappedType = mapApiFieldTypeToDetailType(field.type);
+      const options =
+        field.options?.map((option) => ({ value: option.value, label: option.label })) ??
+        (field.type === "boolean" ? [{ value: "true", label: "Oui" }, { value: "false", label: "Non" }] : undefined);
+
+      const categoryFields = grouped.get(group) ?? [];
+      categoryFields.push({
+        key: field.key,
+        label: field.name,
+        type: mappedType,
+        subgroup: field.subgroup,
+        source: field.source === "property" ? "property" : undefined,
+        options,
+        hide: field.hide,
+      });
+      grouped.set(group, categoryFields);
+    }
+
+    const categories: PropertyDetailsCategoryDefinition[] = Array.from(grouped.entries())
+      .map(([id, categoryFields]) => ({
+        id,
+        label: this.resolvePropertyGroupLabel(id),
+        fields: categoryFields,
+      }))
+      .sort((left, right) => (PROPERTY_GROUP_ORDER[left.id] ?? 999) - (PROPERTY_GROUP_ORDER[right.id] ?? 999));
+
+    if (categories.length === 0) {
+      return;
+    }
+
+    this.propertyCategories.set(categories);
+    if (!categories.some((category) => category.id === this.activePropertyCategory())) {
+      this.activePropertyCategory.set(categories[0]!.id);
+    }
+  }
+
+  private groupObjectChangesByParam(
+    entries: ObjectChangeEntryResponse[],
+  ): Record<string, ObjectChangeEntryResponse[]> {
+    const grouped: Record<string, ObjectChangeEntryResponse[]> = {};
+    for (const entry of entries) {
+      const key = entry.paramName.trim();
+      if (!key) {
+        continue;
+      }
+
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key]!.push(entry);
+    }
+    return grouped;
+  }
+
+  private normalizePropertyGroup(rawGroup: string): PropertyDetailsCategoryId {
+    const normalized = rawGroup.trim().toLowerCase();
+    switch (normalized) {
+      case "general":
+      case "location":
+      case "characteristics":
+      case "amenities":
+      case "copropriete":
+      case "finance":
+      case "regulation":
+      case "marketing":
+        return normalized;
+      default:
+        return "general";
+    }
+  }
+
+  private resolvePropertyGroupLabel(group: PropertyDetailsCategoryId): string {
+    switch (group) {
+      case "general":
+        return "Informations générales";
+      case "location":
+        return "Localisation";
+      case "characteristics":
+        return "Caractéristiques principales";
+      case "amenities":
+        return "Prestations & équipements";
+      case "copropriete":
+        return "Copropriété";
+      case "finance":
+        return "Informations financières";
+      case "regulation":
+        return "Données réglementaires";
+      case "marketing":
+        return "Commercialisation";
+      default:
+        return group;
+    }
   }
 
   private getDocumentTabDefinition(tabId: DocumentTabId): DocumentTabDefinition {
@@ -4034,9 +4337,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     try {
       const updated = await this.propertyService.patch(this.propertyId, {
-        details: {
-          finance: nextFinanceDetails,
-        },
+        details: nextFinanceDetails,
       });
       this.property.set(updated);
     } catch (error) {
@@ -4055,12 +4356,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     try {
       const updated = await this.propertyService.patch(this.propertyId, {
         details: {
-          [VALUATION_COMPARABLE_FILTERS_DETAILS_KEY]: {
-            surfaceMinM2: this.comparableSurfaceMinM2(),
-            surfaceMaxM2: this.comparableSurfaceMaxM2(),
-            landSurfaceMinM2: this.comparableTerrainMinM2(),
-            landSurfaceMaxM2: this.comparableTerrainMaxM2(),
-          },
+          valuationComparableFiltersSurfaceMinM2: this.comparableSurfaceMinM2(),
+          valuationComparableFiltersSurfaceMaxM2: this.comparableSurfaceMaxM2(),
+          valuationComparableFiltersLandSurfaceMinM2: this.comparableTerrainMinM2(),
+          valuationComparableFiltersLandSurfaceMaxM2: this.comparableTerrainMaxM2(),
         },
       });
       this.property.set(updated);
@@ -4098,7 +4397,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private createCategoryForms(property: PropertyResponse): CategoryForms {
     const forms = {} as CategoryForms;
 
-    for (const category of this.propertyCategories) {
+    for (const category of this.propertyCategories()) {
       forms[category.id] = this.createCategoryForm(property, category);
     }
 
@@ -4139,14 +4438,31 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     property: PropertyResponse,
     categoryId: PropertyDetailsCategoryId,
   ): Record<string, unknown> {
-    const detailsRecord = property.details as Record<string, unknown>;
-    const rawCategory = detailsRecord[categoryId];
+    const detailsRecord = this.isRecord(property.details)
+      ? (property.details as Record<string, unknown>)
+      : {};
+    const merged: Record<string, unknown> = {};
 
-    if (typeof rawCategory !== "object" || rawCategory === null || Array.isArray(rawCategory)) {
-      return {};
+    const category = this.propertyCategories().find((item) => item.id === categoryId);
+    for (const field of category?.fields ?? []) {
+      if (field.source === "property") {
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(detailsRecord, field.key)) {
+        merged[field.key] = detailsRecord[field.key];
+      }
     }
 
-    return rawCategory as Record<string, unknown>;
+    const rawCategory = detailsRecord[categoryId];
+    if (this.isRecord(rawCategory)) {
+      for (const [key, value] of Object.entries(rawCategory)) {
+        if (!Object.prototype.hasOwnProperty.call(merged, key)) {
+          merged[key] = value;
+        }
+      }
+    }
+
+    return merged;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

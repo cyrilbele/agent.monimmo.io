@@ -38,6 +38,7 @@ export const users = sqliteTable("users", {
   city: text("city"),
   personalNotes: text("personal_notes"),
   accountType: text("account_type").notNull().default("CLIENT"),
+  data: text("data").notNull().default("{}"),
   role: text("role").notNull(),
   passwordHash: text("password_hash").notNull(),
   ...timestampColumns,
@@ -126,6 +127,7 @@ export const propertyVisits = sqliteTable(
     endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
     compteRendu: text("compte_rendu"),
     bonDeVisiteFileId: text("bon_de_visite_file_id"),
+    data: text("data").notNull().default("{}"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -422,6 +424,7 @@ export const calendarEvents = sqliteTable(
     startsAt: integer("starts_at", { mode: "timestamp_ms" }).notNull(),
     endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
     payload: text("payload"),
+    data: text("data").notNull().default("{}"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -514,5 +517,30 @@ export const assistantMessages = sqliteTable(
       table.createdAt,
     ),
     orgCreatedAtIdx: index("assistant_messages_org_created_at_idx").on(table.orgId, table.createdAt),
+  }),
+);
+
+export const objectChanges = sqliteTable(
+  "object_changes",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    objectType: text("object_type").notNull(),
+    objectId: text("object_id").notNull(),
+    paramName: text("param_name").notNull(),
+    paramValue: text("param_value").notNull(),
+    mode: text("mode").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    orgObjectCreatedAtIdx: index("object_changes_org_object_created_at_idx").on(
+      table.orgId,
+      table.objectType,
+      table.objectId,
+      table.createdAt,
+    ),
+    orgCreatedAtIdx: index("object_changes_org_created_at_idx").on(table.orgId, table.createdAt),
   }),
 );

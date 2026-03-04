@@ -40,7 +40,6 @@ export class AssistantWidgetComponent implements OnDestroy {
   readonly loading = signal(false);
   readonly sending = signal(false);
   readonly assistantThinking = signal(false);
-  readonly actionPendingIds = signal<Record<string, boolean>>({});
   readonly feedback = signal<string | null>(null);
   readonly draft = signal("");
   readonly conversation = signal<AssistantConversationResponse | null>(null);
@@ -148,44 +147,6 @@ export class AssistantWidgetComponent implements OnDestroy {
     }
   }
 
-  async confirmAction(actionId: string): Promise<void> {
-    if (this.actionPendingIds()[actionId]) {
-      return;
-    }
-
-    this.patchActionPending(actionId, true);
-    this.feedback.set(null);
-
-    try {
-      const response = await this.assistantService.confirmAction(actionId);
-      this.conversation.set(response.conversation);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Confirmation impossible.";
-      this.feedback.set(message);
-    } finally {
-      this.patchActionPending(actionId, false);
-    }
-  }
-
-  async cancelAction(actionId: string): Promise<void> {
-    if (this.actionPendingIds()[actionId]) {
-      return;
-    }
-
-    this.patchActionPending(actionId, true);
-    this.feedback.set(null);
-
-    try {
-      const response = await this.assistantService.cancelAction(actionId);
-      this.conversation.set(response.conversation);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Annulation impossible.";
-      this.feedback.set(message);
-    } finally {
-      this.patchActionPending(actionId, false);
-    }
-  }
-
   onDraftKeydown(event: KeyboardEvent): void {
     if (event.key !== "Enter" || event.shiftKey) {
       return;
@@ -205,17 +166,6 @@ export class AssistantWidgetComponent implements OnDestroy {
     }
 
     return this.escapeHtml(message.text).replace(/\n/g, "<br/>");
-  }
-
-  isActionPending(actionId: string): boolean {
-    return Boolean(this.actionPendingIds()[actionId]);
-  }
-
-  private patchActionPending(actionId: string, value: boolean): void {
-    this.actionPendingIds.update((current) => ({
-      ...current,
-      [actionId]: value,
-    }));
   }
 
   private appendOptimisticUserMessage(text: string): void {
@@ -240,7 +190,6 @@ export class AssistantWidgetComponent implements OnDestroy {
             role: "USER",
             text,
             citations: [],
-            pendingAction: null,
             createdAt: nowIso,
           },
         ],
@@ -272,7 +221,6 @@ export class AssistantWidgetComponent implements OnDestroy {
             role: "ASSISTANT",
             text: "",
             citations: [],
-            pendingAction: null,
             createdAt: nowIso,
           },
         ],

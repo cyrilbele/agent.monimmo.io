@@ -29,8 +29,6 @@ describe("AssistantService", () => {
       objectType: "bien",
       objectId: "bien_1",
     });
-    await service.confirmAction("action:1");
-    await service.cancelAction("action:1");
 
     expect(calls).toEqual([
       ["GET", "/assistant/conversation"],
@@ -48,8 +46,6 @@ describe("AssistantService", () => {
           },
         },
       ],
-      ["POST", "/assistant/actions/action%3A1/confirm", { body: {} }],
-      ["POST", "/assistant/actions/action%3A1/cancel", { body: {} }],
     ]);
   });
 });

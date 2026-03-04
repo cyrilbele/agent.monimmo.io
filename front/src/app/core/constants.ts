@@ -107,12 +107,20 @@ export interface DetailSelectOption {
   label: string;
 }
 
+export interface PropertyDetailsFieldHideRule {
+  key: string;
+  operator: "=" | "!=" | "in" | "notIn";
+  value: string | number | boolean | Array<string | number | boolean>;
+}
+
 export interface PropertyDetailsFieldDefinition {
   key: string;
   label: string;
   type: DetailFieldType;
+  subgroup?: string;
   source?: "property";
   options?: readonly DetailSelectOption[];
+  hide?: readonly PropertyDetailsFieldHideRule[];
 }
 
 export type PropertyDetailsCategoryId =
@@ -333,7 +341,13 @@ export const PROPERTY_DETAILS_CATEGORIES: readonly PropertyDetailsCategoryDefini
       { key: "terrace", label: "Terrasse", type: "select", options: BOOL_OPTIONS },
       { key: "garden", label: "Jardin", type: "select", options: GARDEN_OPTIONS },
       { key: "pool", label: "Piscine", type: "select", options: POOL_OPTIONS },
-      { key: "fenced", label: "Clôturé", type: "select", options: BOOL_OPTIONS },
+      {
+        key: "fenced",
+        label: "Clôturé",
+        type: "select",
+        options: BOOL_OPTIONS,
+        hide: [{ key: "propertyType", operator: "!=", value: "MAISON" }],
+      },
       { key: "coveredGarage", label: "Garage couvert", type: "select", options: BOOL_OPTIONS },
       { key: "carport", label: "Carport", type: "select", options: BOOL_OPTIONS },
       {

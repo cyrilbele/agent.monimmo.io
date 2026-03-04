@@ -167,30 +167,10 @@ export const GlobalSearchResponseSchema = z.object({
 
 export const AssistantObjectTypeSchema = z.enum(["bien", "client", "rdv", "visite"]);
 
-export const AssistantActionOperationSchema = z.enum(["create", "update"]);
-
-export const AssistantPendingActionStatusSchema = z.enum([
-  "PENDING",
-  "EXECUTED",
-  "CANCELED",
-  "FAILED",
-]);
-
 export const AssistantCitationResponseSchema = z.object({
   title: z.string(),
   url: z.url(),
   snippet: z.string(),
-});
-
-export const AssistantPendingActionResponseSchema = z.object({
-  id: z.string(),
-  status: AssistantPendingActionStatusSchema,
-  operation: AssistantActionOperationSchema,
-  objectType: AssistantObjectTypeSchema,
-  objectId: z.string().nullable(),
-  previewText: z.string(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
 });
 
 export const AssistantMessageResponseSchema = z.object({
@@ -198,7 +178,6 @@ export const AssistantMessageResponseSchema = z.object({
   role: z.enum(["USER", "ASSISTANT"]),
   text: z.string(),
   citations: z.array(AssistantCitationResponseSchema),
-  pendingAction: AssistantPendingActionResponseSchema.nullable(),
   createdAt: z.iso.datetime(),
 });
 
@@ -225,11 +204,68 @@ export const AssistantMessageCreateResponseSchema = z.object({
   assistantMessage: AssistantMessageResponseSchema,
 });
 
-export const AssistantActionResolveResponseSchema = z.object({
-  action: AssistantPendingActionResponseSchema,
-  conversation: AssistantConversationResponseSchema,
-  assistantMessage: AssistantMessageResponseSchema,
+export const ObjectChangeModeSchema = z.enum(["USER", "AI"]);
+
+export const ObjectChangeEntrySchema = z.object({
+  id: z.string(),
+  objectType: AssistantObjectTypeSchema,
+  objectId: z.string(),
+  paramName: z.string(),
+  paramValue: z.string(),
+  mode: ObjectChangeModeSchema,
+  modifiedAt: z.iso.datetime(),
 });
+
+export const ObjectChangeListResponseSchema = z.object({
+  items: z.array(ObjectChangeEntrySchema),
+});
+
+export const ObjectDataFieldTypeSchema = z.enum([
+  "string",
+  "text",
+  "int",
+  "float",
+  "boolean",
+  "date",
+  "datetime",
+  "select",
+]);
+
+export const ObjectDataFieldSourceSchema = z.enum(["object", "property"]);
+
+export const ObjectDataFieldRuleOperatorSchema = z.enum(["=", "!=", "in", "notIn"]);
+
+export const ObjectDataFieldOptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+export const ObjectDataFieldHideRuleSchema = z.object({
+  key: z.string(),
+  operator: ObjectDataFieldRuleOperatorSchema,
+  value: z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(z.union([z.string(), z.number(), z.boolean()])),
+  ]),
+});
+
+export const ObjectDataFieldDefinitionSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  group: z.string(),
+  subgroup: z.string().optional(),
+  type: ObjectDataFieldTypeSchema,
+  source: ObjectDataFieldSourceSchema.optional(),
+  required: z.boolean().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  options: z.array(ObjectDataFieldOptionSchema).optional(),
+  hide: z.array(ObjectDataFieldHideRuleSchema).optional(),
+});
+
+export const ObjectDataStructureResponseSchema = z.array(ObjectDataFieldDefinitionSchema);
 
 export const LoginRequestSchema = z.object({
   email: z.email(),
@@ -325,18 +361,7 @@ export const PropertyCreateRequestSchema = z
     city: z.string().min(1),
     postalCode: z.string().min(1),
     address: z.string().min(1),
-    ownerUserId: z.string().optional(),
-    owner: OwnerContactSchema.optional(),
     details: PropertyDetailsSchema.optional(),
-  })
-  .superRefine((value, context) => {
-    if (!value.ownerUserId && !value.owner) {
-      context.addIssue({
-        code: "custom",
-        message: "ownerUserId ou owner est obligatoire",
-        path: ["ownerUserId"],
-      });
-    }
   });
 
 export const PropertyPatchRequestSchema = z.object({
@@ -382,6 +407,7 @@ export const PropertyProspectCreateRequestSchema = z
   .object({
     userId: z.string().optional(),
     newClient: OwnerContactSchema.optional(),
+    relationRole: z.enum(["OWNER", "PROSPECT", "ACHETEUR"]).optional(),
   })
   .superRefine((value, context) => {
     if (!value.userId && !value.newClient) {
@@ -851,16 +877,22 @@ export const DtoSchemaMap = {
   GlobalSearchItemResponse: GlobalSearchItemResponseSchema,
   GlobalSearchResponse: GlobalSearchResponseSchema,
   AssistantObjectType: AssistantObjectTypeSchema,
-  AssistantActionOperation: AssistantActionOperationSchema,
-  AssistantPendingActionStatus: AssistantPendingActionStatusSchema,
   AssistantCitationResponse: AssistantCitationResponseSchema,
-  AssistantPendingActionResponse: AssistantPendingActionResponseSchema,
   AssistantMessageResponse: AssistantMessageResponseSchema,
   AssistantConversationResponse: AssistantConversationResponseSchema,
   AssistantMessageContextRequest: AssistantMessageContextRequestSchema,
   AssistantMessageCreateRequest: AssistantMessageCreateRequestSchema,
   AssistantMessageCreateResponse: AssistantMessageCreateResponseSchema,
-  AssistantActionResolveResponse: AssistantActionResolveResponseSchema,
+  ObjectChangeMode: ObjectChangeModeSchema,
+  ObjectChangeEntry: ObjectChangeEntrySchema,
+  ObjectChangeListResponse: ObjectChangeListResponseSchema,
+  ObjectDataFieldType: ObjectDataFieldTypeSchema,
+  ObjectDataFieldSource: ObjectDataFieldSourceSchema,
+  ObjectDataFieldRuleOperator: ObjectDataFieldRuleOperatorSchema,
+  ObjectDataFieldOption: ObjectDataFieldOptionSchema,
+  ObjectDataFieldHideRule: ObjectDataFieldHideRuleSchema,
+  ObjectDataFieldDefinition: ObjectDataFieldDefinitionSchema,
+  ObjectDataStructureResponse: ObjectDataStructureResponseSchema,
   LoginRequest: LoginRequestSchema,
   LoginResponse: LoginResponseSchema,
   RefreshRequest: RefreshRequestSchema,

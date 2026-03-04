@@ -8,7 +8,6 @@ import {
   propertyParties,
   propertyTimelineEvents,
   propertyUserLinks,
-  users,
 } from "../src/db/schema";
 import { propertiesService } from "../src/properties/service";
 
@@ -31,15 +30,13 @@ describe("propertiesService", () => {
     await runSeed();
   });
 
-  it("crée puis lit un bien avec création du compte propriétaire lié", async () => {
-    const owner = ownerPayload();
+  it("crée puis lit un bien sans liaison client automatique", async () => {
     const created = await propertiesService.create({
       orgId: "org_demo",
       title: "Service Bien",
       city: "Marseille",
       postalCode: "13001",
       address: "15 rue Saint-Ferréol",
-      owner,
     });
 
     expect(created.id).toBeDefined();
@@ -53,19 +50,11 @@ describe("propertiesService", () => {
     });
     expect(loaded.title).toBe("Service Bien");
 
-    const ownerUser = await db.query.users.findFirst({
-      where: eq(users.email, owner.email.toLowerCase()),
-    });
-    expect(ownerUser?.firstName).toBe(owner.firstName);
-    expect(ownerUser?.phone).toBe(owner.phone);
-
-    const ownerLink = await db.query.propertyUserLinks.findFirst({
-      where: and(
-        eq(propertyUserLinks.propertyId, created.id),
-        eq(propertyUserLinks.userId, ownerUser?.id ?? ""),
-      ),
-    });
-    expect(ownerLink?.role).toBe("OWNER");
+    const links = await db
+      .select()
+      .from(propertyUserLinks)
+      .where(eq(propertyUserLinks.propertyId, created.id));
+    expect(links).toHaveLength(0);
   });
 
   it("pagine la liste des biens", async () => {
@@ -226,9 +215,8 @@ describe("propertiesService", () => {
       });
 
       const details = created.details as Record<string, unknown>;
-      const location = details.location as Record<string, unknown>;
-      expect(location.gpsLat).toBe(48.8566);
-      expect(location.gpsLng).toBe(2.3522);
+      expect(details.gpsLat).toBe(48.8566);
+      expect(details.gpsLng).toBe(2.3522);
     } finally {
       globalThis.fetch = previousFetch;
     }
@@ -292,9 +280,8 @@ describe("propertiesService", () => {
       });
 
       const details = patched.details as Record<string, unknown>;
-      const location = details.location as Record<string, unknown>;
-      expect(location.gpsLat).toBe(48.8566);
-      expect(location.gpsLng).toBe(2.3522);
+      expect(details.gpsLat).toBe(48.8566);
+      expect(details.gpsLng).toBe(2.3522);
       expect(geocodingCalls).toBe(2);
     } finally {
       globalThis.fetch = previousFetch;

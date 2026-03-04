@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data-structure/{objectType}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getObjectDataStructureByType"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assistant/conversation": {
         parameters: {
             query?: never;
@@ -244,32 +260,16 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/assistant/actions/{id}/confirm": {
+    "/object-changes/{objectType}/{objectId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["getObjectChangeHistory"];
         put?: never;
-        post: operations["postAssistantActionConfirmById"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/assistant/actions/{id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["postAssistantActionCancelById"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -420,16 +420,16 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/properties/{id}/prospects": {
+    "/properties/{id}/clients": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getPropertyProspects"];
+        get: operations["getPropertyClients"];
         put?: never;
-        post: operations["postPropertyProspects"];
+        post: operations["postPropertyClients"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1044,27 +1044,11 @@ export interface components {
         };
         /** @enum {string} */
         AssistantObjectType: "bien" | "client" | "rdv" | "visite";
-        /** @enum {string} */
-        AssistantActionOperation: "create" | "update";
-        /** @enum {string} */
-        AssistantPendingActionStatus: "PENDING" | "EXECUTED" | "CANCELED" | "FAILED";
         AssistantCitationResponse: {
             title: string;
             /** Format: uri */
             url: string;
             snippet: string;
-        };
-        AssistantPendingActionResponse: {
-            id: string;
-            status: components["schemas"]["AssistantPendingActionStatus"];
-            operation: components["schemas"]["AssistantActionOperation"];
-            objectType: components["schemas"]["AssistantObjectType"];
-            objectId: string | null;
-            previewText: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
         };
         AssistantMessageResponse: {
             id: string;
@@ -1072,7 +1056,6 @@ export interface components {
             role: "USER" | "ASSISTANT";
             text: string;
             citations: components["schemas"]["AssistantCitationResponse"][];
-            pendingAction: components["schemas"]["AssistantPendingActionResponse"] | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -1097,11 +1080,50 @@ export interface components {
             conversation: components["schemas"]["AssistantConversationResponse"];
             assistantMessage: components["schemas"]["AssistantMessageResponse"];
         };
-        AssistantActionResolveResponse: {
-            action: components["schemas"]["AssistantPendingActionResponse"];
-            conversation: components["schemas"]["AssistantConversationResponse"];
-            assistantMessage: components["schemas"]["AssistantMessageResponse"];
+        /** @enum {string} */
+        ObjectChangeMode: "USER" | "AI";
+        ObjectChangeEntry: {
+            id: string;
+            objectType: components["schemas"]["AssistantObjectType"];
+            objectId: string;
+            paramName: string;
+            paramValue: string;
+            mode: components["schemas"]["ObjectChangeMode"];
+            /** Format: date-time */
+            modifiedAt: string;
         };
+        ObjectChangeListResponse: {
+            items: components["schemas"]["ObjectChangeEntry"][];
+        };
+        /** @enum {string} */
+        ObjectDataFieldType: "string" | "text" | "int" | "float" | "boolean" | "date" | "datetime" | "select";
+        /** @enum {string} */
+        ObjectDataFieldSource: "object" | "property";
+        /** @enum {string} */
+        ObjectDataFieldRuleOperator: "=" | "!=" | "in" | "notIn";
+        ObjectDataFieldOption: {
+            value: string;
+            label: string;
+        };
+        ObjectDataFieldHideRule: {
+            key: string;
+            operator: components["schemas"]["ObjectDataFieldRuleOperator"];
+            value: string | number | boolean | (string | number | boolean)[];
+        };
+        ObjectDataFieldDefinition: {
+            key: string;
+            name: string;
+            group: string;
+            subgroup?: string;
+            type: components["schemas"]["ObjectDataFieldType"];
+            source?: components["schemas"]["ObjectDataFieldSource"];
+            required?: boolean;
+            min?: number;
+            max?: number;
+            options?: components["schemas"]["ObjectDataFieldOption"][];
+            hide?: components["schemas"]["ObjectDataFieldHideRule"][];
+        };
+        ObjectDataStructureResponse: components["schemas"]["ObjectDataFieldDefinition"][];
         LoginRequest: {
             /** Format: email */
             email: string;
@@ -1185,10 +1207,8 @@ export interface components {
             city: string;
             postalCode: string;
             address: string;
-            ownerUserId?: string;
-            owner?: components["schemas"]["OwnerContact"];
             details?: components["schemas"]["PropertyDetails"];
-        } | unknown | unknown;
+        };
         PropertyPatchRequest: {
             title?: string;
             city?: string;
@@ -1237,6 +1257,8 @@ export interface components {
         PropertyProspectCreateRequest: {
             userId?: string;
             newClient?: components["schemas"]["OwnerContact"];
+            /** @enum {string} */
+            relationRole?: "OWNER" | "PROSPECT" | "ACHETEUR";
         } | unknown | unknown;
         PropertyProspectResponse: {
             id: string;
@@ -2008,6 +2030,46 @@ export interface operations {
             };
         };
     };
+    getObjectDataStructureByType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                objectType: components["schemas"]["AssistantObjectType"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Structure des paramètres pour un type d'objet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectDataStructureResponse"];
+                };
+            };
+            /** @description Type d'objet invalide. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getAssistantConversation: {
         parameters: {
             query?: never;
@@ -2132,77 +2194,38 @@ export interface operations {
             };
         };
     };
-    postAssistantActionConfirmById: {
+    getObjectChangeHistory: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["IdParam"];
+                objectType: components["schemas"]["AssistantObjectType"];
+                objectId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Action assistant confirmée et exécutée. */
+            /** @description Historique des modifications pour un objet. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssistantActionResolveResponse"];
+                    "application/json": components["schemas"]["ObjectChangeListResponse"];
+                };
+            };
+            /** @description Type d'objet invalide. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Non authentifié. */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Action introuvable. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    postAssistantActionCancelById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["IdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Action assistant annulée. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AssistantActionResolveResponse"];
-                };
-            };
-            /** @description Non authentifié. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Action introuvable. */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2579,7 +2602,7 @@ export interface operations {
             };
         };
     };
-    getPropertyProspects: {
+    getPropertyClients: {
         parameters: {
             query?: never;
             header?: never;
@@ -2590,7 +2613,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Liste des prospects du bien. */
+            /** @description Liste des clients lies au bien (prospects, acheteurs, proprietaires). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2601,7 +2624,7 @@ export interface operations {
             };
         };
     };
-    postPropertyProspects: {
+    postPropertyClients: {
         parameters: {
             query?: never;
             header?: never;
@@ -2616,7 +2639,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Prospect ajouté au bien. */
+            /** @description Client lié au bien. */
             201: {
                 headers: {
                     [name: string]: unknown;

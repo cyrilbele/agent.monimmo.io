@@ -103,8 +103,6 @@ export interface AppSettingsPatchRequest {
 }
 
 export type AssistantObjectType = "bien" | "client" | "rdv" | "visite";
-export type AssistantActionOperation = "create" | "update";
-export type AssistantPendingActionStatus = "PENDING" | "EXECUTED" | "CANCELED" | "FAILED";
 
 export interface AssistantCitationResponse {
   title: string;
@@ -112,23 +110,11 @@ export interface AssistantCitationResponse {
   snippet: string;
 }
 
-export interface AssistantPendingActionResponse {
-  id: string;
-  status: AssistantPendingActionStatus;
-  operation: AssistantActionOperation;
-  objectType: AssistantObjectType;
-  objectId: string | null;
-  previewText: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface AssistantMessageResponse {
   id: string;
   role: "USER" | "ASSISTANT";
   text: string;
   citations: AssistantCitationResponse[];
-  pendingAction: AssistantPendingActionResponse | null;
   createdAt: string;
 }
 
@@ -155,10 +141,60 @@ export interface AssistantMessageCreateResponse {
   assistantMessage: AssistantMessageResponse;
 }
 
-export interface AssistantActionResolveResponse {
-  action: AssistantPendingActionResponse;
-  conversation: AssistantConversationResponse;
-  assistantMessage: AssistantMessageResponse;
+export type ObjectDataFieldType =
+  | "string"
+  | "text"
+  | "int"
+  | "float"
+  | "boolean"
+  | "date"
+  | "datetime"
+  | "select";
+
+export type ObjectDataFieldSource = "object" | "property";
+export type ObjectDataFieldRuleOperator = "=" | "!=" | "in" | "notIn";
+
+export interface ObjectDataFieldOption {
+  value: string;
+  label: string;
+}
+
+export interface ObjectDataFieldHideRule {
+  key: string;
+  operator: ObjectDataFieldRuleOperator;
+  value: string | number | boolean | Array<string | number | boolean>;
+}
+
+export interface ObjectDataFieldDefinition {
+  key: string;
+  name: string;
+  group: string;
+  subgroup?: string;
+  type: ObjectDataFieldType;
+  source?: ObjectDataFieldSource;
+  required?: boolean;
+  min?: number;
+  max?: number;
+  options?: ObjectDataFieldOption[];
+  hide?: ObjectDataFieldHideRule[];
+}
+
+export type ObjectDataStructureResponse = ObjectDataFieldDefinition[];
+
+export type ObjectChangeMode = "USER" | "AI";
+
+export interface ObjectChangeEntryResponse {
+  id: string;
+  objectType: AssistantObjectType;
+  objectId: string;
+  paramName: string;
+  paramValue: string;
+  mode: ObjectChangeMode;
+  modifiedAt: string;
+}
+
+export interface ObjectChangeListResponse {
+  items: ObjectChangeEntryResponse[];
 }
 
 export interface AICallLogResponse {
@@ -258,8 +294,6 @@ export interface PropertyCreateRequest {
   city: string;
   postalCode: string;
   address: string;
-  ownerUserId?: string;
-  owner?: PropertyOwner;
   details?: Record<string, unknown>;
 }
 
@@ -320,6 +354,7 @@ export interface PropertyProspectListResponse {
 export interface PropertyProspectCreateRequest {
   userId?: string;
   newClient?: PropertyOwner;
+  relationRole?: "OWNER" | "PROSPECT" | "ACHETEUR";
 }
 
 export interface PropertyVisitCreateRequest {

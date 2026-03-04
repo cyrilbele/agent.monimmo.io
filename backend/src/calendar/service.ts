@@ -1,13 +1,27 @@
 import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "../db/client";
-import { calendarEvents, properties, propertyUserLinks, users } from "../db/schema";
+import { calendarEvents, properties, users } from "../db/schema";
 import { HttpError } from "../http/errors";
+import {
+  trackObjectChangesSafe,
+  type ObjectChangeMode,
+} from "../object-data/change-log";
 
 type ManualCalendarPayload = {
   kind: "MANUAL_APPOINTMENT";
   propertyId: string;
   clientUserId: string | null;
   addressOverride: string | null;
+  comment: string | null;
+};
+
+type ManualCalendarData = {
+  title: string;
+  propertyId: string;
+  clientUserId: string | null;
+  startsAt: string;
+  endsAt: string;
+  address: string | null;
   comment: string | null;
 };
 
@@ -38,6 +52,50 @@ const parseIsoDateTime = (
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+};
+
+const parseJsonRecord = (raw: string | null): Record<string, unknown> => {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const toIsoDateTimeString = (value: unknown): string | null => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const asDate = new Date(value);
+    return Number.isNaN(asDate.getTime()) ? null : asDate.toISOString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const asNumber = Number(trimmed);
+    if (Number.isFinite(asNumber)) {
+      const asNumberDate = new Date(asNumber);
+      if (!Number.isNaN(asNumberDate.getTime())) {
+        return asNumberDate.toISOString();
+      }
+    }
+
+    const asDate = new Date(trimmed);
+    return Number.isNaN(asDate.getTime()) ? null : asDate.toISOString();
+  }
+
+  return null;
 };
 
 const toPropertyAddress = (input: {
@@ -87,6 +145,53 @@ const parseManualPayload = (rawPayload: string | null): ManualCalendarPayload | 
   }
 };
 
+const parseManualData = (input: {
+  rawData: string | null;
+  rawPayload: string | null;
+  title: string;
+  startsAt: Date;
+  endsAt: Date;
+}): ManualCalendarData | null => {
+  const data = parseJsonRecord(input.rawData);
+  const payload = parseManualPayload(input.rawPayload);
+  const propertyId =
+    normalizeOptionalString(data.propertyId) ??
+    payload?.propertyId ??
+    null;
+
+  if (!propertyId) {
+    return null;
+  }
+
+  return {
+    title: normalizeOptionalString(data.title) ?? normalizeOptionalString(input.title) ?? "Rendez-vous",
+    propertyId,
+    clientUserId:
+      normalizeOptionalString(data.clientUserId) ?? payload?.clientUserId ?? null,
+    startsAt: toIsoDateTimeString(data.startsAt) ?? input.startsAt.toISOString(),
+    endsAt: toIsoDateTimeString(data.endsAt) ?? input.endsAt.toISOString(),
+    address:
+      normalizeOptionalString(data.address) ??
+      payload?.addressOverride ??
+      null,
+    comment:
+      normalizeOptionalString(data.comment) ??
+      payload?.comment ??
+      null,
+  };
+};
+
+const serializeManualData = (data: ManualCalendarData): string =>
+  JSON.stringify({
+    title: data.title,
+    propertyId: data.propertyId,
+    clientUserId: data.clientUserId,
+    startsAt: data.startsAt,
+    endsAt: data.endsAt,
+    address: data.address,
+    comment: data.comment,
+  });
+
 const assertPropertyExistsInOrg = async (input: { orgId: string; propertyId: string }) => {
   const property = await db.query.properties.findFirst({
     where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
@@ -117,41 +222,6 @@ const assertClientExistsInOrg = async (input: { orgId: string; clientUserId: str
   }
 
   return user;
-};
-
-const ensureClientLinkedToPropertyAsProspect = async (input: {
-  orgId: string;
-  propertyId: string;
-  clientUserId: string;
-}) => {
-  const existingLink = await db.query.propertyUserLinks.findFirst({
-    where: and(
-      eq(propertyUserLinks.orgId, input.orgId),
-      eq(propertyUserLinks.propertyId, input.propertyId),
-      eq(propertyUserLinks.userId, input.clientUserId),
-    ),
-  });
-
-  if (!existingLink) {
-    await db.insert(propertyUserLinks).values({
-      id: crypto.randomUUID(),
-      orgId: input.orgId,
-      propertyId: input.propertyId,
-      userId: input.clientUserId,
-      role: "PROSPECT",
-      createdAt: new Date(),
-    });
-    return;
-  }
-
-  if (existingLink.role === "OWNER" || existingLink.role === "PROSPECT" || existingLink.role === "ACHETEUR") {
-    return;
-  }
-
-  await db
-    .update(propertyUserLinks)
-    .set({ role: "PROSPECT" })
-    .where(eq(propertyUserLinks.id, existingLink.id));
 };
 
 export const calendarService = {
@@ -187,6 +257,7 @@ export const calendarService = {
         startsAt: calendarEvents.startsAt,
         endsAt: calendarEvents.endsAt,
         payload: calendarEvents.payload,
+        data: calendarEvents.data,
         createdAt: calendarEvents.createdAt,
         updatedAt: calendarEvents.updatedAt,
       })
@@ -194,18 +265,24 @@ export const calendarService = {
       .where(and(...filters))
       .orderBy(calendarEvents.startsAt);
 
-    const rowsWithPayload = rows
+    const rowsWithData = rows
       .map((row) => ({
         row,
-        payload: parseManualPayload(row.payload),
+        data: parseManualData({
+          rawData: row.data,
+          rawPayload: row.payload,
+          title: row.title,
+          startsAt: row.startsAt,
+          endsAt: row.endsAt,
+        }),
       }))
       .filter(
-        (item): item is { row: (typeof rows)[number]; payload: ManualCalendarPayload } =>
-          item.payload !== null,
+        (item): item is { row: (typeof rows)[number]; data: ManualCalendarData } =>
+          item.data !== null,
       );
 
     const propertyIds = Array.from(
-      new Set(rowsWithPayload.map((item) => item.payload.propertyId)),
+      new Set(rowsWithData.map((item) => item.data.propertyId)),
     );
 
     const propertyRows =
@@ -225,33 +302,51 @@ export const calendarService = {
     const propertyById = new Map(propertyRows.map((property) => [property.id, property]));
     const clientIds = Array.from(
       new Set(
-        rowsWithPayload
-          .map((item) => item.payload.clientUserId)
+        rowsWithData
+          .map((item) => item.data.clientUserId)
           .filter((clientUserId): clientUserId is string => Boolean(clientUserId)),
       ),
     );
 
     const clientRows =
       clientIds.length > 0
-        ? await db
-            .select({
-              id: users.id,
-              firstName: users.firstName,
-              lastName: users.lastName,
-            })
-            .from(users)
-            .where(and(eq(users.orgId, input.orgId), inArray(users.id, clientIds)))
+      ? await db
+          .select({
+            id: users.id,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            data: users.data,
+          })
+          .from(users)
+          .where(and(eq(users.orgId, input.orgId), inArray(users.id, clientIds)))
         : [];
-    const clientById = new Map(clientRows.map((client) => [client.id, client]));
+    const clientById = new Map(
+      clientRows.map((client) => {
+        const clientData = parseJsonRecord(client.data);
+        return [
+          client.id,
+          {
+            firstName:
+              normalizeOptionalString(clientData.firstName) ??
+              normalizeOptionalString(client.firstName) ??
+              null,
+            lastName:
+              normalizeOptionalString(clientData.lastName) ??
+              normalizeOptionalString(client.lastName) ??
+              null,
+          },
+        ] as const;
+      }),
+    );
 
     return {
-      items: rowsWithPayload.map((item) => {
-        const property = propertyById.get(item.payload.propertyId);
-        const client = item.payload.clientUserId
-          ? clientById.get(item.payload.clientUserId)
+      items: rowsWithData.map((item) => {
+        const property = propertyById.get(item.data.propertyId);
+        const client = item.data.clientUserId
+          ? clientById.get(item.data.clientUserId)
           : undefined;
         const resolvedAddress =
-          item.payload.addressOverride ??
+          item.data.address ??
           (property
             ? toPropertyAddress({
                 address: property.address,
@@ -262,16 +357,16 @@ export const calendarService = {
 
         return {
           id: item.row.id,
-          title: item.row.title,
-          propertyId: item.payload.propertyId,
+          title: item.data.title,
+          propertyId: item.data.propertyId,
           propertyTitle: property?.title ?? "Bien introuvable",
-          clientUserId: item.payload.clientUserId,
+          clientUserId: item.data.clientUserId,
           clientFirstName: client?.firstName ?? null,
           clientLastName: client?.lastName ?? null,
           address: resolvedAddress,
-          comment: item.payload.comment,
-          startsAt: item.row.startsAt.toISOString(),
-          endsAt: item.row.endsAt.toISOString(),
+          comment: item.data.comment,
+          startsAt: item.data.startsAt,
+          endsAt: item.data.endsAt,
           createdAt: item.row.createdAt.toISOString(),
           updatedAt: item.row.updatedAt.toISOString(),
         };
@@ -313,6 +408,7 @@ export const calendarService = {
     orgId: string;
     id: string;
     comment?: string | null;
+    changeMode?: ObjectChangeMode;
   }) {
     const row = await db.query.calendarEvents.findFirst({
       where: and(
@@ -326,32 +422,66 @@ export const calendarService = {
       throw new HttpError(404, "CALENDAR_APPOINTMENT_NOT_FOUND", "Rendez-vous introuvable");
     }
 
-    const parsedPayload = parseManualPayload(row.payload);
-    if (!parsedPayload) {
+    const parsedData = parseManualData({
+      rawData: row.data,
+      rawPayload: row.payload,
+      title: row.title,
+      startsAt: row.startsAt,
+      endsAt: row.endsAt,
+    });
+    if (!parsedData) {
       throw new HttpError(
         400,
-        "INVALID_CALENDAR_APPOINTMENT_PAYLOAD",
-        "Payload rendez-vous invalide",
+        "INVALID_CALENDAR_APPOINTMENT_DATA",
+        "Données rendez-vous invalides",
       );
     }
 
-    const nextPayload: ManualCalendarPayload = {
-      ...parsedPayload,
+    const nextData: ManualCalendarData = {
+      ...parsedData,
       comment: normalizeOptionalString(input.comment),
     };
+    const nextPayload: ManualCalendarPayload = {
+      kind: MANUAL_PAYLOAD_KIND,
+      propertyId: nextData.propertyId,
+      clientUserId: nextData.clientUserId,
+      addressOverride: nextData.address,
+      comment: nextData.comment,
+    };
 
+    const modifiedAt = new Date();
     await db
       .update(calendarEvents)
       .set({
+        title: nextData.title,
+        startsAt: new Date(nextData.startsAt),
+        endsAt: new Date(nextData.endsAt),
         payload: JSON.stringify(nextPayload),
-        updatedAt: new Date(),
+        data: serializeManualData(nextData),
+        updatedAt: modifiedAt,
       })
       .where(and(eq(calendarEvents.id, input.id), eq(calendarEvents.orgId, input.orgId)));
 
-    return this.getManualAppointmentById({
+    const updated = await this.getManualAppointmentById({
       orgId: input.orgId,
       id: input.id,
     });
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "rdv",
+      objectId: updated.id,
+      mode: input.changeMode ?? "USER",
+      changes: [
+        {
+          paramName: "comment",
+          paramValue: updated.comment,
+        },
+      ],
+      modifiedAt,
+    });
+
+    return updated;
   },
 
   async createManualAppointment(input: {
@@ -363,6 +493,7 @@ export const calendarService = {
     endsAt: string;
     address?: string | null;
     comment?: string | null;
+    changeMode?: ObjectChangeMode;
   }) {
     const property = await assertPropertyExistsInOrg({
       orgId: input.orgId,
@@ -403,19 +534,20 @@ export const calendarService = {
         })
       : null;
 
-    if (client) {
-      await ensureClientLinkedToPropertyAsProspect({
-        orgId: input.orgId,
-        propertyId: property.id,
-        clientUserId: client.id,
-      });
-    }
-
     const payload: ManualCalendarPayload = {
       kind: MANUAL_PAYLOAD_KIND,
       propertyId: property.id,
       clientUserId: client?.id ?? null,
       addressOverride,
+      comment,
+    };
+    const data: ManualCalendarData = {
+      title,
+      propertyId: property.id,
+      clientUserId: client?.id ?? null,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      address: addressOverride,
       comment,
     };
 
@@ -431,11 +563,12 @@ export const calendarService = {
       startsAt,
       endsAt,
       payload: JSON.stringify(payload),
+      data: serializeManualData(data),
       createdAt: now,
       updatedAt: now,
     });
 
-    return {
+    const created = {
       id,
       title,
       propertyId: property.id,
@@ -456,5 +589,24 @@ export const calendarService = {
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "rdv",
+      objectId: created.id,
+      mode: input.changeMode ?? "USER",
+      changes: [
+        { paramName: "title", paramValue: created.title },
+        { paramName: "propertyId", paramValue: created.propertyId },
+        { paramName: "clientUserId", paramValue: created.clientUserId },
+        { paramName: "startsAt", paramValue: created.startsAt },
+        { paramName: "endsAt", paramValue: created.endsAt },
+        { paramName: "address", paramValue: created.address },
+        { paramName: "comment", paramValue: created.comment },
+      ].filter((change) => change.paramValue !== null && change.paramValue !== undefined && change.paramValue !== ""),
+      modifiedAt: now,
+    });
+
+    return created;
   },
 };

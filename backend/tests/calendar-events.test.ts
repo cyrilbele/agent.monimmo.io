@@ -3,8 +3,7 @@ import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { and, eq } from "drizzle-orm";
-import { calendarEvents, organizations, properties, propertyUserLinks, users } from "../src/db/schema";
+import { calendarEvents, organizations, properties, users } from "../src/db/schema";
 import { createApp } from "../src/server";
 
 const loginDemoAndGetToken = async (): Promise<string> => {
@@ -156,7 +155,7 @@ describe("calendar events endpoints", () => {
     expect(payload.items.some((item: { id: string }) => item.id === foreignEventId)).toBe(false);
   });
 
-  it("rattache automatiquement le client comme prospect lors de la creation d'un rendez-vous", async () => {
+  it("cree un rendez-vous sans créer de lien client implicite sur le bien", async () => {
     const token = await loginDemoAndGetToken();
     const now = new Date();
     const marker = `calendar-client-${crypto.randomUUID().slice(0, 8)}`;
@@ -219,15 +218,14 @@ describe("calendar events endpoints", () => {
     expect(created.clientFirstName).toBe("Nina");
     expect(created.clientLastName).toBe("Martin");
 
-    const prospectLink = await db.query.propertyUserLinks.findFirst({
-      where: and(
-        eq(propertyUserLinks.orgId, "org_demo"),
-        eq(propertyUserLinks.propertyId, propertyId),
-        eq(propertyUserLinks.userId, clientUserId),
-      ),
+    const links = await db.query.propertyUserLinks.findMany({
+      where: (fields, operators) =>
+        operators.and(
+          operators.eq(fields.orgId, "org_demo"),
+          operators.eq(fields.propertyId, propertyId),
+          operators.eq(fields.userId, clientUserId),
+        ),
     });
-
-    expect(prospectLink).toBeDefined();
-    expect(prospectLink?.role).toBe("PROSPECT");
+    expect(links).toHaveLength(0);
   });
 });

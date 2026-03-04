@@ -4,8 +4,9 @@ import { enforceAuthRateLimit } from "./auth/rate-limit";
 import { assertManagerOrAdmin } from "./auth/rbac";
 import { authService } from "./auth/service";
 import {
-  AssistantActionResolveResponseSchema,
   AssistantConversationResponseSchema,
+  ObjectDataStructureResponseSchema,
+  ObjectChangeListResponseSchema,
   AssistantMessageCreateRequestSchema,
   AssistantMessageCreateResponseSchema,
   AppSettingsPatchRequestSchema,
@@ -65,6 +66,8 @@ import {
 } from "./storage/url-signing";
 import { usersService } from "./users/service";
 import { vocalsService } from "./vocals/service";
+import { objectChangeLogService } from "./object-data/change-log";
+import { getObjectDataStructure } from "./object-data/structure";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(data), {
@@ -555,6 +558,24 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return withCors(request, json(response, { status: 200 }));
       }
 
+      const objectDataStructureMatch = url.pathname.match(/^\/(?:data-structure|getdatastructure)\/([^/]+)$/);
+      if (objectDataStructureMatch && request.method === "GET") {
+        const user = await getAuthenticatedUser();
+        const objectType = decodeURIComponent(objectDataStructureMatch[1]).toLowerCase();
+        if (objectType !== "bien" && objectType !== "client" && objectType !== "rdv" && objectType !== "visite") {
+          throw new HttpError(400, "INVALID_OBJECT_TYPE", "Type d'objet invalide");
+        }
+
+        const response = ObjectDataStructureResponseSchema.parse(
+          getObjectDataStructure(objectType),
+        );
+        if (!user.orgId) {
+          throw new HttpError(403, "ORG_SCOPE_REQUIRED", "Organisation requise");
+        }
+
+        return withCors(request, json(response, { status: 200 }));
+      }
+
       if (request.method === "GET" && url.pathname === "/assistant/conversation") {
         const accessToken = getBearerToken();
         const [me, settings] = await Promise.all([
@@ -706,42 +727,22 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         );
       }
 
-      const assistantActionConfirmMatch = url.pathname.match(/^\/assistant\/actions\/([^/]+)\/confirm$/);
-      if (assistantActionConfirmMatch && request.method === "POST") {
-        const actionId = decodeURIComponent(assistantActionConfirmMatch[1]);
-        const accessToken = getBearerToken();
-        const [me, settings] = await Promise.all([
-          authService.me(accessToken),
-          authService.getSettings(accessToken),
-        ]);
+      const objectChangesMatch = url.pathname.match(/^\/object-changes\/([^/]+)\/([^/]+)$/);
+      if (objectChangesMatch && request.method === "GET") {
+        const user = await getAuthenticatedUser();
+        const objectType = decodeURIComponent(objectChangesMatch[1]).toLowerCase();
+        const objectId = decodeURIComponent(objectChangesMatch[2]);
 
-        const response = AssistantActionResolveResponseSchema.parse(
-          await assistantService.confirmAction({
-            orgId: me.user.orgId,
-            userId: me.user.id,
-            actionId,
-            assistantSoul: settings.assistantSoul,
-          }),
-        );
+        if (objectType !== "bien" && objectType !== "client" && objectType !== "rdv" && objectType !== "visite") {
+          throw new HttpError(400, "INVALID_OBJECT_TYPE", "Type d'objet invalide");
+        }
 
-        return withCors(request, json(response, { status: 200 }));
-      }
-
-      const assistantActionCancelMatch = url.pathname.match(/^\/assistant\/actions\/([^/]+)\/cancel$/);
-      if (assistantActionCancelMatch && request.method === "POST") {
-        const actionId = decodeURIComponent(assistantActionCancelMatch[1]);
-        const accessToken = getBearerToken();
-        const [me, settings] = await Promise.all([
-          authService.me(accessToken),
-          authService.getSettings(accessToken),
-        ]);
-
-        const response = AssistantActionResolveResponseSchema.parse(
-          await assistantService.cancelAction({
-            orgId: me.user.orgId,
-            userId: me.user.id,
-            actionId,
-            assistantSoul: settings.assistantSoul,
+        const response = ObjectChangeListResponseSchema.parse(
+          await objectChangeLogService.list({
+            orgId: user.orgId,
+            objectType,
+            objectId,
+            limit: parseLimit(),
           }),
         );
 
@@ -1184,7 +1185,9 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return withCors(request, json(response, { status: 201 }));
       }
 
-      const propertyProspectsMatch = url.pathname.match(/^\/properties\/([^/]+)\/prospects$/);
+      const propertyProspectsMatch = url.pathname.match(
+        /^\/properties\/([^/]+)\/(?:prospects|clients)$/,
+      );
       if (propertyProspectsMatch) {
         const propertyId = decodeURIComponent(propertyProspectsMatch[1]);
         const user = await getAuthenticatedUser();
@@ -1204,6 +1207,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             propertyId,
             userId: payload.userId,
             newClient: payload.newClient,
+            relationRole: payload.relationRole,
           });
           return withCors(request, json(response, { status: 201 }));
         }

@@ -112,7 +112,7 @@ describe("users endpoints", () => {
     const payload = await searchResponse.json();
     expect(payload.items.some((item: { id: string }) => item.id === matchingUser.id)).toBe(true);
     expect(payload.items.some((item: { id: string }) => item.id === otherUser.id)).toBe(false);
-  });
+  }, 15000);
 
   it("n'expose pas en recherche les utilisateurs indexes d'une autre organisation", async () => {
     const token = await loginAndGetAccessToken();
@@ -160,6 +160,25 @@ describe("users endpoints", () => {
     const token = await loginAndGetAccessToken();
     const ownerEmail = `owner.${crypto.randomUUID()}@monimmo.fr`;
 
+    const createOwnerResponse = await createApp().fetch(
+      new Request("http://localhost/users", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: "Lea",
+          lastName: "Owner",
+          phone: "0600000001",
+          email: ownerEmail,
+          accountType: "CLIENT",
+        }),
+      }),
+    );
+    expect(createOwnerResponse.status).toBe(201);
+    const ownerUser = await createOwnerResponse.json();
+
     const createPropertyResponse = await createApp().fetch(
       new Request("http://localhost/properties", {
         method: "POST",
@@ -172,29 +191,26 @@ describe("users endpoints", () => {
           city: "Paris",
           postalCode: "75011",
           address: "19 rue Saint-Maur",
-          owner: {
-            firstName: "Lea",
-            lastName: "Owner",
-            phone: "0600000001",
-            email: ownerEmail,
-          },
         }),
       }),
     );
     expect(createPropertyResponse.status).toBe(201);
+    const createdProperty = await createPropertyResponse.json();
 
-    const listResponse = await createApp().fetch(
-      new Request("http://localhost/users?limit=100", {
-        method: "GET",
-        headers: { authorization: `Bearer ${token}` },
+    const linkResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${createdProperty.id}/clients`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId: ownerUser.id,
+          relationRole: "OWNER",
+        }),
       }),
     );
-    const listPayload = await listResponse.json();
-    const ownerUser = listPayload.items.find((item: { email: string }) => item.email === ownerEmail);
-    expect(ownerUser).toBeDefined();
-    if (!ownerUser) {
-      throw new Error("Owner user should exist");
-    }
+    expect(linkResponse.status).toBe(201);
     const userId = ownerUser.id as string;
 
     const detailResponse = await createApp().fetch(

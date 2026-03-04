@@ -2,12 +2,28 @@ import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { properties, propertyParties, propertyUserLinks, users } from "../db/schema";
 import { HttpError } from "../http/errors";
+import {
+  trackObjectChangesSafe,
+  type ObjectChangeMode,
+} from "../object-data/change-log";
 import { getSearchEngine } from "../search/factory";
 
 type UserRow = typeof users.$inferSelect;
 const searchEngine = getSearchEngine();
 
 type AccountType = "AGENT" | "CLIENT" | "NOTAIRE";
+
+type UserBusinessData = {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  personalNotes: string | null;
+  accountType: AccountType;
+};
 
 type LinkedProperty = {
   propertyId: string;
@@ -29,6 +45,7 @@ type ListUsersInput = {
 
 type CreateUserInput = {
   orgId: string;
+  changeMode?: ObjectChangeMode;
   data: {
     firstName?: string | null;
     lastName?: string | null;
@@ -45,6 +62,7 @@ type CreateUserInput = {
 type PatchUserInput = {
   orgId: string;
   id: string;
+  changeMode?: ObjectChangeMode;
   data: {
     firstName?: string | null;
     lastName?: string | null;
@@ -110,27 +128,129 @@ const resolveRoleFromAccountType = (accountType: AccountType): string => {
   }
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+};
+
+const parseUserData = (raw: string | null): Record<string, unknown> => {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const resolveAccountType = (value: unknown, fallback: AccountType): AccountType => {
+  if (value === "AGENT" || value === "CLIENT" || value === "NOTAIRE") {
+    return value;
+  }
+
+  return fallback;
+};
+
+const resolveBusinessDataFromRow = (row: UserRow): UserBusinessData => {
+  const parsed = parseUserData(row.data);
+  const fallbackAccountType = resolveAccountType(row.accountType, "CLIENT");
+
+  const firstName =
+    normalizeOptionalString(
+      typeof parsed.firstName === "string" ? parsed.firstName : row.firstName,
+    ) ?? "";
+  const lastName =
+    normalizeOptionalString(typeof parsed.lastName === "string" ? parsed.lastName : row.lastName) ??
+    "";
+
+  return {
+    firstName,
+    lastName,
+    email: normalizeNullableEmail(
+      typeof parsed.email === "string" || parsed.email === null ? parsed.email : row.email,
+    ) ?? null,
+    phone:
+      normalizeOptionalString(
+        typeof parsed.phone === "string" || parsed.phone === null ? parsed.phone : row.phone,
+      ) ?? null,
+    address:
+      normalizeOptionalString(
+        typeof parsed.address === "string" || parsed.address === null
+          ? parsed.address
+          : row.address,
+      ) ?? null,
+    postalCode:
+      normalizeOptionalString(
+        typeof parsed.postalCode === "string" || parsed.postalCode === null
+          ? parsed.postalCode
+          : row.postalCode,
+      ) ?? null,
+    city:
+      normalizeOptionalString(
+        typeof parsed.city === "string" || parsed.city === null ? parsed.city : row.city,
+      ) ?? null,
+    personalNotes:
+      normalizeOptionalString(
+        typeof parsed.personalNotes === "string" || parsed.personalNotes === null
+          ? parsed.personalNotes
+          : row.personalNotes,
+      ) ?? null,
+    accountType: resolveAccountType(parsed.accountType, fallbackAccountType),
+  };
+};
+
+const serializeBusinessData = (data: UserBusinessData): string =>
+  JSON.stringify({
+    firstName: data.firstName,
+    lastName: data.lastName,
+    email: data.email,
+    phone: data.phone,
+    address: data.address,
+    postalCode: data.postalCode,
+    city: data.city,
+    personalNotes: data.personalNotes,
+    accountType: data.accountType,
+  });
+
 const generateRandomPassword = (): string => {
   const randomBytes = crypto.getRandomValues(new Uint8Array(24));
   return Buffer.from(randomBytes).toString("base64url");
 };
 
-const toAccountUserResponse = (row: UserRow) => ({
-  id: row.id,
-  email: row.email,
-  firstName: row.firstName,
-  lastName: row.lastName,
-  orgId: row.orgId,
-  accountType: row.accountType as AccountType,
-  role: row.role,
-  phone: row.phone,
-  address: row.address,
-  postalCode: row.postalCode,
-  city: row.city,
-  personalNotes: row.personalNotes,
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString(),
-});
+const toAccountUserResponse = (row: UserRow) => {
+  const businessData = resolveBusinessDataFromRow(row);
+
+  return {
+    id: row.id,
+    email: businessData.email,
+    firstName: businessData.firstName,
+    lastName: businessData.lastName,
+    orgId: row.orgId,
+    accountType: businessData.accountType,
+    role: row.role,
+    phone: businessData.phone,
+    address: businessData.address,
+    postalCode: businessData.postalCode,
+    city: businessData.city,
+    personalNotes: businessData.personalNotes,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+};
+
+const isTrackableValue = (value: unknown): boolean => {
+  if (value === null || typeof value === "undefined") {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return true;
+};
 
 const updateUserSearchDocumentSafe = async (user: UserRow): Promise<void> => {
   try {
@@ -239,10 +359,10 @@ export const usersService = {
     if (normalizedQuery) {
       const likeValue = `%${normalizedQuery.toLowerCase()}%`;
       const lexicalClause = or(
-        sql`lower(${users.firstName}) like ${likeValue}`,
-        sql`lower(${users.lastName}) like ${likeValue}`,
-        sql`lower(coalesce(${users.email}, '')) like ${likeValue}`,
-        sql`lower(coalesce(${users.phone}, '')) like ${likeValue}`,
+        sql`lower(coalesce(json_extract(${users.data}, '$.firstName'), ${users.firstName}, '')) like ${likeValue}`,
+        sql`lower(coalesce(json_extract(${users.data}, '$.lastName'), ${users.lastName}, '')) like ${likeValue}`,
+        sql`lower(coalesce(json_extract(${users.data}, '$.email'), ${users.email}, '')) like ${likeValue}`,
+        sql`lower(coalesce(json_extract(${users.data}, '$.phone'), ${users.phone}, '')) like ${likeValue}`,
       )!;
 
       const searchMatchedIds = await searchEngine.searchUserIds({
@@ -289,10 +409,19 @@ export const usersService = {
 
   async create(input: CreateUserInput) {
     const now = new Date();
-    const normalizedEmail = normalizeNullableEmail(input.data.email) ?? null;
-    const normalizedPhone = normalizeOptionalString(input.data.phone) ?? null;
+    const businessData: UserBusinessData = {
+      firstName: normalizeOptionalString(input.data.firstName) ?? "",
+      lastName: normalizeOptionalString(input.data.lastName) ?? "",
+      email: normalizeNullableEmail(input.data.email) ?? null,
+      phone: normalizeOptionalString(input.data.phone) ?? null,
+      address: normalizeOptionalString(input.data.address) ?? null,
+      postalCode: normalizeOptionalString(input.data.postalCode) ?? null,
+      city: normalizeOptionalString(input.data.city) ?? null,
+      personalNotes: normalizeOptionalString(input.data.personalNotes) ?? null,
+      accountType: input.data.accountType,
+    };
 
-    if (!normalizedEmail && !normalizedPhone) {
+    if (!businessData.email && !businessData.phone) {
       throw new HttpError(
         400,
         "VALIDATION_ERROR",
@@ -300,9 +429,9 @@ export const usersService = {
       );
     }
 
-    if (normalizedEmail) {
+    if (businessData.email) {
       const existing = await db.query.users.findFirst({
-        where: eq(users.email, normalizedEmail),
+        where: eq(users.email, businessData.email),
       });
 
       if (existing) {
@@ -324,16 +453,17 @@ export const usersService = {
     await db.insert(users).values({
       id,
       orgId: input.orgId,
-      firstName: normalizeOptionalString(input.data.firstName) ?? "",
-      lastName: normalizeOptionalString(input.data.lastName) ?? "",
-      email: normalizedEmail,
-      phone: normalizedPhone,
-      address: normalizeOptionalString(input.data.address) ?? null,
-      postalCode: normalizeOptionalString(input.data.postalCode) ?? null,
-      city: normalizeOptionalString(input.data.city) ?? null,
-      personalNotes: normalizeOptionalString(input.data.personalNotes) ?? null,
-      accountType: input.data.accountType,
-      role: resolveRoleFromAccountType(input.data.accountType),
+      firstName: businessData.firstName,
+      lastName: businessData.lastName,
+      email: businessData.email,
+      phone: businessData.phone,
+      address: businessData.address,
+      postalCode: businessData.postalCode,
+      city: businessData.city,
+      personalNotes: businessData.personalNotes,
+      accountType: businessData.accountType,
+      data: serializeBusinessData(businessData),
+      role: resolveRoleFromAccountType(businessData.accountType),
       passwordHash,
       createdAt: now,
       updatedAt: now,
@@ -346,10 +476,31 @@ export const usersService = {
       await updateUserSearchDocumentSafe(created);
     }
 
-    return this.getById({
+    const createdUser = await this.getById({
       orgId: input.orgId,
       id,
     });
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "client",
+      objectId: createdUser.id,
+      mode: input.changeMode ?? "USER",
+      changes: [
+        { paramName: "firstName", paramValue: createdUser.firstName },
+        { paramName: "lastName", paramValue: createdUser.lastName },
+        { paramName: "email", paramValue: createdUser.email },
+        { paramName: "phone", paramValue: createdUser.phone },
+        { paramName: "address", paramValue: createdUser.address },
+        { paramName: "postalCode", paramValue: createdUser.postalCode },
+        { paramName: "city", paramValue: createdUser.city },
+        { paramName: "personalNotes", paramValue: createdUser.personalNotes },
+        { paramName: "accountType", paramValue: createdUser.accountType },
+      ].filter((change) => isTrackableValue(change.paramValue)),
+      modifiedAt: now,
+    });
+
+    return createdUser;
   },
 
   async getById(input: { orgId: string; id: string }) {
@@ -378,12 +529,14 @@ export const usersService = {
       throw new HttpError(404, "USER_NOT_FOUND", "Utilisateur introuvable");
     }
 
+    const existingData = resolveBusinessDataFromRow(existing);
     const normalizedEmail = normalizeNullableEmail(input.data.email);
+    const nextEmail = normalizedEmail === undefined ? existingData.email : normalizedEmail;
 
-    if (normalizedEmail !== undefined && normalizedEmail !== existing.email) {
-      if (normalizedEmail) {
+    if (normalizedEmail !== undefined && normalizedEmail !== existingData.email) {
+      if (nextEmail) {
         const userWithSameEmail = await db.query.users.findFirst({
-          where: eq(users.email, normalizedEmail),
+          where: eq(users.email, nextEmail),
         });
 
         if (userWithSameEmail && userWithSameEmail.id !== existing.id) {
@@ -393,13 +546,7 @@ export const usersService = {
     }
 
     const normalizedPhone = normalizeOptionalString(input.data.phone);
-    const normalizedAddress = normalizeOptionalString(input.data.address);
-    const normalizedPostalCode = normalizeOptionalString(input.data.postalCode);
-    const normalizedCity = normalizeOptionalString(input.data.city);
-    const normalizedPersonalNotes = normalizeOptionalString(input.data.personalNotes);
-    const nextAccountType = input.data.accountType ?? (existing.accountType as AccountType);
-    const nextEmail = normalizedEmail === undefined ? existing.email : normalizedEmail;
-    const nextPhone = normalizedPhone === undefined ? existing.phone : normalizedPhone;
+    const nextPhone = normalizedPhone === undefined ? existingData.phone : normalizedPhone;
 
     if (!nextEmail && !nextPhone) {
       throw new HttpError(
@@ -409,32 +556,50 @@ export const usersService = {
       );
     }
 
+    const nextBusinessData: UserBusinessData = {
+      firstName:
+        input.data.firstName === undefined
+          ? existingData.firstName
+          : normalizeOptionalString(input.data.firstName) ?? "",
+      lastName:
+        input.data.lastName === undefined
+          ? existingData.lastName
+          : normalizeOptionalString(input.data.lastName) ?? "",
+      email: nextEmail,
+      phone: nextPhone,
+      address:
+        input.data.address === undefined
+          ? existingData.address
+          : normalizeOptionalString(input.data.address) ?? null,
+      postalCode:
+        input.data.postalCode === undefined
+          ? existingData.postalCode
+          : normalizeOptionalString(input.data.postalCode) ?? null,
+      city:
+        input.data.city === undefined
+          ? existingData.city
+          : normalizeOptionalString(input.data.city) ?? null,
+      personalNotes:
+        input.data.personalNotes === undefined
+          ? existingData.personalNotes
+          : normalizeOptionalString(input.data.personalNotes) ?? null,
+      accountType: input.data.accountType ?? existingData.accountType,
+    };
+
     await db
       .update(users)
       .set({
-        firstName:
-          input.data.firstName === undefined
-            ? existing.firstName
-            : normalizeOptionalString(input.data.firstName) ?? "",
-        lastName:
-          input.data.lastName === undefined
-            ? existing.lastName
-            : normalizeOptionalString(input.data.lastName) ?? "",
-        email: nextEmail,
-        phone: nextPhone,
-        address: normalizedAddress === undefined ? existing.address : normalizedAddress,
-        postalCode:
-          normalizedPostalCode === undefined ? existing.postalCode : normalizedPostalCode,
-        city: normalizedCity === undefined ? existing.city : normalizedCity,
-        personalNotes:
-          normalizedPersonalNotes === undefined
-            ? existing.personalNotes
-            : normalizedPersonalNotes,
-        accountType: nextAccountType,
-        role:
-          input.data.accountType === undefined
-            ? existing.role
-            : resolveRoleFromAccountType(nextAccountType),
+        firstName: nextBusinessData.firstName,
+        lastName: nextBusinessData.lastName,
+        email: nextBusinessData.email,
+        phone: nextBusinessData.phone,
+        address: nextBusinessData.address,
+        postalCode: nextBusinessData.postalCode,
+        city: nextBusinessData.city,
+        personalNotes: nextBusinessData.personalNotes,
+        accountType: nextBusinessData.accountType,
+        data: serializeBusinessData(nextBusinessData),
+        role: resolveRoleFromAccountType(nextBusinessData.accountType),
         updatedAt: new Date(),
       })
       .where(and(eq(users.id, input.id), eq(users.orgId, input.orgId)));
@@ -446,9 +611,48 @@ export const usersService = {
       await updateUserSearchDocumentSafe(updated);
     }
 
-    return this.getById({
+    const patchedUser = await this.getById({
       orgId: input.orgId,
       id: input.id,
     });
+
+    const changes: Array<{ paramName: string; paramValue: unknown }> = [];
+    if (input.data.firstName !== undefined) {
+      changes.push({ paramName: "firstName", paramValue: patchedUser.firstName });
+    }
+    if (input.data.lastName !== undefined) {
+      changes.push({ paramName: "lastName", paramValue: patchedUser.lastName });
+    }
+    if (input.data.email !== undefined) {
+      changes.push({ paramName: "email", paramValue: patchedUser.email });
+    }
+    if (input.data.phone !== undefined) {
+      changes.push({ paramName: "phone", paramValue: patchedUser.phone });
+    }
+    if (input.data.address !== undefined) {
+      changes.push({ paramName: "address", paramValue: patchedUser.address });
+    }
+    if (input.data.postalCode !== undefined) {
+      changes.push({ paramName: "postalCode", paramValue: patchedUser.postalCode });
+    }
+    if (input.data.city !== undefined) {
+      changes.push({ paramName: "city", paramValue: patchedUser.city });
+    }
+    if (input.data.personalNotes !== undefined) {
+      changes.push({ paramName: "personalNotes", paramValue: patchedUser.personalNotes });
+    }
+    if (input.data.accountType !== undefined) {
+      changes.push({ paramName: "accountType", paramValue: patchedUser.accountType });
+    }
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "client",
+      objectId: patchedUser.id,
+      mode: input.changeMode ?? "USER",
+      changes: changes.filter((change) => isTrackableValue(change.paramValue)),
+    });
+
+    return patchedUser;
   },
 };

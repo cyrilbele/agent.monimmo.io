@@ -25,7 +25,12 @@ import { findCoordinatesForAddress, type PropertyCoordinates } from "./geocoding
 import { getPropertyRisks, type PropertyRisksResponse } from "./georisques";
 import { trackAICallFromTelemetrySafe } from "../ai/call-logs";
 import { getAIProviderForOrg } from "../ai/factory";
+import {
+  trackObjectChangesSafe,
+  type ObjectChangeMode,
+} from "../object-data/change-log";
 import { getSearchEngine } from "../search/factory";
+import { listObjectDataFieldKeysByGroup } from "../object-data/structure";
 
 type PropertyRow = typeof properties.$inferSelect;
 
@@ -47,8 +52,39 @@ type OwnerContactInput = {
 };
 
 type ProspectContactInput = OwnerContactInput;
+type PropertyClientRelationRole = "OWNER" | "PROSPECT" | "ACHETEUR";
 
 type PropertyDetailsInput = Record<string, unknown>;
+type ClientBusinessData = {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  personalNotes: string | null;
+  accountType: "CLIENT";
+};
+type VisitBusinessData = {
+  propertyId: string;
+  prospectUserId: string;
+  startsAt: string;
+  endsAt: string;
+  compteRendu: string | null;
+  bonDeVisiteFileId: string | null;
+};
+
+const BIEN_DETAIL_GROUPS = [
+  "general",
+  "location",
+  "characteristics",
+  "amenities",
+  "copropriete",
+  "finance",
+  "regulation",
+  "marketing",
+] as const;
 
 const COMPARABLE_WINDOW_YEARS = 10;
 const COMPARABLE_TARGET_COUNT = 100;
@@ -204,6 +240,34 @@ const resolveRoleFromAccountType = (accountType: "AGENT" | "CLIENT" | "NOTAIRE")
   }
 };
 
+const normalizePropertyClientRelationRole = (
+  value: unknown,
+): PropertyClientRelationRole | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "OWNER" || normalized === "PROSPECT" || normalized === "ACHETEUR") {
+    return normalized;
+  }
+
+  return null;
+};
+
+const serializeClientBusinessData = (data: ClientBusinessData): string =>
+  JSON.stringify({
+    firstName: data.firstName,
+    lastName: data.lastName,
+    email: data.email,
+    phone: data.phone,
+    address: data.address,
+    postalCode: data.postalCode,
+    city: data.city,
+    personalNotes: data.personalNotes,
+    accountType: data.accountType,
+  });
+
 const parseDetails = (raw: string | null): Record<string, unknown> => {
   if (!raw) {
     return {};
@@ -215,10 +279,127 @@ const parseDetails = (raw: string | null): Record<string, unknown> => {
       return {};
     }
 
-    return parsed as Record<string, unknown>;
+    return flattenPropertyDetails(parsed as Record<string, unknown>);
   } catch {
     return {};
   }
+};
+
+const parseJsonRecord = (raw: string | null): Record<string, unknown> => {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const normalizeOptionalStringFromUnknown = (
+  value: unknown,
+): string | null | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return normalizeOptionalString(value);
+};
+
+const toIsoDateTimeString = (value: unknown): string | null => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const asDate = new Date(value);
+    return Number.isNaN(asDate.getTime()) ? null : asDate.toISOString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const asNumber = Number(trimmed);
+    if (Number.isFinite(asNumber)) {
+      const asNumberDate = new Date(asNumber);
+      if (!Number.isNaN(asNumberDate.getTime())) {
+        return asNumberDate.toISOString();
+      }
+    }
+
+    const asDate = new Date(trimmed);
+    return Number.isNaN(asDate.getTime()) ? null : asDate.toISOString();
+  }
+
+  return null;
+};
+
+const flattenPropertyDetails = (details: Record<string, unknown>): Record<string, unknown> => {
+  const flattened: Record<string, unknown> = {
+    ...details,
+  };
+
+  for (const group of BIEN_DETAIL_GROUPS) {
+    const rawGroup = details[group];
+    if (!isRecord(rawGroup)) {
+      continue;
+    }
+
+    const knownKeys = new Set(listObjectDataFieldKeysByGroup("bien", group));
+    for (const [key, value] of Object.entries(rawGroup)) {
+      if (knownKeys.size === 0 || knownKeys.has(key)) {
+        flattened[key] = value;
+      }
+    }
+    delete flattened[group];
+  }
+
+  const rawLocation = details.location;
+  if (isRecord(rawLocation)) {
+    if (Object.prototype.hasOwnProperty.call(rawLocation, "gpsLat")) {
+      flattened.gpsLat = rawLocation.gpsLat;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawLocation, "gpsLng")) {
+      flattened.gpsLng = rawLocation.gpsLng;
+    }
+    delete flattened.location;
+  }
+
+  return flattened;
+};
+
+const getDetailGroup = (details: PropertyDetailsInput, group: string): Record<string, unknown> => {
+  const groupedDetails: Record<string, unknown> = {};
+
+  for (const key of listObjectDataFieldKeysByGroup("bien", group)) {
+    if (Object.prototype.hasOwnProperty.call(details, key)) {
+      groupedDetails[key] = details[key];
+    }
+  }
+
+  const legacyGroup = details[group];
+  if (isRecord(legacyGroup)) {
+    for (const [key, value] of Object.entries(legacyGroup)) {
+      if (!Object.prototype.hasOwnProperty.call(groupedDetails, key)) {
+        groupedDetails[key] = value;
+      }
+    }
+  }
+
+  return groupedDetails;
 };
 
 const sanitizeHiddenExpectedDocumentKeys = (value: unknown): string[] => {
@@ -284,28 +465,49 @@ const toBooleanLike = (value: unknown): boolean | null => {
   return null;
 };
 
-const getLocationDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
-  const rawLocation = details.location;
-  if (!isRecord(rawLocation)) {
-    return {};
+const isTrackableValue = (value: unknown): boolean => {
+  if (value === null || typeof value === "undefined") {
+    return false;
   }
 
-  return rawLocation;
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return true;
+};
+
+const getLocationDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
+  const locationDetails = getDetailGroup(details, "location");
+
+  if (Object.prototype.hasOwnProperty.call(details, "gpsLat")) {
+    locationDetails.gpsLat = details.gpsLat;
+  }
+  if (Object.prototype.hasOwnProperty.call(details, "gpsLng")) {
+    locationDetails.gpsLng = details.gpsLng;
+  }
+
+  const rawLocation = details.location;
+  if (isRecord(rawLocation)) {
+    if (Object.prototype.hasOwnProperty.call(rawLocation, "gpsLat")) {
+      locationDetails.gpsLat = rawLocation.gpsLat;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawLocation, "gpsLng")) {
+      locationDetails.gpsLng = rawLocation.gpsLng;
+    }
+  }
+
+  return locationDetails;
 };
 
 const applyCoordinatesToDetails = (
   details: PropertyDetailsInput,
   coordinates: PropertyCoordinates | null,
 ): PropertyDetailsInput => {
-  const location = getLocationDetails(details);
-
   return {
     ...details,
-    location: {
-      ...location,
-      gpsLat: coordinates?.latitude ?? null,
-      gpsLng: coordinates?.longitude ?? null,
-    },
+    gpsLat: coordinates?.latitude ?? null,
+    gpsLng: coordinates?.longitude ?? null,
   };
 };
 
@@ -348,6 +550,46 @@ const updateSearchDocumentSafe = async (property: PropertyRow): Promise<void> =>
   }
 };
 
+const resolveVisitBusinessData = (row: {
+  propertyId: string;
+  prospectUserId: string;
+  startsAt: Date;
+  endsAt: Date;
+  compteRendu: string | null;
+  bonDeVisiteFileId: string | null;
+  data: string;
+}): VisitBusinessData => {
+  const parsed = parseJsonRecord(row.data);
+  const propertyId =
+    normalizeOptionalStringFromUnknown(parsed.propertyId) ?? row.propertyId;
+  const prospectUserId =
+    normalizeOptionalStringFromUnknown(parsed.prospectUserId) ?? row.prospectUserId;
+  const startsAt = toIsoDateTimeString(parsed.startsAt) ?? row.startsAt.toISOString();
+  const endsAt = toIsoDateTimeString(parsed.endsAt) ?? row.endsAt.toISOString();
+  const parsedCompteRendu = normalizeOptionalStringFromUnknown(parsed.compteRendu);
+  const parsedBonDeVisiteFileId = normalizeOptionalStringFromUnknown(parsed.bonDeVisiteFileId);
+
+  return {
+    propertyId,
+    prospectUserId,
+    startsAt,
+    endsAt,
+    compteRendu: parsedCompteRendu === undefined ? row.compteRendu : parsedCompteRendu,
+    bonDeVisiteFileId:
+      parsedBonDeVisiteFileId === undefined ? row.bonDeVisiteFileId : parsedBonDeVisiteFileId,
+  };
+};
+
+const serializeVisitBusinessData = (data: VisitBusinessData): string =>
+  JSON.stringify({
+    propertyId: data.propertyId,
+    prospectUserId: data.prospectUserId,
+    startsAt: data.startsAt,
+    endsAt: data.endsAt,
+    compteRendu: data.compteRendu,
+    bonDeVisiteFileId: data.bonDeVisiteFileId,
+  });
+
 const toPropertyVisitResponse = (row: {
   id: string;
   propertyId: string;
@@ -362,25 +604,30 @@ const toPropertyVisitResponse = (row: {
   compteRendu: string | null;
   bonDeVisiteFileId: string | null;
   bonDeVisiteFileName: string | null;
+  data: string;
   createdAt: Date;
   updatedAt: Date;
-}) => ({
-  id: row.id,
-  propertyId: row.propertyId,
-  propertyTitle: row.propertyTitle,
-  prospectUserId: row.prospectUserId,
-  prospectFirstName: row.prospectFirstName,
-  prospectLastName: row.prospectLastName,
-  prospectEmail: row.prospectEmail,
-  prospectPhone: row.prospectPhone,
-  startsAt: row.startsAt.toISOString(),
-  endsAt: row.endsAt.toISOString(),
-  compteRendu: row.compteRendu,
-  bonDeVisiteFileId: row.bonDeVisiteFileId,
-  bonDeVisiteFileName: row.bonDeVisiteFileName,
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString(),
-});
+}) => {
+  const data = resolveVisitBusinessData(row);
+
+  return {
+    id: row.id,
+    propertyId: data.propertyId,
+    propertyTitle: row.propertyTitle,
+    prospectUserId: data.prospectUserId,
+    prospectFirstName: row.prospectFirstName,
+    prospectLastName: row.prospectLastName,
+    prospectEmail: row.prospectEmail,
+    prospectPhone: row.prospectPhone,
+    startsAt: data.startsAt,
+    endsAt: data.endsAt,
+    compteRendu: data.compteRendu,
+    bonDeVisiteFileId: data.bonDeVisiteFileId,
+    bonDeVisiteFileName: row.bonDeVisiteFileName,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+};
 
 const parseCursor = (cursor?: string): number | undefined => {
   if (!cursor) {
@@ -420,48 +667,23 @@ const normalizeMarketPropertyType = (value: unknown): MarketPropertyType | null 
 };
 
 const getGeneralDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
-  const general = details.general;
-  if (!isRecord(general)) {
-    return {};
-  }
-
-  return general;
+  return getDetailGroup(details, "general");
 };
 
 const getCharacteristicsDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
-  const characteristics = details.characteristics;
-  if (!isRecord(characteristics)) {
-    return {};
-  }
-
-  return characteristics;
+  return getDetailGroup(details, "characteristics");
 };
 
 const getFinanceDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
-  const finance = details.finance;
-  if (!isRecord(finance)) {
-    return {};
-  }
-
-  return finance;
+  return getDetailGroup(details, "finance");
 };
 
 const getRegulationDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
-  const regulation = details.regulation;
-  if (!isRecord(regulation)) {
-    return {};
-  }
-
-  return regulation;
+  return getDetailGroup(details, "regulation");
 };
 
 const getAmenitiesDetails = (details: PropertyDetailsInput): Record<string, unknown> => {
-  const amenities = details.amenities;
-  if (!isRecord(amenities)) {
-    return {};
-  }
-
-  return amenities;
+  return getDetailGroup(details, "amenities");
 };
 
 const resolvePropertyTypeFromDetails = (details: PropertyDetailsInput): MarketPropertyType | null => {
@@ -920,10 +1142,7 @@ const resolveAllPropertyCriteriaForPrompt = (details: PropertyDetailsInput): Pro
   const criteria: PropertyValuationCriterion[] = [];
 
   for (const categoryId of categories) {
-    const rawCategory = details[categoryId];
-    if (!isRecord(rawCategory)) {
-      continue;
-    }
+    const rawCategory = getDetailGroup(details, categoryId);
 
     for (const [fieldKey, rawValue] of Object.entries(rawCategory)) {
       const value = formatDetailPromptValue(rawValue);
@@ -1522,134 +1741,35 @@ export const propertiesService = {
     city: string;
     postalCode: string;
     address: string;
+    // Deprecated on purpose: creation must stay pure and no longer links owner at create time.
     owner?: OwnerContactInput;
     ownerUserId?: string;
     details?: PropertyDetailsInput;
+    changeMode?: ObjectChangeMode;
   }) {
     const now = new Date();
     const id = crypto.randomUUID();
 
-    if (!input.owner && !input.ownerUserId) {
-      throw new HttpError(
-        400,
-        "INVALID_OWNER_SELECTION",
-        "Un proprietaire existant ou un nouveau proprietaire est requis",
-      );
-    }
-
     const detailsWithCoordinates = await withGeocodedCoordinates({
-      details: input.details ?? {},
+      details: flattenPropertyDetails(input.details ?? {}),
       address: input.address,
       postalCode: input.postalCode,
       city: input.city,
     });
 
-    await db.transaction(async (tx) => {
-      let ownerUserId: string;
-
-      if (input.ownerUserId) {
-        const existingUser = await tx.query.users.findFirst({
-          where: and(eq(users.id, input.ownerUserId), eq(users.orgId, input.orgId)),
-        });
-
-        if (!existingUser) {
-          throw new HttpError(404, "USER_NOT_FOUND", "Utilisateur proprietaire introuvable");
-        }
-
-        if (existingUser.accountType !== "CLIENT") {
-          throw new HttpError(
-            400,
-            "OWNER_MUST_BE_CLIENT",
-            "Le proprietaire doit etre un utilisateur de type client",
-          );
-        }
-
-        ownerUserId = existingUser.id;
-      } else {
-        const owner = input.owner!;
-        const normalizedOwnerEmail = owner.email.trim().toLowerCase();
-        const normalizedOwnerPhone = owner.phone.trim();
-
-        const existingOwner = await tx.query.users.findFirst({
-          where: eq(users.email, normalizedOwnerEmail),
-        });
-
-        if (existingOwner) {
-          if (existingOwner.orgId !== input.orgId) {
-            throw new HttpError(
-              409,
-              "OWNER_EMAIL_ALREADY_USED",
-              "Cet email proprietaire est deja utilise par une autre organisation",
-            );
-          }
-
-          if (existingOwner.accountType !== "CLIENT") {
-            throw new HttpError(
-              400,
-              "OWNER_MUST_BE_CLIENT",
-              "Le proprietaire doit etre un utilisateur de type client",
-            );
-          }
-
-          ownerUserId = existingOwner.id;
-          await tx
-            .update(users)
-            .set({
-              firstName: owner.firstName,
-              lastName: owner.lastName,
-              phone: normalizedOwnerPhone,
-              address: normalizeOptionalString(owner.address) ?? null,
-              postalCode: normalizeOptionalString(owner.postalCode) ?? null,
-              city: normalizeOptionalString(owner.city) ?? null,
-              updatedAt: now,
-            })
-            .where(and(eq(users.id, existingOwner.id), eq(users.orgId, input.orgId)));
-        } else {
-          ownerUserId = crypto.randomUUID();
-          const passwordHash = await Bun.password.hash(generateRandomPassword());
-
-          await tx.insert(users).values({
-            id: ownerUserId,
-            orgId: input.orgId,
-            email: normalizedOwnerEmail,
-            firstName: owner.firstName,
-            lastName: owner.lastName,
-            phone: normalizedOwnerPhone,
-            address: normalizeOptionalString(owner.address) ?? null,
-            postalCode: normalizeOptionalString(owner.postalCode) ?? null,
-            city: normalizeOptionalString(owner.city) ?? null,
-            accountType: "CLIENT",
-            role: resolveRoleFromAccountType("CLIENT"),
-            passwordHash,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-      }
-
-      await tx.insert(properties).values({
-        id,
-        orgId: input.orgId,
-        title: input.title,
-        city: input.city,
-        postalCode: input.postalCode,
-        address: input.address,
-        price: null,
-        details: JSON.stringify(detailsWithCoordinates),
-        hiddenExpectedDocumentKeys: "[]",
-        status: "PROSPECTION",
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await tx.insert(propertyUserLinks).values({
-        id: crypto.randomUUID(),
-        orgId: input.orgId,
-        propertyId: id,
-        userId: ownerUserId,
-        role: "OWNER",
-        createdAt: now,
-      });
+    await db.insert(properties).values({
+      id,
+      orgId: input.orgId,
+      title: input.title,
+      city: input.city,
+      postalCode: input.postalCode,
+      address: input.address,
+      price: null,
+      details: JSON.stringify(flattenPropertyDetails(detailsWithCoordinates)),
+      hiddenExpectedDocumentKeys: "[]",
+      status: "PROSPECTION",
+      createdAt: now,
+      updatedAt: now,
     });
 
     const created = await db.query.properties.findFirst({
@@ -1662,7 +1782,27 @@ export const propertiesService = {
 
     await updateSearchDocumentSafe(created);
 
-    return toPropertyResponse(created);
+    const createdProperty = toPropertyResponse(created);
+    const createdDetails = isRecord(createdProperty.details)
+      ? (createdProperty.details as Record<string, unknown>)
+      : {};
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "bien",
+      objectId: createdProperty.id,
+      mode: input.changeMode ?? "USER",
+      changes: [
+        { paramName: "title", paramValue: createdProperty.title },
+        { paramName: "city", paramValue: createdProperty.city },
+        { paramName: "postalCode", paramValue: createdProperty.postalCode },
+        { paramName: "address", paramValue: createdProperty.address },
+        ...Object.entries(createdDetails).map(([paramName, paramValue]) => ({ paramName, paramValue })),
+      ].filter((change) => isTrackableValue(change.paramValue)),
+      modifiedAt: now,
+    });
+
+    return createdProperty;
   },
 
   async getById(input: { orgId: string; id: string }) {
@@ -1680,6 +1820,7 @@ export const propertiesService = {
   async patchById(input: {
     orgId: string;
     id: string;
+    changeMode?: ObjectChangeMode;
     data: {
       title?: string;
       city?: string;
@@ -1698,12 +1839,14 @@ export const propertiesService = {
       throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
     }
 
+    const incomingDetails =
+      input.data.details === undefined ? undefined : flattenPropertyDetails(input.data.details);
     const mergedDetails =
-      input.data.details === undefined
+      incomingDetails === undefined
         ? parseDetails(existing.details)
         : {
             ...parseDetails(existing.details),
-            ...input.data.details,
+            ...incomingDetails,
           };
 
     const nextAddress = input.data.address ?? existing.address ?? "";
@@ -1727,6 +1870,7 @@ export const propertiesService = {
         ? parseHiddenExpectedDocumentKeys(existing.hiddenExpectedDocumentKeys)
         : sanitizeHiddenExpectedDocumentKeys(input.data.hiddenExpectedDocumentKeys);
 
+    const modifiedAt = new Date();
     await db
       .update(properties)
       .set({
@@ -1736,9 +1880,9 @@ export const propertiesService = {
         address: input.data.address ?? existing.address,
         price:
           input.data.price === undefined ? existing.price : Math.round(input.data.price),
-        details: JSON.stringify(detailsWithCoordinates),
+        details: JSON.stringify(flattenPropertyDetails(detailsWithCoordinates)),
         hiddenExpectedDocumentKeys: JSON.stringify(nextHiddenExpectedDocumentKeys),
-        updatedAt: new Date(),
+        updatedAt: modifiedAt,
       })
       .where(and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)));
 
@@ -1752,13 +1896,59 @@ export const propertiesService = {
 
     await updateSearchDocumentSafe(updated);
 
-    return toPropertyResponse(updated);
+    const updatedProperty = toPropertyResponse(updated);
+    const updatedDetails = isRecord(updatedProperty.details)
+      ? (updatedProperty.details as Record<string, unknown>)
+      : {};
+
+    const changes: Array<{ paramName: string; paramValue: unknown }> = [];
+    if (input.data.title !== undefined) {
+      changes.push({ paramName: "title", paramValue: updatedProperty.title });
+    }
+    if (input.data.city !== undefined) {
+      changes.push({ paramName: "city", paramValue: updatedProperty.city });
+    }
+    if (input.data.postalCode !== undefined) {
+      changes.push({ paramName: "postalCode", paramValue: updatedProperty.postalCode });
+    }
+    if (input.data.address !== undefined) {
+      changes.push({ paramName: "address", paramValue: updatedProperty.address });
+    }
+    if (input.data.price !== undefined) {
+      changes.push({ paramName: "price", paramValue: updatedProperty.price });
+    }
+    if (input.data.hiddenExpectedDocumentKeys !== undefined) {
+      changes.push({
+        paramName: "hiddenExpectedDocumentKeys",
+        paramValue: updatedProperty.hiddenExpectedDocumentKeys,
+      });
+    }
+    if (incomingDetails !== undefined) {
+      for (const paramName of Object.keys(incomingDetails)) {
+        changes.push({
+          paramName,
+          paramValue: updatedDetails[paramName],
+        });
+      }
+    }
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "bien",
+      objectId: updatedProperty.id,
+      mode: input.changeMode ?? "USER",
+      changes: changes.filter((change) => isTrackableValue(change.paramValue)),
+      modifiedAt,
+    });
+
+    return updatedProperty;
   },
 
   async updateStatus(input: {
     orgId: string;
     id: string;
     status: string;
+    changeMode?: ObjectChangeMode;
   }) {
     const existing = await db.query.properties.findFirst({
       where: and(eq(properties.id, input.id), eq(properties.orgId, input.orgId)),
@@ -1799,7 +1989,17 @@ export const propertiesService = {
 
     await updateSearchDocumentSafe(updated);
 
-    return toPropertyResponse(updated);
+    const updatedProperty = toPropertyResponse(updated);
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "bien",
+      objectId: updatedProperty.id,
+      mode: input.changeMode ?? "USER",
+      changes: [{ paramName: "status", paramValue: updatedProperty.status }],
+      modifiedAt: now,
+    });
+
+    return updatedProperty;
   },
 
   async listProspects(input: {
@@ -1838,7 +2038,7 @@ export const propertiesService = {
         and(
           eq(propertyUserLinks.orgId, input.orgId),
           eq(propertyUserLinks.propertyId, input.propertyId),
-          inArray(propertyUserLinks.role, ["PROSPECT", "ACHETEUR"]),
+          inArray(propertyUserLinks.role, ["OWNER", "PROSPECT", "ACHETEUR"]),
         ),
       )
       .orderBy(desc(propertyUserLinks.createdAt));
@@ -1866,6 +2066,7 @@ export const propertiesService = {
     propertyId: string;
     userId?: string;
     newClient?: ProspectContactInput;
+    relationRole?: PropertyClientRelationRole;
   }) {
     const property = await db.query.properties.findFirst({
       where: and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)),
@@ -1882,6 +2083,8 @@ export const propertiesService = {
         "Un client existant ou un nouveau client est requis",
       );
     }
+
+    const relationRole = input.relationRole ?? "PROSPECT";
 
     const now = new Date();
     let userId = input.userId ?? "";
@@ -1927,15 +2130,29 @@ export const propertiesService = {
         }
 
         userId = existingByEmail.id;
+        const nextProspectData: ClientBusinessData = {
+          firstName: input.newClient.firstName,
+          lastName: input.newClient.lastName,
+          email: normalizedEmail,
+          phone: input.newClient.phone.trim(),
+          address: normalizeOptionalString(input.newClient.address) ?? null,
+          postalCode: normalizeOptionalString(input.newClient.postalCode) ?? null,
+          city: normalizeOptionalString(input.newClient.city) ?? null,
+          personalNotes: null,
+          accountType: "CLIENT",
+        };
         await db
           .update(users)
           .set({
-            firstName: input.newClient.firstName,
-            lastName: input.newClient.lastName,
-            phone: input.newClient.phone.trim(),
-            address: normalizeOptionalString(input.newClient.address) ?? null,
-            postalCode: normalizeOptionalString(input.newClient.postalCode) ?? null,
-            city: normalizeOptionalString(input.newClient.city) ?? null,
+            firstName: nextProspectData.firstName,
+            lastName: nextProspectData.lastName,
+            email: nextProspectData.email,
+            phone: nextProspectData.phone,
+            address: nextProspectData.address,
+            postalCode: nextProspectData.postalCode,
+            city: nextProspectData.city,
+            accountType: "CLIENT",
+            data: serializeClientBusinessData(nextProspectData),
             updatedAt: now,
           })
           .where(and(eq(users.id, userId), eq(users.orgId, input.orgId)));
@@ -1946,10 +2163,7 @@ export const propertiesService = {
       } else {
         userId = crypto.randomUUID();
         const passwordHash = await Bun.password.hash(generateRandomPassword());
-
-        await db.insert(users).values({
-          id: userId,
-          orgId: input.orgId,
+        const createdProspectData: ClientBusinessData = {
           firstName: input.newClient.firstName,
           lastName: input.newClient.lastName,
           email: normalizedEmail,
@@ -1957,7 +2171,22 @@ export const propertiesService = {
           address: normalizeOptionalString(input.newClient.address) ?? null,
           postalCode: normalizeOptionalString(input.newClient.postalCode) ?? null,
           city: normalizeOptionalString(input.newClient.city) ?? null,
+          personalNotes: null,
           accountType: "CLIENT",
+        };
+
+        await db.insert(users).values({
+          id: userId,
+          orgId: input.orgId,
+          firstName: createdProspectData.firstName,
+          lastName: createdProspectData.lastName,
+          email: createdProspectData.email,
+          phone: createdProspectData.phone,
+          address: createdProspectData.address,
+          postalCode: createdProspectData.postalCode,
+          city: createdProspectData.city,
+          accountType: "CLIENT",
+          data: serializeClientBusinessData(createdProspectData),
           role: resolveRoleFromAccountType("CLIENT"),
           passwordHash,
           createdAt: now,
@@ -1984,18 +2213,10 @@ export const propertiesService = {
 
     let linkId = existingLink?.id ?? "";
     if (existingLink) {
-      if (existingLink.role === "OWNER") {
-        throw new HttpError(
-          409,
-          "PROSPECT_ALREADY_OWNER",
-          "Ce client est deja proprietaire de ce bien",
-        );
-      }
-
-      if (existingLink.role !== "PROSPECT") {
+      if (existingLink.role !== relationRole) {
         await db
           .update(propertyUserLinks)
-          .set({ role: "PROSPECT" })
+          .set({ role: relationRole })
           .where(eq(propertyUserLinks.id, existingLink.id));
       }
     } else {
@@ -2005,7 +2226,7 @@ export const propertiesService = {
         orgId: input.orgId,
         propertyId: input.propertyId,
         userId,
-        role: "PROSPECT",
+        role: relationRole,
         createdAt: now,
       });
     }
@@ -2021,7 +2242,7 @@ export const propertiesService = {
       address: client.address,
       postalCode: client.postalCode,
       city: client.city,
-      relationRole: "PROSPECT",
+      relationRole,
       createdAt: (existingLink?.createdAt ?? now).toISOString(),
     };
   },
@@ -2053,6 +2274,7 @@ export const propertiesService = {
         compteRendu: propertyVisits.compteRendu,
         bonDeVisiteFileId: propertyVisits.bonDeVisiteFileId,
         bonDeVisiteFileName: files.fileName,
+        data: propertyVisits.data,
         createdAt: propertyVisits.createdAt,
         updatedAt: propertyVisits.updatedAt,
       })
@@ -2097,6 +2319,7 @@ export const propertiesService = {
     prospectUserId: string;
     startsAt: string;
     endsAt: string;
+    changeMode?: ObjectChangeMode;
   }) {
     const startsAt = parseIsoDateTime(
       input.startsAt,
@@ -2141,41 +2364,17 @@ export const propertiesService = {
       );
     }
 
-    const existingLink = await db.query.propertyUserLinks.findFirst({
-      where: and(
-        eq(propertyUserLinks.orgId, input.orgId),
-        eq(propertyUserLinks.propertyId, input.propertyId),
-        eq(propertyUserLinks.userId, input.prospectUserId),
-      ),
-    });
-
-    if (existingLink?.role === "OWNER") {
-      throw new HttpError(
-        400,
-        "PROSPECT_ALREADY_OWNER",
-        "Ce client est deja proprietaire de ce bien",
-      );
-    }
-
     const now = new Date();
 
-    if (!existingLink) {
-      await db.insert(propertyUserLinks).values({
-        id: crypto.randomUUID(),
-        orgId: input.orgId,
-        propertyId: input.propertyId,
-        userId: input.prospectUserId,
-        role: "PROSPECT",
-        createdAt: now,
-      });
-    } else if (existingLink.role !== "PROSPECT" && existingLink.role !== "ACHETEUR") {
-      await db
-        .update(propertyUserLinks)
-        .set({ role: "PROSPECT" })
-        .where(eq(propertyUserLinks.id, existingLink.id));
-    }
-
     const visitId = crypto.randomUUID();
+    const visitData: VisitBusinessData = {
+      propertyId: input.propertyId,
+      prospectUserId: input.prospectUserId,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      compteRendu: null,
+      bonDeVisiteFileId: null,
+    };
 
     await db.insert(propertyVisits).values({
       id: visitId,
@@ -2186,6 +2385,7 @@ export const propertiesService = {
       endsAt,
       compteRendu: null,
       bonDeVisiteFileId: null,
+      data: serializeVisitBusinessData(visitData),
       createdAt: now,
       updatedAt: now,
     });
@@ -2204,7 +2404,7 @@ export const propertiesService = {
       createdAt: now,
     });
 
-    return {
+    const createdVisit = {
       id: visitId,
       propertyId: input.propertyId,
       propertyTitle: property.title,
@@ -2213,14 +2413,30 @@ export const propertiesService = {
       prospectLastName: prospect.lastName,
       prospectEmail: prospect.email,
       prospectPhone: prospect.phone,
-      startsAt: startsAt.toISOString(),
-      endsAt: endsAt.toISOString(),
-      compteRendu: null,
-      bonDeVisiteFileId: null,
+      startsAt: visitData.startsAt,
+      endsAt: visitData.endsAt,
+      compteRendu: visitData.compteRendu,
+      bonDeVisiteFileId: visitData.bonDeVisiteFileId,
       bonDeVisiteFileName: null,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "visite",
+      objectId: createdVisit.id,
+      mode: input.changeMode ?? "USER",
+      changes: [
+        { paramName: "propertyId", paramValue: createdVisit.propertyId },
+        { paramName: "prospectUserId", paramValue: createdVisit.prospectUserId },
+        { paramName: "startsAt", paramValue: createdVisit.startsAt },
+        { paramName: "endsAt", paramValue: createdVisit.endsAt },
+      ],
+      modifiedAt: now,
+    });
+
+    return createdVisit;
   },
 
   async getVisitById(input: {
@@ -2242,6 +2458,7 @@ export const propertiesService = {
         compteRendu: propertyVisits.compteRendu,
         bonDeVisiteFileId: propertyVisits.bonDeVisiteFileId,
         bonDeVisiteFileName: files.fileName,
+        data: propertyVisits.data,
         createdAt: propertyVisits.createdAt,
         updatedAt: propertyVisits.updatedAt,
       })
@@ -2275,6 +2492,7 @@ export const propertiesService = {
   async patchVisitById(input: {
     orgId: string;
     id: string;
+    changeMode?: ObjectChangeMode;
     data: {
       compteRendu?: string | null;
       bonDeVisiteFileId?: string | null;
@@ -2288,15 +2506,16 @@ export const propertiesService = {
       throw new HttpError(404, "VISIT_NOT_FOUND", "Visite introuvable");
     }
 
+    const existingVisitData = resolveVisitBusinessData(existingVisit);
     const nextCompteRenduNormalized = normalizeOptionalString(input.data.compteRendu);
     const nextBonDeVisiteFileIdNormalized = normalizeOptionalString(input.data.bonDeVisiteFileId);
     const nextCompteRendu =
       nextCompteRenduNormalized === undefined
-        ? existingVisit.compteRendu
+        ? existingVisitData.compteRendu
         : nextCompteRenduNormalized;
     const nextBonDeVisiteFileId =
       nextBonDeVisiteFileIdNormalized === undefined
-        ? existingVisit.bonDeVisiteFileId
+        ? existingVisitData.bonDeVisiteFileId
         : nextBonDeVisiteFileIdNormalized;
 
     if (nextBonDeVisiteFileId) {
@@ -2317,19 +2536,47 @@ export const propertiesService = {
       }
     }
 
+    const modifiedAt = new Date();
     await db
       .update(propertyVisits)
       .set({
         compteRendu: nextCompteRendu,
         bonDeVisiteFileId: nextBonDeVisiteFileId,
-        updatedAt: new Date(),
+        data: serializeVisitBusinessData({
+          ...existingVisitData,
+          compteRendu: nextCompteRendu,
+          bonDeVisiteFileId: nextBonDeVisiteFileId,
+        }),
+        updatedAt: modifiedAt,
       })
       .where(and(eq(propertyVisits.id, input.id), eq(propertyVisits.orgId, input.orgId)));
 
-    return this.getVisitById({
+    const updatedVisit = await this.getVisitById({
       orgId: input.orgId,
       id: input.id,
     });
+
+    const changes: Array<{ paramName: string; paramValue: unknown }> = [];
+    if (input.data.compteRendu !== undefined) {
+      changes.push({ paramName: "compteRendu", paramValue: updatedVisit.compteRendu });
+    }
+    if (input.data.bonDeVisiteFileId !== undefined) {
+      changes.push({
+        paramName: "bonDeVisiteFileId",
+        paramValue: updatedVisit.bonDeVisiteFileId,
+      });
+    }
+
+    await trackObjectChangesSafe({
+      orgId: input.orgId,
+      objectType: "visite",
+      objectId: updatedVisit.id,
+      mode: input.changeMode ?? "USER",
+      changes: changes.filter((change) => isTrackableValue(change.paramValue)),
+      modifiedAt,
+    });
+
+    return updatedVisit;
   },
 
   async listCalendarVisits(input: {
@@ -2369,6 +2616,7 @@ export const propertiesService = {
         compteRendu: propertyVisits.compteRendu,
         bonDeVisiteFileId: propertyVisits.bonDeVisiteFileId,
         bonDeVisiteFileName: files.fileName,
+        data: propertyVisits.data,
         createdAt: propertyVisits.createdAt,
         updatedAt: propertyVisits.updatedAt,
       })
@@ -2899,7 +3147,7 @@ export const propertiesService = {
     await db
       .update(properties)
       .set({
-        details: JSON.stringify(nextDetails),
+        details: JSON.stringify(flattenPropertyDetails(nextDetails)),
         updatedAt: generatedAt,
       })
       .where(and(eq(properties.id, input.propertyId), eq(properties.orgId, input.orgId)));
@@ -2917,14 +3165,6 @@ export const propertiesService = {
     }
 
     const details = parseDetails(property.details);
-    const locationDetails = (() => {
-      const raw = details.location;
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {} as Record<string, unknown>;
-      }
-
-      return raw as Record<string, unknown>;
-    })();
 
     return getPropertyRisks({
       propertyId: property.id,
@@ -2932,8 +3172,8 @@ export const propertiesService = {
         address: property.address,
         postalCode: property.postalCode,
         city: property.city,
-        latitude: toFiniteNumber(locationDetails.gpsLat),
-        longitude: toFiniteNumber(locationDetails.gpsLng),
+        latitude: toFiniteNumber(details.gpsLat),
+        longitude: toFiniteNumber(details.gpsLng),
       },
     });
   },

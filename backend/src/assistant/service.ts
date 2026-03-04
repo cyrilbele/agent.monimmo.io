@@ -8,12 +8,15 @@ import { db } from "../db/client";
 import {
   assistantConversations,
   assistantMessages,
-  assistantPendingActions,
   properties,
   users,
 } from "../db/schema";
 import { HttpError } from "../http/errors";
 import { externalFetch } from "../http/external-fetch";
+import {
+  getObjectDataStructure,
+  listObjectDataFieldKeysByGroup,
+} from "../object-data/structure";
 import { propertiesService } from "../properties/service";
 import { usersService } from "../users/service";
 import {
@@ -23,26 +26,12 @@ import {
 } from "./web-search";
 
 export type AssistantObjectType = "bien" | "client" | "rdv" | "visite";
-export type AssistantActionOperation = "create" | "update";
-export type AssistantPendingActionStatus = "PENDING" | "EXECUTED" | "CANCELED" | "FAILED";
-
-export type AssistantPendingActionResponse = {
-  id: string;
-  status: AssistantPendingActionStatus;
-  operation: AssistantActionOperation;
-  objectType: AssistantObjectType;
-  objectId: string | null;
-  previewText: string;
-  createdAt: string;
-  updatedAt: string;
-};
 
 export type AssistantMessageResponse = {
   id: string;
   role: "USER" | "ASSISTANT";
   text: string;
   citations: AssistantCitation[];
-  pendingAction: AssistantPendingActionResponse | null;
   createdAt: string;
 };
 
@@ -59,36 +48,12 @@ export type AssistantMessageContext = {
   objectId: string;
 };
 
-type PendingActionPayload = {
-  operation: AssistantActionOperation;
-  objectType: AssistantObjectType;
-  objectId?: string | null;
-  params: Record<string, unknown>;
+export type AssistantToolMutationResult = {
+  status: "EXECUTED";
+  objectId: string;
+  summary: string;
+  result: unknown;
 };
-
-type PendingActionDraft = PendingActionPayload & {
-  previewText: string;
-};
-
-type AssistantActionResolveResponse = {
-  action: AssistantPendingActionResponse;
-  conversation: AssistantConversationResponse;
-  assistantMessage: AssistantMessageResponse;
-};
-
-export type AssistantToolMutationResult =
-  | {
-      status: "PENDING_CONFIRMATION";
-      requiresConfirmation: true;
-      pendingAction: AssistantPendingActionResponse;
-    }
-  | {
-      status: "EXECUTED";
-      requiresConfirmation: false;
-      objectId: string;
-      summary: string;
-      result: unknown;
-    };
 
 type ParsedIntent =
   | { kind: "list_rdv_today" }
@@ -149,7 +114,6 @@ type AssistantToolCall = {
 type AssistantModelTurnResult = {
   text: string;
   citations: AssistantCitation[];
-  pendingAction: typeof assistantPendingActions.$inferSelect | null;
 };
 
 type AssistantModelToolHandlers = {
@@ -158,7 +122,7 @@ type AssistantModelToolHandlers = {
     objectType?: AssistantObjectType;
   }) => Promise<Record<string, unknown>>;
   get: (input: { objectType: AssistantObjectType; objectId: string }) => Promise<unknown>;
-  getParams: (input: { objectType: AssistantObjectType }) => Record<string, unknown>;
+  getParams: (input: { objectType: AssistantObjectType }) => unknown;
   create: (input: {
     objectType: AssistantObjectType;
     params: Record<string, unknown>;
@@ -234,7 +198,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
     type: "function",
     name: "create",
     description:
-      "Propose la création d'un objet local. Les créations passent par confirmation (pending action).",
+      "Crée un objet local immédiatement.",
     parameters: {
       type: "object",
       properties: {
@@ -255,7 +219,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
     type: "function",
     name: "update",
     description:
-      "Met à jour un objet local. Selon les champs, l'update est exécuté directement ou en confirmation.",
+      "Met à jour un objet local immédiatement.",
     parameters: {
       type: "object",
       properties: {
@@ -276,13 +240,6 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
     },
   },
 ] as const;
-
-const SAFE_UPDATE_FIELDS: Record<AssistantObjectType, ReadonlySet<string>> = {
-  bien: new Set<string>(),
-  client: new Set<string>(["personalNotes"]),
-  rdv: new Set<string>(["comment"]),
-  visite: new Set<string>(["compteRendu"]),
-};
 
 const BIEN_PROPERTY_TYPE_OPTIONS = [
   "APPARTEMENT",
@@ -340,10 +297,47 @@ const parseJsonObject = (value: string): Record<string, unknown> => {
       return parsed as Record<string, unknown>;
     }
   } catch {
-    // ignore
+    const fallback: Record<string, unknown> = {};
+    const pairRegex =
+      /"([^"\\]+)"\s*:\s*("([^"\\]|\\.)*"|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g;
+    let match: RegExpExecArray | null = pairRegex.exec(value);
+    while (match) {
+      const key = match[1]!;
+      const rawValue = match[2]!;
+      try {
+        fallback[key] = JSON.parse(rawValue);
+      } catch {
+        if (rawValue.startsWith("\"") && rawValue.endsWith("\"")) {
+          fallback[key] = rawValue.slice(1, -1);
+        }
+      }
+      match = pairRegex.exec(value);
+    }
+
+    if (Object.keys(fallback).length > 0) {
+      return fallback;
+    }
   }
 
   return {};
+};
+
+const extractFlatToolParams = (
+  args: Record<string, unknown>,
+  reservedKeys: readonly string[],
+): Record<string, unknown> => {
+  const reserved = new Set(reservedKeys);
+  const params: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(args)) {
+    if (reserved.has(key)) {
+      continue;
+    }
+
+    params[key] = value;
+  }
+
+  return params;
 };
 
 const parseCitations = (value: string): AssistantCitation[] => {
@@ -456,52 +450,57 @@ const normalizeDpeClassOption = (value: unknown): (typeof DPE_CLASS_OPTIONS)[num
     : null;
 };
 
-const ensureDetailCategory = (
-  details: Record<string, unknown>,
-  category: string,
-): Record<string, unknown> => {
-  const existing = details[category];
-  if (isRecord(existing)) {
-    return existing;
-  }
-
-  const next: Record<string, unknown> = {};
-  details[category] = next;
-  return next;
-};
-
 const setDetailField = (
   details: Record<string, unknown>,
-  category: string,
   key: string,
   value: unknown,
 ): void => {
-  const categoryRecord = ensureDetailCategory(details, category);
-  categoryRecord[key] = value;
+  details[key] = value;
 };
 
 const mergePropertyDetailsPatch = (
   baseDetails: Record<string, unknown>,
   incomingPatch: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const merged: Record<string, unknown> = {
+  return {
     ...baseDetails,
+    ...incomingPatch,
+  };
+};
+
+const BIEN_DETAIL_GROUPS = [
+  "general",
+  "location",
+  "characteristics",
+  "amenities",
+  "copropriete",
+  "finance",
+  "regulation",
+  "marketing",
+] as const;
+
+const flattenBienDetailsPatch = (value: Record<string, unknown>): Record<string, unknown> => {
+  const flattened: Record<string, unknown> = {
+    ...value,
   };
 
-  for (const [key, value] of Object.entries(incomingPatch)) {
-    const existing = merged[key];
-    if (isRecord(existing) && isRecord(value)) {
-      merged[key] = {
-        ...existing,
-        ...value,
-      };
+  for (const group of BIEN_DETAIL_GROUPS) {
+    const rawGroup = value[group];
+    if (!isRecord(rawGroup)) {
       continue;
     }
 
-    merged[key] = value;
+    const knownKeys = new Set(listObjectDataFieldKeysByGroup("bien", group));
+    for (const [key, entryValue] of Object.entries(rawGroup)) {
+      if (knownKeys.size === 0 || knownKeys.has(key)) {
+        flattened[key] = entryValue;
+      }
+    }
+
+    delete flattened[group];
   }
 
-  return merged;
+  return flattened;
 };
 
 const normalizeBienUpdateParams = (params: Record<string, unknown>): {
@@ -513,62 +512,62 @@ const normalizeBienUpdateParams = (params: Record<string, unknown>): {
   hiddenExpectedDocumentKeys?: string[];
   detailsPatch: Record<string, unknown>;
 } => {
-  const detailsPatch = parseJsonObject(JSON.stringify(params.details ?? {}));
+  const detailsPatch = flattenBienDetailsPatch(parseJsonObject(JSON.stringify(params.details ?? {})));
 
   const propertyType = normalizePropertyTypeOption(
     params.typeBien ?? params.typebien ?? params.propertyType ?? params.type,
   );
   if (propertyType) {
-    setDetailField(detailsPatch, "general", "propertyType", propertyType);
+    setDetailField(detailsPatch, "propertyType", propertyType);
   }
 
   const livingArea = toFiniteNumber(
     params.surface ?? params.surfaceM2 ?? params.surfaceHabitable ?? params.livingArea,
   );
   if (livingArea !== null && livingArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "livingArea", livingArea);
+    setDetailField(detailsPatch, "livingArea", livingArea);
   }
 
   const carrezArea = toFiniteNumber(params.surfaceCarrez ?? params.carrezArea ?? params.carrez);
   if (carrezArea !== null && carrezArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "carrezArea", carrezArea);
+    setDetailField(detailsPatch, "carrezArea", carrezArea);
   }
 
   const landArea = toFiniteNumber(params.surfaceTerrain ?? params.terrain ?? params.landArea);
   if (landArea !== null && landArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "landArea", landArea);
+    setDetailField(detailsPatch, "landArea", landArea);
   }
 
   const longDescription = normalizeOptionalString(
     params.descriptif ?? params.description ?? params.longDescription ?? params.texteAnnonce ?? params.annonce,
   );
   if (longDescription) {
-    setDetailField(detailsPatch, "marketing", "longDescription", longDescription);
+    setDetailField(detailsPatch, "longDescription", longDescription);
   }
 
   const propertyTax = toFiniteNumber(params.taxeFonciere ?? params.propertyTax);
   if (propertyTax !== null && propertyTax >= 0) {
-    setDetailField(detailsPatch, "finance", "propertyTax", Math.round(propertyTax));
+    setDetailField(detailsPatch, "propertyTax", Math.round(propertyTax));
   }
 
   const dpeClass = normalizeDpeClassOption(params.dpeClass);
   if (dpeClass) {
-    setDetailField(detailsPatch, "regulation", "dpeClass", dpeClass);
+    setDetailField(detailsPatch, "dpeClass", dpeClass);
   }
 
   const energyConsumption = toFiniteNumber(params.energyConsumption ?? params.dpeValue);
   if (energyConsumption !== null && energyConsumption >= 0) {
-    setDetailField(detailsPatch, "regulation", "energyConsumption", Math.round(energyConsumption));
+    setDetailField(detailsPatch, "energyConsumption", Math.round(energyConsumption));
   }
 
   const gesClass = normalizeDpeClassOption(params.gesClass);
   if (gesClass) {
-    setDetailField(detailsPatch, "regulation", "gesClass", gesClass);
+    setDetailField(detailsPatch, "gesClass", gesClass);
   }
 
   const co2Emission = toFiniteNumber(params.co2Emission ?? params.gesValue);
   if (co2Emission !== null && co2Emission >= 0) {
-    setDetailField(detailsPatch, "regulation", "co2Emission", Math.round(co2Emission));
+    setDetailField(detailsPatch, "co2Emission", Math.round(co2Emission));
   }
 
   const title = normalizeOptionalString(params.title);
@@ -691,18 +690,18 @@ const extractStructuredBienDetailsFromListing = (message: string): {
   const detailsPatch: Record<string, unknown> = {};
   const extracted: string[] = [];
 
-  setDetailField(detailsPatch, "marketing", "longDescription", body);
+  setDetailField(detailsPatch, "longDescription", body);
   extracted.push("Descriptif long");
 
   const propertyType = normalizePropertyTypeOption(body);
   if (propertyType) {
-    setDetailField(detailsPatch, "general", "propertyType", propertyType);
+    setDetailField(detailsPatch, "propertyType", propertyType);
     extracted.push(`Type bien: ${propertyType}`);
   }
 
   const rooms = matchFirstNumber(body, [/(\d{1,2}(?:[.,]\d+)?)\s*pi[eè]ces?/i]);
   if (rooms !== null && rooms > 0) {
-    setDetailField(detailsPatch, "characteristics", "rooms", Math.round(rooms));
+    setDetailField(detailsPatch, "rooms", Math.round(rooms));
     extracted.push(`Pièces: ${Math.round(rooms)}`);
   }
 
@@ -711,52 +710,52 @@ const extractStructuredBienDetailsFromListing = (message: string): {
     /maison[^.\n]{0,80}?(\d{1,4}(?:[.,]\d{1,2})?)\s*m²?/i,
   ]);
   if (livingArea !== null && livingArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "livingArea", livingArea);
+    setDetailField(detailsPatch, "livingArea", livingArea);
     extracted.push(`Surface habitable: ${formatSurface(livingArea)} m²`);
   }
 
   const carrezArea = matchFirstNumber(body, [/(\d{1,4}(?:[.,]\d{1,2})?)\s*m²?\s*loi\s*carrez/i]);
   if (carrezArea !== null && carrezArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "carrezArea", carrezArea);
+    setDetailField(detailsPatch, "carrezArea", carrezArea);
     extracted.push(`Surface Carrez: ${formatSurface(carrezArea)} m²`);
   }
 
   const landArea = matchFirstNumber(body, [/terrain(?:\s+de)?\s*(\d{1,5}(?:[.,]\d{1,2})?)\s*m²/i]);
   if (landArea !== null && landArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "landArea", landArea);
+    setDetailField(detailsPatch, "landArea", landArea);
     extracted.push(`Surface terrain: ${formatSurface(landArea)} m²`);
   }
 
   const livingRoomArea = matchFirstNumber(body, [/s[eé]jour[^:\n]*:\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*m²/i]);
   if (livingRoomArea !== null && livingRoomArea > 0) {
-    setDetailField(detailsPatch, "characteristics", "livingRoomArea", livingRoomArea);
+    setDetailField(detailsPatch, "livingRoomArea", livingRoomArea);
   }
 
   const bedroomCount =
     countMatches(body, /\bchambre\s*\d+\b/gi) ||
     (matchFirstNumber(body, [/(\d{1,2})\s*chambres?/i]) ?? 0);
   if (bedroomCount > 0) {
-    setDetailField(detailsPatch, "characteristics", "bedrooms", Math.round(bedroomCount));
+    setDetailField(detailsPatch, "bedrooms", Math.round(bedroomCount));
     extracted.push(`Chambres: ${Math.round(bedroomCount)}`);
   }
 
   const bathroomCount =
     countMatches(body, /salle\s+de\s+bains?/gi) + countMatches(body, /salle\s+d['’]eau/gi);
   if (bathroomCount > 0) {
-    setDetailField(detailsPatch, "characteristics", "bathrooms", bathroomCount);
+    setDetailField(detailsPatch, "bathrooms", bathroomCount);
     extracted.push(`Salles d'eau/bains: ${bathroomCount}`);
   }
 
   const toiletsCount =
     countMatches(body, /wc\s+ind[ée]pendant/gi) || countMatches(body, /\bwc\b/gi);
   if (toiletsCount > 0) {
-    setDetailField(detailsPatch, "characteristics", "toilets", toiletsCount);
+    setDetailField(detailsPatch, "toilets", toiletsCount);
     extracted.push(`WC: ${toiletsCount}`);
   }
 
   const parkingVehicles = matchFirstNumber(body, [/stationner\s+(\d{1,2})\s+v[ée]hicules?/i]);
   if (parkingVehicles !== null && parkingVehicles > 0) {
-    setDetailField(detailsPatch, "amenities", "parking", toOuiNonSelect(true));
+    setDetailField(detailsPatch, "parking", toOuiNonSelect(true));
     extracted.push(`Stationnement: ${Math.round(parkingVehicles)} véhicule(s)`);
   }
 
@@ -766,47 +765,47 @@ const extractStructuredBienDetailsFromListing = (message: string): {
       : normalizedBody.includes("paysag")
         ? "OUI_PAYSAGE"
         : "OUI_NU";
-    setDetailField(detailsPatch, "amenities", "garden", gardenValue);
+    setDetailField(detailsPatch, "garden", gardenValue);
   }
 
   if (normalizedBody.includes("clotur")) {
-    setDetailField(detailsPatch, "amenities", "fenced", toOuiNonSelect(true));
+    setDetailField(detailsPatch, "fenced", toOuiNonSelect(true));
   }
   if (normalizedBody.includes("cheminee")) {
-    setDetailField(detailsPatch, "amenities", "fireplace", toOuiNonSelect(true));
+    setDetailField(detailsPatch, "fireplace", toOuiNonSelect(true));
   }
   if (normalizedBody.includes("double vitrage")) {
-    setDetailField(detailsPatch, "amenities", "doubleGlazing", toOuiNonSelect(true));
+    setDetailField(detailsPatch, "doubleGlazing", toOuiNonSelect(true));
   }
   if (normalizedBody.includes("fibre optique")) {
-    setDetailField(detailsPatch, "amenities", "fiber", toOuiNonSelect(true));
+    setDetailField(detailsPatch, "fiber", toOuiNonSelect(true));
   }
   if (normalizedBody.includes("portail electrique")) {
-    setDetailField(detailsPatch, "amenities", "electricGate", toOuiNonSelect(true));
+    setDetailField(detailsPatch, "electricGate", toOuiNonSelect(true));
   }
   if (normalizedBody.includes("tout a l egout")) {
-    setDetailField(detailsPatch, "characteristics", "sanitationType", "TOUT_A_L_EGOUT");
+    setDetailField(detailsPatch, "sanitationType", "TOUT_A_L_EGOUT");
   }
   if (normalizedBody.includes("renovee recemment") || normalizedBody.includes("renove")) {
-    setDetailField(detailsPatch, "characteristics", "condition", "RENOVE");
+    setDetailField(detailsPatch, "condition", "RENOVE");
   }
 
   const propertyTax = matchFirstNumber(body, [/taxe\s+fonci[èe]re\s*[:\-]?\s*([\d\s.,]+)\s*€/i]);
   if (propertyTax !== null && propertyTax >= 0) {
-    setDetailField(detailsPatch, "finance", "propertyTax", Math.round(propertyTax));
+    setDetailField(detailsPatch, "propertyTax", Math.round(propertyTax));
     extracted.push(`Taxe foncière: ${Math.round(propertyTax)} €`);
   }
 
   const feesAmount = matchFirstNumber(body, [/([\d\s.,]+)\s*€\s*TTC\s*Honoraires/i]);
   if (feesAmount !== null && feesAmount >= 0) {
-    setDetailField(detailsPatch, "finance", "feesAmount", Math.round(feesAmount));
+    setDetailField(detailsPatch, "feesAmount", Math.round(feesAmount));
     if (normalizedBody.includes("charge du vendeur")) {
-      setDetailField(detailsPatch, "finance", "feesResponsibility", "VENDEUR");
+      setDetailField(detailsPatch, "feesResponsibility", "VENDEUR");
     }
   }
 
   if (normalizedBody.includes("regime de la copropriete : non") || normalizedBody.includes("pas de charges de copropriete")) {
-    setDetailField(detailsPatch, "copropriete", "isCopropriete", toOuiNonSelect(false));
+    setDetailField(detailsPatch, "isCopropriete", toOuiNonSelect(false));
   }
 
   const dpeMatch = body.match(
@@ -819,19 +818,19 @@ const extractStructuredBienDetailsFromListing = (message: string): {
     const co2Emission = toFiniteNumber(dpeMatch[4]);
 
     if (dpeClass) {
-      setDetailField(detailsPatch, "regulation", "dpeClass", dpeClass);
+      setDetailField(detailsPatch, "dpeClass", dpeClass);
       extracted.push(`DPE: ${dpeClass}`);
     }
     if (energyConsumption !== null && energyConsumption >= 0) {
-      setDetailField(detailsPatch, "regulation", "energyConsumption", Math.round(energyConsumption));
+      setDetailField(detailsPatch, "energyConsumption", Math.round(energyConsumption));
       extracted.push(`Conso énergie: ${Math.round(energyConsumption)}`);
     }
     if (gesClass) {
-      setDetailField(detailsPatch, "regulation", "gesClass", gesClass);
+      setDetailField(detailsPatch, "gesClass", gesClass);
       extracted.push(`GES: ${gesClass}`);
     }
     if (co2Emission !== null && co2Emission >= 0) {
-      setDetailField(detailsPatch, "regulation", "co2Emission", Math.round(co2Emission));
+      setDetailField(detailsPatch, "co2Emission", Math.round(co2Emission));
       extracted.push(`CO2: ${Math.round(co2Emission)}`);
     }
   }
@@ -971,28 +970,13 @@ const normalizeAssistantMessageContext = (
   };
 };
 
-const toPendingActionResponse = (
-  row: typeof assistantPendingActions.$inferSelect,
-): AssistantPendingActionResponse => ({
-  id: row.id,
-  status: row.status as AssistantPendingActionStatus,
-  operation: row.operation as AssistantActionOperation,
-  objectType: row.objectType as AssistantObjectType,
-  objectId: row.objectId,
-  previewText: row.previewText,
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString(),
-});
-
 const toAssistantMessageResponse = (
   row: typeof assistantMessages.$inferSelect,
-  pendingAction: AssistantPendingActionResponse | null,
 ): AssistantMessageResponse => ({
   id: row.id,
   role: row.role === "USER" ? "USER" : "ASSISTANT",
   text: row.text,
   citations: parseCitations(row.citationsJson),
-  pendingAction,
   createdAt: row.createdAt.toISOString(),
 });
 
@@ -1000,7 +984,14 @@ const isPositiveNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
 
 const extractPoolStatus = (details: Record<string, unknown>): string | null => {
-  const candidates = [details.pool, details.piscine, details.hasPool, details.poolStatus];
+  const amenities = isRecord(details.amenities) ? details.amenities : {};
+  const candidates = [
+    details.pool,
+    amenities.pool,
+    details.piscine,
+    details.hasPool,
+    details.poolStatus,
+  ];
 
   for (const candidate of candidates) {
     if (typeof candidate === "boolean") {
@@ -1029,11 +1020,15 @@ const extractPoolStatus = (details: Record<string, unknown>): string | null => {
 };
 
 const extractSurface = (details: Record<string, unknown>): number | null => {
+  const characteristics = isRecord(details.characteristics) ? details.characteristics : {};
   const candidates = [
     details.surface,
     details.surfaceM2,
     details.surfaceHabitable,
     details.livingArea,
+    characteristics.livingArea,
+    characteristics.carrezArea,
+    characteristics.landArea,
     details.area,
     details.areaM2,
     details.squareMeters,
@@ -1208,23 +1203,6 @@ const toLookupLabel = (input: { firstName: string; lastName: string }): string =
   return fullName || "Client";
 };
 
-const buildUpdateRequiresConfirmation = (
-  objectType: AssistantObjectType,
-  params: Record<string, unknown>,
-): boolean => {
-  const safeFields = SAFE_UPDATE_FIELDS[objectType];
-  if (safeFields.size === 0) {
-    return true;
-  }
-
-  const keys = Object.keys(params);
-  if (keys.length === 0) {
-    return true;
-  }
-
-  return keys.some((key) => !safeFields.has(key));
-};
-
 const toAssistantSoul = (value: string | null | undefined): string => {
   const normalized = normalizeOptionalString(value);
   return normalized ?? DEFAULT_ASSISTANT_SOUL;
@@ -1257,28 +1235,7 @@ const buildConversationResponse = async (input: {
     .orderBy(asc(assistantMessages.createdAt));
 
   const visibleRows = rows.filter((row) => row.role === "USER" || row.role === "ASSISTANT");
-
-  const pendingActionIds = visibleRows
-    .map((row) => row.pendingActionId)
-    .filter((value): value is string => typeof value === "string" && value.length > 0);
-
-  const pendingRows =
-    pendingActionIds.length > 0
-      ? await db
-          .select()
-          .from(assistantPendingActions)
-          .where(
-            and(
-              eq(assistantPendingActions.orgId, input.orgId),
-              inArray(assistantPendingActions.id, pendingActionIds),
-            ),
-          )
-      : [];
-
-  const pendingById = new Map(pendingRows.map((row) => [row.id, toPendingActionResponse(row)]));
-  const messages = visibleRows.map((row) =>
-    toAssistantMessageResponse(row, row.pendingActionId ? pendingById.get(row.pendingActionId) ?? null : null),
-  );
+  const messages = visibleRows.map((row) => toAssistantMessageResponse(row));
 
   const greeting = messages.find((message) => message.role === "ASSISTANT")?.text ?? DEFAULT_GREETING;
 
@@ -1315,7 +1272,6 @@ const appendConversationMessage = async (input: {
   role: "USER" | "ASSISTANT" | "SYSTEM";
   text: string;
   citations?: AssistantCitation[];
-  pendingActionId?: string | null;
 }): Promise<typeof assistantMessages.$inferSelect> => {
   const now = new Date();
   const id = crypto.randomUUID();
@@ -1327,7 +1283,7 @@ const appendConversationMessage = async (input: {
     role: input.role,
     text: input.text,
     citationsJson: JSON.stringify(input.citations ?? []),
-    pendingActionId: input.pendingActionId ?? null,
+    pendingActionId: null,
     createdAt: now,
   });
 
@@ -1470,7 +1426,7 @@ const toOpenAIConversationInput = (
   rows: Array<typeof assistantMessages.$inferSelect>,
 ): Array<Record<string, unknown>> =>
   rows
-    .filter((row) => row.role === "SYSTEM" || row.role === "USER" || row.role === "ASSISTANT")
+    .filter((row) => row.role === "USER" || row.role === "ASSISTANT")
     .map((row) => {
       if (row.role === "ASSISTANT") {
         return {
@@ -1485,7 +1441,7 @@ const toOpenAIConversationInput = (
       }
 
       return {
-        role: row.role === "SYSTEM" ? "system" : "user",
+        role: "user",
         content: [
           {
             type: "input_text",
@@ -1597,48 +1553,34 @@ const runOpenAIToolDrivenTurn = async (input: {
 
   const baseUrl = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.OPENAI_CHAT_MODEL?.trim() || DEFAULT_ASSISTANT_OPENAI_MODEL;
-  let pendingActionRow: typeof assistantPendingActions.$inferSelect | null = null;
 
-  const systemInput: Array<Record<string, unknown>> = [
-    {
-      role: "system",
-      content: [
-        {
-          type: "input_text",
-          text: [
-            "Tu es l'assistant Monimmo pour des agents immobiliers français.",
-            "Utilise en priorité les tools locaux search/get/getParams/create/update pour répondre.",
-            "Pour toute demande de création/mise à jour: appelle d'abord getParams(objectType), puis envoie create/update avec des params strictement conformes (types + valeurs de select autorisées).",
-            "N'invente jamais des données métier; si ambigu, pose une question de clarification.",
-            "N'utilise pas internet ici.",
-            "Réponds en français, de façon concise et actionnable.",
-            "Formate toujours la réponse finale en Markdown.",
-          ].join("\n"),
-        },
-      ],
-    },
-  ];
-
-  if (input.context) {
-    systemInput.push({
-      role: "system",
-      content: [
-        {
-          type: "input_text",
-          text: [
-            "Contexte de navigation transmis par l'application:",
-            `objectType=${input.context.objectType}`,
-            `objectId=${input.context.objectId}`,
-            "Si l'utilisateur dit \"ce bien\", \"ce client\", \"ce rdv\" ou \"cette visite\", utilise cet objet comme référence principale.",
-          ].join("\n"),
-        },
-      ],
-    });
-  }
+  const assistantSoul = input.messageRows.find((row) => row.role === "SYSTEM")?.text.trim() ?? "";
+  const instructionsParts = [
+    assistantSoul,
+    [
+      "Tu es l'assistant Monimmo pour des agents immobiliers français.",
+      "Utilise en priorité les tools locaux search/get/getParams/create/update pour répondre.",
+      "Pour toute demande de création/mise à jour: appelle d'abord getParams(objectType), puis envoie create/update avec des params strictement conformes (types + valeurs de select autorisées).",
+      "N'invente jamais des données métier; si ambigu, pose une question de clarification.",
+      "N'utilise pas internet ici.",
+      "Réponds en français, de façon concise et actionnable.",
+      "Formate toujours la réponse finale en Markdown.",
+    ].join("\n"),
+    input.context
+      ? [
+          "Contexte de navigation transmis par l'application:",
+          `objectType=${input.context.objectType}`,
+          `objectId=${input.context.objectId}`,
+          "Si l'utilisateur dit \"ce bien\", \"ce client\", \"ce rdv\" ou \"cette visite\", utilise cet objet comme référence principale.",
+        ].join("\n")
+      : "",
+  ].filter((value) => value.length > 0);
+  const instructions = instructionsParts.join("\n\n");
 
   let requestBody: Record<string, unknown> = {
     model,
-    input: [...systemInput, ...toOpenAIConversationInput(input.messageRows)],
+    instructions,
+    input: toOpenAIConversationInput(input.messageRows),
     tools: ASSISTANT_OPENAI_TOOL_DEFINITIONS,
     tool_choice: "auto",
     max_output_tokens: 900,
@@ -1679,15 +1621,6 @@ const runOpenAIToolDrivenTurn = async (input: {
         return {
           text: responseText,
           citations: [],
-          pendingAction: pendingActionRow,
-        };
-      }
-
-      if (pendingActionRow) {
-        return {
-          text: `Action proposée: ${pendingActionRow.previewText}\nConfirmez pour exécuter.`,
-          citations: [],
-          pendingAction: pendingActionRow,
         };
       }
 
@@ -1772,20 +1705,13 @@ const runOpenAIToolDrivenTurn = async (input: {
             );
           }
 
+          const params = isRecord(args.params)
+            ? args.params
+            : extractFlatToolParams(args, ["objectType"]);
           const result = await input.handlers.create({
             objectType,
-            params: isRecord(args.params) ? args.params : {},
+            params,
           });
-
-          if (result.status === "PENDING_CONFIRMATION") {
-            const row = await db.query.assistantPendingActions.findFirst({
-              where: and(
-                eq(assistantPendingActions.id, result.pendingAction.id),
-                eq(assistantPendingActions.orgId, input.orgId),
-              ),
-            });
-            pendingActionRow = row ?? pendingActionRow;
-          }
 
           toolOutputs.push({
             type: "function_call_output",
@@ -1805,21 +1731,14 @@ const runOpenAIToolDrivenTurn = async (input: {
           );
         }
 
+        const params = isRecord(args.params)
+          ? args.params
+          : extractFlatToolParams(args, ["objectType", "objectId"]);
         const result = await input.handlers.update({
           objectType,
           objectId,
-          params: isRecord(args.params) ? args.params : {},
+          params,
         });
-
-        if (result.status === "PENDING_CONFIRMATION") {
-          const row = await db.query.assistantPendingActions.findFirst({
-            where: and(
-              eq(assistantPendingActions.id, result.pendingAction.id),
-              eq(assistantPendingActions.orgId, input.orgId),
-            ),
-          });
-          pendingActionRow = row ?? pendingActionRow;
-        }
 
         toolOutputs.push({
           type: "function_call_output",
@@ -1845,57 +1764,7 @@ const runOpenAIToolDrivenTurn = async (input: {
     };
   }
 
-  if (pendingActionRow) {
-    return {
-      text: `Action proposée: ${pendingActionRow.previewText}\nConfirmez pour exécuter.`,
-      citations: [],
-      pendingAction: pendingActionRow,
-    };
-  }
-
   return null;
-};
-
-const createPendingAction = async (input: {
-  conversationId: string;
-  orgId: string;
-  userId: string;
-  draft: PendingActionDraft;
-}): Promise<typeof assistantPendingActions.$inferSelect> => {
-  const now = new Date();
-  const id = crypto.randomUUID();
-
-  await db.insert(assistantPendingActions).values({
-    id,
-    conversationId: input.conversationId,
-    orgId: input.orgId,
-    userId: input.userId,
-    status: "PENDING",
-    operation: input.draft.operation,
-    objectType: input.draft.objectType,
-    objectId: input.draft.objectId ?? null,
-    payloadJson: JSON.stringify({
-      operation: input.draft.operation,
-      objectType: input.draft.objectType,
-      objectId: input.draft.objectId ?? null,
-      params: input.draft.params,
-    }),
-    previewText: input.draft.previewText,
-    resultJson: null,
-    errorMessage: null,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  const row = await db.query.assistantPendingActions.findFirst({
-    where: and(eq(assistantPendingActions.id, id), eq(assistantPendingActions.orgId, input.orgId)),
-  });
-
-  if (!row) {
-    throw new HttpError(500, "ASSISTANT_ACTION_CREATE_FAILED", "Action assistant introuvable");
-  }
-
-  return row;
 };
 
 const executeCreate = async (input: {
@@ -1906,6 +1775,7 @@ const executeCreate = async (input: {
   if (input.objectType === "client") {
     const created = await usersService.create({
       orgId: input.orgId,
+      changeMode: "AI",
       data: {
         firstName: normalizeOptionalString(input.params.firstName),
         lastName: normalizeOptionalString(input.params.lastName),
@@ -1931,7 +1801,6 @@ const executeCreate = async (input: {
     const city = normalizeOptionalString(input.params.city);
     const postalCode = normalizeOptionalString(input.params.postalCode);
     const address = normalizeOptionalString(input.params.address);
-    const ownerUserId = normalizeOptionalString(input.params.ownerUserId);
 
     if (!title || !city || !postalCode || !address) {
       throw new HttpError(
@@ -1941,37 +1810,14 @@ const executeCreate = async (input: {
       );
     }
 
-    const owner = parseJsonObject(JSON.stringify(input.params.owner ?? {}));
-    const ownerPayload =
-      ownerUserId || Object.keys(owner).length === 0
-        ? undefined
-        : {
-            firstName: normalizeOptionalString(owner.firstName) ?? "",
-            lastName: normalizeOptionalString(owner.lastName) ?? "",
-            phone: normalizeOptionalString(owner.phone) ?? "",
-            email: normalizeOptionalString(owner.email) ?? "",
-            address: normalizeOptionalString(owner.address),
-            postalCode: normalizeOptionalString(owner.postalCode),
-            city: normalizeOptionalString(owner.city),
-          };
-
-    if (!ownerUserId && !ownerPayload) {
-      throw new HttpError(
-        400,
-        "ASSISTANT_INVALID_CREATE_PAYLOAD",
-        "Le bien nécessite ownerUserId ou owner.",
-      );
-    }
-
     const created = await propertiesService.create({
       orgId: input.orgId,
       title,
       city,
       postalCode,
       address,
-      ownerUserId: ownerUserId ?? undefined,
-      owner: ownerPayload,
       details: parseJsonObject(JSON.stringify(input.params.details ?? {})),
+      changeMode: "AI",
     });
 
     return {
@@ -2004,6 +1850,7 @@ const executeCreate = async (input: {
       endsAt,
       address: normalizeOptionalString(input.params.address),
       comment: normalizeOptionalString(input.params.comment),
+      changeMode: "AI",
     });
 
     return {
@@ -2033,6 +1880,7 @@ const executeCreate = async (input: {
       prospectUserId,
       startsAt,
       endsAt,
+      changeMode: "AI",
     });
 
     return {
@@ -2055,6 +1903,7 @@ const executeUpdate = async (input: {
     const updated = await usersService.patchById({
       orgId: input.orgId,
       id: input.objectId,
+      changeMode: "AI",
       data: {
         firstName: readPatchStringField(input.params, "firstName"),
         lastName: readPatchStringField(input.params, "lastName"),
@@ -2081,14 +1930,15 @@ const executeUpdate = async (input: {
       orgId: input.orgId,
       id: input.objectId,
     });
-    const existingDetails = isRecord(existing.details)
-      ? (existing.details as Record<string, unknown>)
-      : {};
+    const existingDetails = flattenBienDetailsPatch(
+      isRecord(existing.details) ? (existing.details as Record<string, unknown>) : {},
+    );
     const hasDetailsPatch = Object.keys(normalizedParams.detailsPatch).length > 0;
 
     const updated = await propertiesService.patchById({
       orgId: input.orgId,
       id: input.objectId,
+      changeMode: "AI",
       data: {
         title: normalizedParams.title,
         city: normalizedParams.city,
@@ -2114,6 +1964,7 @@ const executeUpdate = async (input: {
       orgId: input.orgId,
       id: input.objectId,
       comment: readPatchStringField(input.params, "comment"),
+      changeMode: "AI",
     });
 
     return {
@@ -2127,6 +1978,7 @@ const executeUpdate = async (input: {
     const updated = await propertiesService.patchVisitById({
       orgId: input.orgId,
       id: input.objectId,
+      changeMode: "AI",
       data: {
         compteRendu: readPatchStringField(input.params, "compteRendu"),
         bonDeVisiteFileId: readPatchStringField(input.params, "bonDeVisiteFileId"),
@@ -2141,81 +1993,6 @@ const executeUpdate = async (input: {
   }
 
   throw new HttpError(400, "ASSISTANT_UNSUPPORTED_OBJECT", "Type d'objet non supporté");
-};
-
-const executePendingPayload = async (input: {
-  orgId: string;
-  payload: PendingActionPayload;
-}): Promise<{ objectId: string; summary: string; result: unknown }> => {
-  if (input.payload.operation === "create") {
-    return executeCreate({
-      orgId: input.orgId,
-      objectType: input.payload.objectType,
-      params: input.payload.params,
-    });
-  }
-
-  const objectId = normalizeOptionalString(input.payload.objectId);
-  if (!objectId) {
-    throw new HttpError(
-      400,
-      "ASSISTANT_INVALID_ACTION_PAYLOAD",
-      "L'action update nécessite un objectId.",
-    );
-  }
-
-  return executeUpdate({
-    orgId: input.orgId,
-    objectType: input.payload.objectType,
-    objectId,
-    params: input.payload.params,
-  });
-};
-
-const buildCreatePreviewText = (input: {
-  objectType: AssistantObjectType;
-  params: Record<string, unknown>;
-}): string => {
-  if (input.objectType === "client") {
-    const firstName = normalizeOptionalString(input.params.firstName);
-    const lastName = normalizeOptionalString(input.params.lastName);
-    const phone = normalizeOptionalString(input.params.phone);
-    const label = [firstName, lastName].filter(Boolean).join(" ").trim() || "Client";
-    return `Créer le client ${label}${phone ? ` (${phone})` : ""}.`;
-  }
-
-  if (input.objectType === "bien") {
-    const title = normalizeOptionalString(input.params.title);
-    return `Créer le bien ${title ?? "Nouveau bien"}.`;
-  }
-
-  if (input.objectType === "rdv") {
-    const title = normalizeOptionalString(input.params.title) ?? "Rendez-vous";
-    const startsAt = normalizeOptionalString(input.params.startsAt);
-    const startsAtText = startsAt ? ` à ${formatTime(startsAt)}` : "";
-    return `Créer le rendez-vous ${title}${startsAtText}.`;
-  }
-
-  return "Créer une nouvelle visite.";
-};
-
-const buildUpdatePreviewText = (input: {
-  objectType: AssistantObjectType;
-  objectId: string;
-}): string => {
-  if (input.objectType === "client") {
-    return `Mettre à jour le client ${input.objectId}.`;
-  }
-
-  if (input.objectType === "bien") {
-    return `Mettre à jour le bien ${input.objectId}.`;
-  }
-
-  if (input.objectType === "rdv") {
-    return `Mettre à jour le rendez-vous ${input.objectId}.`;
-  }
-
-  return `Mettre à jour la visite ${input.objectId}.`;
 };
 
 const formatWebSearchResponse = (citations: AssistantCitation[]): string => {
@@ -2312,21 +2089,6 @@ export const assistantService = {
     });
 
     await db
-      .update(assistantPendingActions)
-      .set({
-        status: "CANCELED",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(assistantPendingActions.conversationId, conversation.id),
-          eq(assistantPendingActions.orgId, input.orgId),
-          eq(assistantPendingActions.userId, input.userId),
-          eq(assistantPendingActions.status, "PENDING"),
-        ),
-      );
-
-    await db
       .delete(assistantMessages)
       .where(
         and(
@@ -2392,7 +2154,6 @@ export const assistantService = {
       text: string,
       options?: {
         citations?: AssistantCitation[];
-        pendingAction?: typeof assistantPendingActions.$inferSelect | null;
         webSearchTrace?: AssistantWebSearchTrace | null;
         skipAICallLog?: boolean;
       },
@@ -2401,17 +2162,14 @@ export const assistantService = {
       assistantMessage: AssistantMessageResponse;
     }> => {
       const citations = options?.citations ?? [];
-      const pendingAction = options?.pendingAction ?? null;
       const assistantRow = await appendConversationMessage({
         conversationId: conversation.id,
         orgId: input.orgId,
         role: "ASSISTANT",
         text,
         citations,
-        pendingActionId: pendingAction?.id ?? null,
       });
-      const pendingActionResponse = pendingAction ? toPendingActionResponse(pendingAction) : null;
-      const assistantMessage = toAssistantMessageResponse(assistantRow, pendingActionResponse);
+      const assistantMessage = toAssistantMessageResponse(assistantRow);
 
       await trackAssistantTurn({
         orgId: input.orgId,
@@ -2477,31 +2235,19 @@ export const assistantService = {
           },
         });
 
-        if (updateResult.status === "PENDING_CONFIRMATION") {
-          const pendingActionRow = await db.query.assistantPendingActions.findFirst({
-            where: and(
-              eq(assistantPendingActions.id, updateResult.pendingAction.id),
-              eq(assistantPendingActions.orgId, input.orgId),
-            ),
-          });
+        const extractedPreview = structuredListingUpdate.extracted
+          .slice(0, 12)
+          .map((item) => `- ${item}`)
+          .join("\n");
+        const assistantText = [
+          "## Mise à jour technique appliquée",
+          extractedPreview
+            ? `Champs détectés dans le descriptif:\n${extractedPreview}`
+            : "Descriptif détecté et enregistré.",
+          updateResult.summary,
+        ].join("\n\n");
 
-          const extractedPreview = structuredListingUpdate.extracted
-            .slice(0, 12)
-            .map((item) => `- ${item}`)
-            .join("\n");
-          const assistantText = [
-            "## Mise à jour technique préparée",
-            `Bien ciblé: \`${messageContext.objectId}\``,
-            extractedPreview
-              ? `Champs détectés dans le descriptif:\n${extractedPreview}`
-              : "Descriptif détecté et prêt à être enregistré.",
-            "Confirme l'action pour appliquer la mise à jour.",
-          ].join("\n\n");
-
-          return respond(assistantText, {
-            pendingAction: pendingActionRow ?? null,
-          });
-        }
+        return respond(assistantText);
       }
     }
 
@@ -2555,7 +2301,6 @@ export const assistantService = {
     if (modelTurn) {
       return respond(modelTurn.text, {
         citations: modelTurn.citations,
-        pendingAction: modelTurn.pendingAction,
         skipAICallLog: true,
       });
     }
@@ -2653,9 +2398,10 @@ export const assistantService = {
       if (!intent.phone && !intent.email) {
         return respond("Pour créer le client, il me faut au moins un email ou un téléphone.");
       }
-
-      const draft: PendingActionDraft = {
-        operation: "create",
+      const created = await assistantService.toolCreate({
+        orgId: input.orgId,
+        userId: input.userId,
+        conversationId: conversation.id,
         objectType: "client",
         params: {
           firstName: intent.firstName,
@@ -2664,19 +2410,9 @@ export const assistantService = {
           email: intent.email,
           accountType: "CLIENT",
         },
-        previewText: `Créer le client ${intent.firstName}${intent.lastName ? ` ${intent.lastName}` : ""}${intent.phone ? ` (${intent.phone})` : ""}.`,
-      };
-
-      const action = await createPendingAction({
-        conversationId: conversation.id,
-        orgId: input.orgId,
-        userId: input.userId,
-        draft,
       });
 
-      return respond(`Action proposée: ${action.previewText}\nConfirmez pour exécuter.`, {
-        pendingAction: action,
-      });
+      return respond(created.summary);
     }
 
     if (intent.kind === "create_bien") {
@@ -2694,9 +2430,35 @@ export const assistantService = {
       if (missing.length > 0) {
         return respond(`Pour créer le bien, il me manque: ${missing.join(", ")}.`);
       }
+      const propertyType =
+        intent.propertyType === "Maison"
+          ? "MAISON"
+          : intent.propertyType === "Appartement"
+            ? "APPARTEMENT"
+            : intent.propertyType === "Immeuble"
+              ? "IMMEUBLE"
+              : intent.propertyType === "Terrain"
+                ? "TERRAIN"
+                : intent.propertyType === "Local"
+                  ? "LOCAL_COMMERCIAL"
+                  : null;
+
+      const created = await assistantService.toolCreate({
+        orgId: input.orgId,
+        userId: input.userId,
+        conversationId: conversation.id,
+        objectType: "bien",
+        params: {
+          title: `${intent.propertyType ?? "Bien"} ${intent.city}`.trim(),
+          city: intent.city,
+          postalCode: intent.postalCode,
+          address: intent.address,
+          details: propertyType ? { propertyType } : {},
+        },
+      });
 
       return respond(
-        "Il me faut aussi un propriétaire (ownerUserId ou identité complète owner) avant de proposer la création du bien.",
+        `${created.summary}\n\nVous pouvez ensuite lier un client en propriétaire depuis l'onglet Clients.`,
       );
     }
 
@@ -2737,9 +2499,10 @@ export const assistantService = {
 
       const property = propertiesFound.items[0]!;
       const client = clientsFound.items[0]!;
-
-      const draft: PendingActionDraft = {
-        operation: "create",
+      const created = await assistantService.toolCreate({
+        orgId: input.orgId,
+        userId: input.userId,
+        conversationId: conversation.id,
         objectType: "rdv",
         params: {
           title: `Rendez-vous avec ${toLookupLabel(client)}`,
@@ -2750,165 +2513,14 @@ export const assistantService = {
           address: null,
           comment: null,
         },
-        previewText: `Créer un rendez-vous avec ${toLookupLabel(client)} le ${intent.startsAt.toLocaleDateString("fr-FR")} à ${formatTime(intent.startsAt.toISOString())} pour ${property.title}.`,
-      };
-
-      const action = await createPendingAction({
-        conversationId: conversation.id,
-        orgId: input.orgId,
-        userId: input.userId,
-        draft,
       });
 
-      return respond(`Action proposée: ${action.previewText}\nConfirmez pour exécuter.`, {
-        pendingAction: action,
-      });
+      return respond(created.summary);
     }
 
     return respondWithOptionalWebFallback(
       "Je peux vous aider sur les biens, clients, rendez-vous et visites. Donnez-moi une action précise.",
     );
-  },
-
-  async confirmAction(input: {
-    orgId: string;
-    userId: string;
-    actionId: string;
-    assistantSoul?: string | null;
-  }): Promise<AssistantActionResolveResponse> {
-    const action = await db.query.assistantPendingActions.findFirst({
-      where: and(
-        eq(assistantPendingActions.id, input.actionId),
-        eq(assistantPendingActions.orgId, input.orgId),
-        eq(assistantPendingActions.userId, input.userId),
-      ),
-    });
-
-    if (!action || action.status !== "PENDING") {
-      throw new HttpError(404, "ASSISTANT_ACTION_NOT_FOUND", "Action assistant introuvable");
-    }
-
-    const payload = parseJsonObject(action.payloadJson) as PendingActionPayload;
-
-    let assistantText = "";
-    let nextStatus: AssistantPendingActionStatus = "EXECUTED";
-    let result: unknown = null;
-    let objectId = action.objectId;
-
-    try {
-      const execution = await executePendingPayload({
-        orgId: input.orgId,
-        payload,
-      });
-      assistantText = execution.summary;
-      result = execution.result;
-      objectId = execution.objectId;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Exécution impossible";
-      nextStatus = "FAILED";
-      assistantText = `Impossible d'exécuter l'action: ${message}`;
-    }
-
-    await db
-      .update(assistantPendingActions)
-      .set({
-        status: nextStatus,
-        objectId,
-        resultJson: JSON.stringify(result ?? null),
-        errorMessage: nextStatus === "FAILED" ? assistantText : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(assistantPendingActions.id, action.id));
-
-    const assistantRow = await appendConversationMessage({
-      conversationId: action.conversationId,
-      orgId: input.orgId,
-      role: "ASSISTANT",
-      text: assistantText,
-      citations: [],
-    });
-
-    const refreshedAction = await db.query.assistantPendingActions.findFirst({
-      where: and(eq(assistantPendingActions.id, action.id), eq(assistantPendingActions.orgId, input.orgId)),
-    });
-
-    if (!refreshedAction) {
-      throw new HttpError(500, "ASSISTANT_ACTION_NOT_FOUND", "Action assistant introuvable");
-    }
-
-    const assistantMessage = toAssistantMessageResponse(assistantRow, null);
-    return {
-      action: toPendingActionResponse(refreshedAction),
-      conversation: await buildConversationResponse({
-        orgId: input.orgId,
-        conversationId: action.conversationId,
-      }),
-      assistantMessage,
-    };
-  },
-
-  async cancelAction(input: {
-    orgId: string;
-    userId: string;
-    actionId: string;
-    assistantSoul?: string | null;
-  }): Promise<AssistantActionResolveResponse> {
-    const action = await db.query.assistantPendingActions.findFirst({
-      where: and(
-        eq(assistantPendingActions.id, input.actionId),
-        eq(assistantPendingActions.orgId, input.orgId),
-        eq(assistantPendingActions.userId, input.userId),
-      ),
-    });
-
-    if (!action || action.status !== "PENDING") {
-      throw new HttpError(404, "ASSISTANT_ACTION_NOT_FOUND", "Action assistant introuvable");
-    }
-
-    await db
-      .update(assistantPendingActions)
-      .set({
-        status: "CANCELED",
-        updatedAt: new Date(),
-      })
-      .where(eq(assistantPendingActions.id, action.id));
-
-    const assistantRow = await appendConversationMessage({
-      conversationId: action.conversationId,
-      orgId: input.orgId,
-      role: "ASSISTANT",
-      text: "Action annulée.",
-      citations: [],
-    });
-
-    const refreshedAction = await db.query.assistantPendingActions.findFirst({
-      where: and(eq(assistantPendingActions.id, action.id), eq(assistantPendingActions.orgId, input.orgId)),
-    });
-
-    if (!refreshedAction) {
-      throw new HttpError(500, "ASSISTANT_ACTION_NOT_FOUND", "Action assistant introuvable");
-    }
-
-    return {
-      action: toPendingActionResponse(refreshedAction),
-      conversation: await buildConversationResponse({
-        orgId: input.orgId,
-        conversationId: action.conversationId,
-      }),
-      assistantMessage: toAssistantMessageResponse(assistantRow, null),
-    };
-  },
-
-  shouldRequireConfirmation(input: {
-    operation: AssistantActionOperation;
-    objectType: AssistantObjectType;
-    params: Record<string, unknown>;
-  }): boolean {
-    if (input.operation === "create") {
-      return true;
-    }
-
-    return buildUpdateRequiresConfirmation(input.objectType, input.params);
   },
 
   async toolSearch(input: {
@@ -3007,140 +2619,8 @@ export const assistantService = {
     return propertiesService.getVisitById({ orgId: input.orgId, id: input.objectId });
   },
 
-  toolGetParams(input: { objectType: AssistantObjectType }): Record<string, unknown> {
-    if (input.objectType === "bien") {
-      return {
-        objectType: "bien",
-        create: {
-          required: ["title", "city", "postalCode", "address", "ownerUserId|owner"],
-          optional: ["details"],
-        },
-        update: {
-          optional: ["title", "city", "postalCode", "address", "price", "details"],
-          fields: [
-            { path: "title", type: "string" },
-            { path: "city", type: "string" },
-            { path: "postalCode", type: "string" },
-            { path: "address", type: "string" },
-            { path: "price", type: "number" },
-            {
-              path: "details.general.propertyType",
-              type: "select",
-              options: BIEN_PROPERTY_TYPE_OPTIONS,
-              aliases: ["typeBien", "typebien", "type", "propertyType"],
-            },
-            {
-              path: "details.characteristics.livingArea",
-              type: "number",
-              aliases: ["surface", "surfaceM2", "surfaceHabitable", "livingArea"],
-            },
-            {
-              path: "details.characteristics.carrezArea",
-              type: "number",
-              aliases: ["surfaceCarrez", "carrezArea", "carrez"],
-            },
-            {
-              path: "details.characteristics.landArea",
-              type: "number",
-              aliases: ["surfaceTerrain", "terrain", "landArea"],
-            },
-            {
-              path: "details.marketing.longDescription",
-              type: "textarea",
-              aliases: ["descriptif", "description", "longDescription", "texteAnnonce", "annonce"],
-            },
-            {
-              path: "details.finance.propertyTax",
-              type: "number",
-              aliases: ["taxeFonciere", "propertyTax"],
-            },
-            {
-              path: "details.regulation.dpeClass",
-              type: "select",
-              options: DPE_CLASS_OPTIONS,
-            },
-            {
-              path: "details.regulation.energyConsumption",
-              type: "number",
-              aliases: ["dpeValue", "consommationEnergetique"],
-            },
-            {
-              path: "details.regulation.gesClass",
-              type: "select",
-              options: DPE_CLASS_OPTIONS,
-            },
-            {
-              path: "details.regulation.co2Emission",
-              type: "number",
-              aliases: ["gesValue"],
-            },
-          ],
-          example: {
-            objectType: "bien",
-            objectId: "id_du_bien",
-            params: {
-              details: {
-                general: { propertyType: "MAISON" },
-                characteristics: { livingArea: 200 },
-              },
-            },
-          },
-        },
-      };
-    }
-
-    if (input.objectType === "client") {
-      return {
-        objectType: "client",
-        create: {
-          required: ["email|phone"],
-          optional: [
-            "firstName",
-            "lastName",
-            "address",
-            "postalCode",
-            "city",
-            "personalNotes",
-          ],
-        },
-        update: {
-          optional: [
-            "firstName",
-            "lastName",
-            "email",
-            "phone",
-            "address",
-            "postalCode",
-            "city",
-            "personalNotes",
-          ],
-        },
-      };
-    }
-
-    if (input.objectType === "rdv") {
-      return {
-        objectType: "rdv",
-        create: {
-          required: ["title", "propertyId", "startsAt", "endsAt"],
-          optional: ["clientUserId", "address", "comment"],
-        },
-        update: {
-          optional: ["comment"],
-        },
-      };
-    }
-
-    return {
-      objectType: "visite",
-      create: {
-        required: ["propertyId", "prospectUserId", "startsAt", "endsAt"],
-        optional: [],
-      },
-      update: {
-        optional: ["compteRendu", "bonDeVisiteFileId"],
-      },
-    };
+  toolGetParams(input: { objectType: AssistantObjectType }): unknown {
+    return getObjectDataStructure(input.objectType);
   },
 
   async toolCreate(input: {
@@ -3156,27 +2636,17 @@ export const assistantService = {
       conversationId: input.conversationId,
     });
 
-    const draft: PendingActionDraft = {
-      operation: "create",
+    const execution = await executeCreate({
+      orgId: input.orgId,
       objectType: input.objectType,
       params: input.params,
-      previewText: buildCreatePreviewText({
-        objectType: input.objectType,
-        params: input.params,
-      }),
-    };
-
-    const action = await createPendingAction({
-      conversationId: input.conversationId,
-      orgId: input.orgId,
-      userId: input.userId,
-      draft,
     });
 
     return {
-      status: "PENDING_CONFIRMATION",
-      requiresConfirmation: true,
-      pendingAction: toPendingActionResponse(action),
+      status: "EXECUTED",
+      objectId: execution.objectId,
+      summary: execution.summary,
+      result: execution.result,
     };
   },
 
@@ -3194,33 +2664,6 @@ export const assistantService = {
       conversationId: input.conversationId,
     });
 
-    const requiresConfirmation = buildUpdateRequiresConfirmation(input.objectType, input.params);
-    if (requiresConfirmation) {
-      const draft: PendingActionDraft = {
-        operation: "update",
-        objectType: input.objectType,
-        objectId: input.objectId,
-        params: input.params,
-        previewText: buildUpdatePreviewText({
-          objectType: input.objectType,
-          objectId: input.objectId,
-        }),
-      };
-
-      const action = await createPendingAction({
-        conversationId: input.conversationId,
-        orgId: input.orgId,
-        userId: input.userId,
-        draft,
-      });
-
-      return {
-        status: "PENDING_CONFIRMATION",
-        requiresConfirmation: true,
-        pendingAction: toPendingActionResponse(action),
-      };
-    }
-
     const execution = await executeUpdate({
       orgId: input.orgId,
       objectType: input.objectType,
@@ -3230,7 +2673,6 @@ export const assistantService = {
 
     return {
       status: "EXECUTED",
-      requiresConfirmation: false,
       objectId: execution.objectId,
       summary: execution.summary,
       result: execution.result,

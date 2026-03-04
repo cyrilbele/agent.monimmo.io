@@ -176,6 +176,20 @@
       "when": 1772553600000,
       "tag": "0024_assistant_conversation_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1772623500000,
+      "tag": "0025_object_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1772627400000,
+      "tag": "0026_linear_object_storage",
+      "breakpoints": true
     }
   ]
 }

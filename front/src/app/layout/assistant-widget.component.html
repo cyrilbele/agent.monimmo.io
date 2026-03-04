@@ -51,30 +51,6 @@
                   }
                 </ul>
               }
-
-              @if (message.pendingAction && message.pendingAction.status === 'PENDING') {
-                <div class="assistant-action-box">
-                  <p>{{ message.pendingAction.previewText }}</p>
-                  <div class="assistant-action-buttons">
-                    <button
-                      type="button"
-                      class="btn"
-                      [disabled]="isActionPending(message.pendingAction.id)"
-                      (click)="confirmAction(message.pendingAction.id)"
-                    >
-                      Confirmer
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-ghost"
-                      [disabled]="isActionPending(message.pendingAction.id)"
-                      (click)="cancelAction(message.pendingAction.id)"
-                    >
-                      Annuler
-                    </button>
-                  </div>
-                </div>
-              }
             </article>
           }
 

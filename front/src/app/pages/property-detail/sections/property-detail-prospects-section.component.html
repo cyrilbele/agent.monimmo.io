@@ -1,12 +1,12 @@
         <section class="panel space-y-4 p-5">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="text-xl font-semibold text-slate-900">Prospects du bien</h3>
+            <h3 class="text-xl font-semibold text-slate-900">Clients liés au bien</h3>
             <button
               type="button"
               class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
               (click)="host.openProspectModal()"
             >
-              Ajouter un prospect
+              Lier un client
             </button>
           </div>
 
@@ -21,7 +21,7 @@
           }
 
           @if (host.prospects().length === 0) {
-            <p class="text-sm text-slate-600">Aucun prospect enregistre.</p>
+            <p class="text-sm text-slate-600">Aucun client lié.</p>
           } @else {
             <section class="overflow-x-auto rounded-xl border border-slate-200">
               <table class="min-w-full border-collapse text-sm">

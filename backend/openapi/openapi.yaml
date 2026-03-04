@@ -300,6 +300,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /data-structure/{objectType}:
+    get:
+      tags: [Assistant]
+      operationId: getObjectDataStructureByType
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: objectType
+          required: true
+          schema:
+            $ref: "#/components/schemas/AssistantObjectType"
+      responses:
+        "200":
+          description: Structure des paramètres pour un type d'objet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectDataStructureResponse"
+        "400":
+          description: Type d'objet invalide.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /assistant/conversation:
     get:
       tags: [Assistant]
@@ -388,56 +419,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /assistant/actions/{id}/confirm:
-    post:
+  /object-changes/{objectType}/{objectId}:
+    get:
       tags: [Assistant]
-      operationId: postAssistantActionConfirmById
+      operationId: getObjectChangeHistory
       security:
         - bearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/IdParam"
+        - in: path
+          name: objectType
+          required: true
+          schema:
+            $ref: "#/components/schemas/AssistantObjectType"
+        - in: path
+          name: objectId
+          required: true
+          schema:
+            type: string
       responses:
         "200":
-          description: Action assistant confirmée et exécutée.
+          description: Historique des modifications pour un objet.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantActionResolveResponse"
+                $ref: "#/components/schemas/ObjectChangeListResponse"
+        "400":
+          description: Type d'objet invalide.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Non authentifié.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Action introuvable.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /assistant/actions/{id}/cancel:
-    post:
-      tags: [Assistant]
-      operationId: postAssistantActionCancelById
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/IdParam"
-      responses:
-        "200":
-          description: Action assistant annulée.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AssistantActionResolveResponse"
-        "401":
-          description: Non authentifié.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Action introuvable.
           content:
             application/json:
               schema:
@@ -716,24 +729,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyParticipantResponse"
-  /properties/{id}/prospects:
+  /properties/{id}/clients:
     get:
       tags: [Properties]
-      operationId: getPropertyProspects
+      operationId: getPropertyClients
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/IdParam"
       responses:
         "200":
-          description: Liste des prospects du bien.
+          description: Liste des clients lies au bien (prospects, acheteurs, proprietaires).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyProspectListResponse"
     post:
       tags: [Properties]
-      operationId: postPropertyProspects
+      operationId: postPropertyClients
       security:
         - bearerAuth: []
       parameters:
@@ -746,7 +759,7 @@ paths:
               $ref: "#/components/schemas/PropertyProspectCreateRequest"
       responses:
         "201":
-          description: Prospect ajouté au bien.
+          description: Client lié au bien.
           content:
             application/json:
               schema:
@@ -1823,12 +1836,6 @@ components:
     AssistantObjectType:
       type: string
       enum: [bien, client, rdv, visite]
-    AssistantActionOperation:
-      type: string
-      enum: [create, update]
-    AssistantPendingActionStatus:
-      type: string
-      enum: [PENDING, EXECUTED, CANCELED, FAILED]
     AssistantCitationResponse:
       type: object
       required: [title, url, snippet]
@@ -1840,33 +1847,9 @@ components:
           format: uri
         snippet:
           type: string
-    AssistantPendingActionResponse:
-      type: object
-      required:
-        [id, status, operation, objectType, objectId, previewText, createdAt, updatedAt]
-      properties:
-        id:
-          type: string
-        status:
-          $ref: "#/components/schemas/AssistantPendingActionStatus"
-        operation:
-          $ref: "#/components/schemas/AssistantActionOperation"
-        objectType:
-          $ref: "#/components/schemas/AssistantObjectType"
-        objectId:
-          type: string
-          nullable: true
-        previewText:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
     AssistantMessageResponse:
       type: object
-      required: [id, role, text, citations, pendingAction, createdAt]
+      required: [id, role, text, citations, createdAt]
       properties:
         id:
           type: string
@@ -1879,10 +1862,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistantCitationResponse"
-        pendingAction:
-          allOf:
-            - $ref: "#/components/schemas/AssistantPendingActionResponse"
-          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -1930,16 +1909,106 @@ components:
           $ref: "#/components/schemas/AssistantConversationResponse"
         assistantMessage:
           $ref: "#/components/schemas/AssistantMessageResponse"
-    AssistantActionResolveResponse:
+    ObjectChangeMode:
+      type: string
+      enum: [USER, AI]
+    ObjectChangeEntry:
       type: object
-      required: [action, conversation, assistantMessage]
+      required: [id, objectType, objectId, paramName, paramValue, mode, modifiedAt]
       properties:
-        action:
-          $ref: "#/components/schemas/AssistantPendingActionResponse"
-        conversation:
-          $ref: "#/components/schemas/AssistantConversationResponse"
-        assistantMessage:
-          $ref: "#/components/schemas/AssistantMessageResponse"
+        id:
+          type: string
+        objectType:
+          $ref: "#/components/schemas/AssistantObjectType"
+        objectId:
+          type: string
+        paramName:
+          type: string
+        paramValue:
+          type: string
+        mode:
+          $ref: "#/components/schemas/ObjectChangeMode"
+        modifiedAt:
+          type: string
+          format: date-time
+    ObjectChangeListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectChangeEntry"
+    ObjectDataFieldType:
+      type: string
+      enum: [string, text, int, float, boolean, date, datetime, select]
+    ObjectDataFieldSource:
+      type: string
+      enum: [object, property]
+    ObjectDataFieldRuleOperator:
+      type: string
+      enum: ["=", "!=", in, notIn]
+    ObjectDataFieldOption:
+      type: object
+      required: [value, label]
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+    ObjectDataFieldHideRule:
+      type: object
+      required: [key, operator, value]
+      properties:
+        key:
+          type: string
+        operator:
+          $ref: "#/components/schemas/ObjectDataFieldRuleOperator"
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: boolean
+    ObjectDataFieldDefinition:
+      type: object
+      required: [key, name, group, type]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        group:
+          type: string
+        subgroup:
+          type: string
+        type:
+          $ref: "#/components/schemas/ObjectDataFieldType"
+        source:
+          $ref: "#/components/schemas/ObjectDataFieldSource"
+        required:
+          type: boolean
+        min:
+          type: number
+        max:
+          type: number
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectDataFieldOption"
+        hide:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectDataFieldHideRule"
+    ObjectDataStructureResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/ObjectDataFieldDefinition"
     LoginRequest:
       type: object
       required: [email, password]
@@ -2113,9 +2182,6 @@ components:
     PropertyCreateRequest:
       type: object
       required: [title, city, postalCode, address]
-      anyOf:
-        - required: [ownerUserId]
-        - required: [owner]
       properties:
         title:
           type: string
@@ -2129,10 +2195,6 @@ components:
         address:
           type: string
           minLength: 1
-        ownerUserId:
-          type: string
-        owner:
-          $ref: "#/components/schemas/OwnerContact"
         details:
           $ref: "#/components/schemas/PropertyDetails"
     PropertyPatchRequest:
@@ -2240,6 +2302,9 @@ components:
           type: string
         newClient:
           $ref: "#/components/schemas/OwnerContact"
+        relationRole:
+          type: string
+          enum: [OWNER, PROSPECT, ACHETEUR]
     PropertyProspectResponse:
       type: object
       required:

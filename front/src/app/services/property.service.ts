@@ -24,6 +24,9 @@ import type {
   PropertyResponse,
   PropertyStatus,
   ComparablePropertyType,
+  AssistantObjectType,
+  ObjectDataStructureResponse,
+  ObjectChangeListResponse,
 } from "../core/api.models";
 import { ApiClientService } from "../core/api-client.service";
 
@@ -82,7 +85,7 @@ export class PropertyService {
   listProspects(propertyId: string): Promise<PropertyProspectListResponse> {
     return this.api.request<PropertyProspectListResponse>(
       "GET",
-      `/properties/${encodeURIComponent(propertyId)}/prospects`,
+      `/properties/${encodeURIComponent(propertyId)}/clients`,
     );
   }
 
@@ -92,7 +95,7 @@ export class PropertyService {
   ): Promise<PropertyProspectResponse> {
     return this.api.request<PropertyProspectResponse>(
       "POST",
-      `/properties/${encodeURIComponent(propertyId)}/prospects`,
+      `/properties/${encodeURIComponent(propertyId)}/clients`,
       {
         body: payload,
       },
@@ -202,5 +205,31 @@ export class PropertyService {
     return this.api.request<CalendarAppointmentResponse>("POST", "/calendar-events", {
       body: payload,
     });
+  }
+
+  getDataStructure(objectType: AssistantObjectType): Promise<ObjectDataStructureResponse> {
+    return this.api.request<ObjectDataStructureResponse>(
+      "GET",
+      `/data-structure/${encodeURIComponent(objectType)}`,
+    );
+  }
+
+  listObjectChanges(
+    objectType: AssistantObjectType,
+    objectId: string,
+    limit = 200,
+  ): Promise<ObjectChangeListResponse> {
+    const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 200;
+    const safeLimit = Math.min(500, Math.max(1, normalizedLimit || 200));
+
+    return this.api.request<ObjectChangeListResponse>(
+      "GET",
+      `/object-changes/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`,
+      {
+        params: {
+          limit: safeLimit,
+        },
+      },
+    );
   }
 }

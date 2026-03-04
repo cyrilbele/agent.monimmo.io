@@ -1,7 +1,6 @@
 import { inject, Injectable } from "@angular/core";
 
 import type {
-  AssistantActionResolveResponse,
   AssistantConversationResponse,
   AssistantMessageContextRequest,
   AssistantMessageCreateResponse,
@@ -180,26 +179,6 @@ export class AssistantService {
     }
 
     return this.sendMessage(message, context);
-  }
-
-  confirmAction(actionId: string): Promise<AssistantActionResolveResponse> {
-    return this.api.request<AssistantActionResolveResponse>(
-      "POST",
-      `/assistant/actions/${encodeURIComponent(actionId)}/confirm`,
-      {
-        body: {},
-      },
-    );
-  }
-
-  cancelAction(actionId: string): Promise<AssistantActionResolveResponse> {
-    return this.api.request<AssistantActionResolveResponse>(
-      "POST",
-      `/assistant/actions/${encodeURIComponent(actionId)}/cancel`,
-      {
-        body: {},
-      },
-    );
   }
 
   private resolveApiBaseUrl(): string {

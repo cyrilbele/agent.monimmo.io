@@ -31,12 +31,6 @@ describe("PropertyService", () => {
       city: "Paris",
       postalCode: "75011",
       address: "12 rue Oberkampf",
-      owner: {
-        firstName: "A",
-        lastName: "B",
-        phone: "0600000000",
-        email: "a@b.c",
-      },
     });
     await service.patch("property:1", { title: "Titre" });
     await service.updateStatus("property:1", "PROSPECTION");
@@ -98,12 +92,6 @@ describe("PropertyService", () => {
             city: "Paris",
             postalCode: "75011",
             address: "12 rue Oberkampf",
-            owner: {
-              firstName: "A",
-              lastName: "B",
-              phone: "0600000000",
-              email: "a@b.c",
-            },
           },
         },
       ],
@@ -114,8 +102,8 @@ describe("PropertyService", () => {
         "/properties/property%3A1/participants",
         { body: { contactId: "contact_1", role: "VENDEUR" } },
       ],
-      ["GET", "/properties/property%3A1/prospects"],
-      ["POST", "/properties/property%3A1/prospects", { body: { userId: "user_1" } }],
+      ["GET", "/properties/property%3A1/clients"],
+      ["POST", "/properties/property%3A1/clients", { body: { userId: "user_1" } }],
       ["GET", "/properties/property%3A1/visits"],
       [
         "POST",

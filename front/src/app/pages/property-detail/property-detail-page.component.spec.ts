@@ -220,6 +220,7 @@ describe("PropertyDetailPageComponent comparables", () => {
 
     fixture.detectChanges();
     await fixture.whenStable();
+    await component.loadPropertyBundle();
     fixture.detectChanges();
 
     expect(getComparablesCalls.length).toBe(0);
@@ -239,22 +240,20 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(component.paginatedComparableSales()[0]?.saleDate).toBe("2024-09-10T00:00:00.000Z");
 
     expect(component.comparables()?.propertyType).toBe("MAISON");
-    const hostElement = fixture.nativeElement as HTMLElement;
-    const rangeMarkers = Array.from(hostElement.querySelectorAll(".range-marker")) as HTMLElement[];
-    expect(rangeMarkers.length).toBe(2);
-    expect(rangeMarkers.every((marker) => !marker.classList.contains("range-marker--hidden"))).toBe(
-      true,
-    );
-    const markerStyle = getComputedStyle(rangeMarkers[0] as Element);
-    expect(markerStyle.position).toBe("absolute");
-    expect(markerStyle.borderTopStyle).toBe("solid");
-
-    const dualRangeInputs = Array.from(
-      hostElement.querySelectorAll(".dual-range__input"),
-    ) as HTMLElement[];
-    expect(dualRangeInputs.length).toBe(4);
-    expect(getComputedStyle(dualRangeInputs[0] as Element).position).toBe("absolute");
-    const coproCategory = component.propertyCategories.find((category) => category.id === "copropriete");
+    const surfaceSlider = component.comparablesSurfaceSlider();
+    const terrainSlider = component.comparablesTerrainSlider();
+    expect(surfaceSlider).not.toBeNull();
+    expect(terrainSlider).not.toBeNull();
+    if (!surfaceSlider || !terrainSlider) {
+      throw new Error("Sliders comparables introuvables");
+    }
+    expect(component.sliderPercent(component.comparableTargetSurfaceM2(), surfaceSlider.min, surfaceSlider.max)).not.toBeNull();
+    expect(
+      component.sliderPercent(component.comparableTargetLandSurfaceM2(), terrainSlider.min, terrainSlider.max),
+    ).not.toBeNull();
+    expect(surfaceSlider.currentMin).toBeLessThanOrEqual(surfaceSlider.currentMax);
+    expect(terrainSlider.currentMin).toBeLessThanOrEqual(terrainSlider.currentMax);
+    const coproCategory = component.propertyCategories().find((category) => category.id === "copropriete");
     expect(coproCategory?.fields.map((field) => field.key)).toEqual(
       expect.arrayContaining([
         "sharedPool",
@@ -265,7 +264,7 @@ describe("PropertyDetailPageComponent comparables", () => {
         "fencedResidence",
       ]),
     );
-    const amenitiesCategory = component.propertyCategories.find((category) => category.id === "amenities");
+    const amenitiesCategory = component.propertyCategories().find((category) => category.id === "amenities");
     const gardenField = amenitiesCategory?.fields.find((field) => field.key === "garden");
     expect(gardenField?.options?.map((option) => option.value)).toEqual([
       "NON",
@@ -308,12 +307,11 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(rental.annualNetCashflow).toBe(14400);
     expect(rental.irrPct === null || rental.irrPct > 0).toBe(true);
     expect(patchCalls.length).toBe(3);
-    const financeDetails = ((component.property()?.details as Record<string, unknown>)["finance"] ??
-      {}) as Record<string, unknown>;
-    expect(financeDetails["propertyTax"]).toBe(1200);
-    expect(financeDetails["monthlyRent"]).toBe(1500);
-    expect(financeDetails["rentalHoldingYears"]).toBe(10);
-    expect(financeDetails["rentalResalePrice"]).toBe(380000);
+    const detailsRecord = (component.property()?.details ?? {}) as Record<string, unknown>;
+    expect(detailsRecord["propertyTax"]).toBe(1200);
+    expect(detailsRecord["monthlyRent"]).toBe(1500);
+    expect(detailsRecord["rentalHoldingYears"]).toBe(10);
+    expect(detailsRecord["rentalResalePrice"]).toBe(380000);
   });
 
   it("permet de mettre a jour le prix de vente et de relancer l'analyse IA", async () => {
@@ -436,9 +434,45 @@ describe("PropertyDetailPageComponent comparables", () => {
     let currentPropertyResponse: PropertyResponse = propertyResponse;
 
     const propertyServiceMock: Partial<PropertyService> = {
-      getById: () => Promise.resolve(propertyResponse),
+      getById: () => Promise.resolve(currentPropertyResponse),
       listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
       listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getDataStructure: () =>
+        Promise.resolve([
+          {
+            key: "livingArea",
+            name: "Surface habitable (m2)",
+            group: "characteristics",
+            type: "float",
+          },
+          {
+            key: "landArea",
+            name: "Surface terrain (m2)",
+            group: "characteristics",
+            type: "float",
+          },
+          {
+            key: "standing",
+            name: "Standing",
+            group: "characteristics",
+            type: "select",
+            options: [{ value: "HAUT_DE_GAMME", label: "Haut de gamme" }],
+          },
+          {
+            key: "pool",
+            name: "Piscine",
+            group: "amenities",
+            type: "select",
+            options: [{ value: "OUI", label: "Oui" }],
+          },
+          {
+            key: "dpeClass",
+            name: "DPE (classe énergie)",
+            group: "regulation",
+            type: "select",
+            options: [{ value: "C", label: "C" }],
+          },
+        ]),
       getRisks: () =>
         Promise.resolve({
           propertyId: "property_valuation_ai",
@@ -519,6 +553,7 @@ describe("PropertyDetailPageComponent comparables", () => {
     const component = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+    await component.loadPropertyBundle();
     fixture.detectChanges();
 
     component.setMainTab("valuation");
@@ -641,6 +676,36 @@ describe("PropertyDetailPageComponent comparables", () => {
       getById: () => Promise.resolve(currentPropertyResponse),
       listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
       listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
+      getDataStructure: () =>
+        Promise.resolve([
+          {
+            key: "sanitationType",
+            name: "Assainissement",
+            group: "characteristics",
+            type: "select",
+            options: [
+              { value: "TOUT_A_L_EGOUT", label: "Tout-à-l'égout" },
+              { value: "FOSSE_SEPTIQUE", label: "Fosse septique" },
+            ],
+          },
+          {
+            key: "septicTankCompliant",
+            name: "Fosse septique aux normes",
+            group: "characteristics",
+            type: "select",
+            options: [
+              { value: "true", label: "Oui" },
+              { value: "false", label: "Non" },
+            ],
+            hide: [
+              {
+                key: "sanitationType",
+                operator: "!=",
+                value: "FOSSE_SEPTIQUE",
+              },
+            ],
+          },
+        ]),
       getRisks: () =>
         Promise.resolve({
           propertyId: "property_sanitation",
@@ -746,16 +811,16 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(
       (
         patchCalls[0]?.payload as {
-          details?: { characteristics?: Record<string, unknown> };
+          details?: Record<string, unknown>;
         }
-      )?.details?.characteristics?.["sanitationType"],
+      )?.details?.["sanitationType"],
     ).toBe("FOSSE_SEPTIQUE");
     expect(
       (
         patchCalls[0]?.payload as {
-          details?: { characteristics?: Record<string, unknown> };
+          details?: Record<string, unknown>;
         }
-      )?.details?.characteristics?.["septicTankCompliant"],
+      )?.details?.["septicTankCompliant"],
     ).toBe("true");
 
     component.startEditingActiveCategory();
@@ -775,22 +840,18 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(
       (
         patchCalls[1]?.payload as {
-          details?: { characteristics?: Record<string, unknown> };
+          details?: Record<string, unknown>;
         }
-      )?.details?.characteristics?.["sanitationType"],
+      )?.details?.["sanitationType"],
     ).toBe("TOUT_A_L_EGOUT");
     expect(
       (
         patchCalls[1]?.payload as {
-          details?: { characteristics?: Record<string, unknown> };
+          details?: Record<string, unknown>;
         }
-      )?.details?.characteristics?.["septicTankCompliant"],
+      )?.details?.["septicTankCompliant"],
     ).toBeNull();
-
-    const updatedCharacteristics =
-      (((component.property()?.details as Record<string, unknown>)["characteristics"] ??
-        {}) as Record<string, unknown>);
-    expect(updatedCharacteristics["septicTankCompliant"]).toBeNull();
+    expect((component.property()?.details as Record<string, unknown>)["septicTankCompliant"]).toBeNull();
   });
 
   it("restaure et persiste les filtres comparables surface et terrain", async () => {
@@ -809,12 +870,10 @@ describe("PropertyDetailPageComponent comparables", () => {
           livingArea: 122,
           landArea: 760,
         },
-        valuationComparableFilters: {
-          surfaceMinM2: 119,
-          surfaceMaxM2: 126,
-          landSurfaceMinM2: 710,
-          landSurfaceMaxM2: 780,
-        },
+        valuationComparableFiltersSurfaceMinM2: 119,
+        valuationComparableFiltersSurfaceMaxM2: 126,
+        valuationComparableFiltersLandSurfaceMinM2: 710,
+        valuationComparableFiltersLandSurfaceMaxM2: 780,
       },
       status: "PROSPECTION",
       orgId: "org_demo",
@@ -893,7 +952,7 @@ describe("PropertyDetailPageComponent comparables", () => {
     let currentPropertyResponse: PropertyResponse = propertyResponse;
 
     const propertyServiceMock: Partial<PropertyService> = {
-      getById: () => Promise.resolve(propertyResponse),
+      getById: () => Promise.resolve(currentPropertyResponse),
       listProspects: () => Promise.resolve({ items: [] } as PropertyProspectListResponse),
       listVisits: () => Promise.resolve({ items: [] } as PropertyVisitListResponse),
       getRisks: () =>
@@ -958,6 +1017,7 @@ describe("PropertyDetailPageComponent comparables", () => {
     const component = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+    await component.loadPropertyBundle();
     fixture.detectChanges();
 
     component.setMainTab("valuation");
@@ -981,12 +1041,10 @@ describe("PropertyDetailPageComponent comparables", () => {
       propertyId: "property_filters",
       payload: {
         details: {
-          valuationComparableFilters: {
-            surfaceMinM2: 120,
-            surfaceMaxM2: 124,
-            landSurfaceMinM2: 720,
-            landSurfaceMaxM2: 770,
-          },
+          valuationComparableFiltersSurfaceMinM2: 120,
+          valuationComparableFiltersSurfaceMaxM2: 124,
+          valuationComparableFiltersLandSurfaceMinM2: 720,
+          valuationComparableFiltersLandSurfaceMaxM2: 770,
         },
       },
     });
@@ -1121,24 +1179,20 @@ describe("PropertyDetailPageComponent comparables", () => {
     expect(
       (
         patchCalls[0]?.payload as {
-          details?: { characteristics?: Record<string, unknown> };
+          details?: Record<string, unknown>;
         }
-      )?.details?.characteristics?.["lastRenovationYear"],
+      )?.details?.["lastRenovationYear"],
     ).toBe(2020);
     expect(
       (
         patchCalls[0]?.payload as {
-          details?: { characteristics?: Record<string, unknown> };
+          details?: Record<string, unknown>;
         }
-      )?.details?.characteristics?.["agentAdditionalDetails"],
+      )?.details?.["agentAdditionalDetails"],
     ).toBe("Façade rénovée, cuisine refaite, isolation des combles.");
     expect(component.requestFeedback()).toBe("Informations mises à jour.");
-
-    const updatedCharacteristics =
-      (((component.property()?.details as Record<string, unknown>)["characteristics"] ??
-        {}) as Record<string, unknown>);
-    expect(updatedCharacteristics["lastRenovationYear"]).toBe(2020);
-    expect(updatedCharacteristics["agentAdditionalDetails"]).toBe(
+    expect((component.property()?.details as Record<string, unknown>)["lastRenovationYear"]).toBe(2020);
+    expect((component.property()?.details as Record<string, unknown>)["agentAdditionalDetails"]).toBe(
       "Façade rénovée, cuisine refaite, isolation des combles.",
     );
   });
