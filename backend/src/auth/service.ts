@@ -22,6 +22,8 @@ type OrganizationRow = typeof organizations.$inferSelect;
 const DEFAULT_NOTARY_FEE_PCT = 8;
 const MIN_NOTARY_FEE_PCT = 0;
 const MAX_NOTARY_FEE_PCT = 100;
+export const DEFAULT_ASSISTANT_SOUL =
+  "Tu es Monimmo, un assistant immobilier pragmatique, clair et orienté action pour les agents français.";
 
 const normalizeNotaryFeePct = (value: unknown): number => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -38,6 +40,24 @@ const resolveNotaryFeePct = (organization: OrganizationRow | undefined): number 
   }
 
   return normalizeNotaryFeePct(organization.notaryFeePct);
+};
+
+const normalizeAssistantSoulForPersistence = (value: unknown): string | null => {
+  if (value === null || typeof value === "undefined") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const resolveAssistantSoul = (organization: OrganizationRow | undefined): string => {
+  const persisted = normalizeAssistantSoulForPersistence(organization?.assistantSoul);
+  return persisted ?? DEFAULT_ASSISTANT_SOUL;
 };
 
 const getUserEmailForAuth = (user: UserRow): string => {
@@ -263,6 +283,7 @@ export const authService = {
       notaryFeePct: resolveNotaryFeePct(organization),
       aiProvider: globalProviderSettings.aiProvider,
       valuationAiOutputFormat: resolveValuationAiOutputFormat(organization?.valuationAiOutputFormat),
+      assistantSoul: resolveAssistantSoul(organization),
     };
   },
 
@@ -272,6 +293,7 @@ export const authService = {
       notaryFeePct?: number;
       aiProvider?: "openai" | "anthropic";
       valuationAiOutputFormat?: string | null;
+      assistantSoul?: string | null;
     },
   ) {
     const payload = await verifyAccessToken(accessToken);
@@ -290,6 +312,10 @@ export const authService = {
       typeof input.valuationAiOutputFormat === "undefined"
         ? organization?.valuationAiOutputFormat ?? null
         : normalizeValuationAiOutputFormatForPersistence(input.valuationAiOutputFormat);
+    const persistedAssistantSoul =
+      typeof input.assistantSoul === "undefined"
+        ? normalizeAssistantSoulForPersistence(organization?.assistantSoul)
+        : normalizeAssistantSoulForPersistence(input.assistantSoul);
     const now = new Date();
 
     await db
@@ -297,6 +323,7 @@ export const authService = {
       .set({
         notaryFeePct: normalizedNotaryFeePct,
         valuationAiOutputFormat: persistedValuationAiOutputFormat,
+        assistantSoul: persistedAssistantSoul,
         updatedAt: now,
       })
       .where(eq(organizations.id, user.orgId));
@@ -315,6 +342,7 @@ export const authService = {
       notaryFeePct: normalizedNotaryFeePct,
       aiProvider: globalProviderSettings.aiProvider,
       valuationAiOutputFormat: resolvedValuationAiOutputFormat,
+      assistantSoul: persistedAssistantSoul ?? DEFAULT_ASSISTANT_SOUL,
     };
   },
 };

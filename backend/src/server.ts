@@ -4,6 +4,10 @@ import { enforceAuthRateLimit } from "./auth/rate-limit";
 import { assertManagerOrAdmin } from "./auth/rbac";
 import { authService } from "./auth/service";
 import {
+  AssistantActionResolveResponseSchema,
+  AssistantConversationResponseSchema,
+  AssistantMessageCreateRequestSchema,
+  AssistantMessageCreateResponseSchema,
   AppSettingsPatchRequestSchema,
   AICallLogListResponseSchema,
   CalendarAppointmentCreateRequestSchema,
@@ -38,6 +42,7 @@ import {
   VocalUploadRequestSchema,
 } from "./dto/zod";
 import { HttpError, toApiError } from "./http/errors";
+import { assistantService } from "./assistant/service";
 import { calendarService } from "./calendar/service";
 import { filesService } from "./files/service";
 import { integrationsService } from "./integrations/service";
@@ -76,6 +81,38 @@ const error = (status: number, code: string, message: string, details?: unknown)
     },
     { status },
   );
+
+const toSseEvent = (event: string, payload: unknown): string =>
+  `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+
+const splitStreamingText = (text: string): string[] => {
+  const normalized = text.trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const chunks: string[] = [];
+  let index = 0;
+  const hardLimit = 56;
+  const minChunk = 16;
+
+  while (index < normalized.length) {
+    const maxEnd = Math.min(normalized.length, index + hardLimit);
+    let end = maxEnd;
+
+    if (maxEnd < normalized.length) {
+      const whitespaceBreak = normalized.lastIndexOf(" ", maxEnd);
+      if (whitespaceBreak >= index + minChunk) {
+        end = whitespaceBreak + 1;
+      }
+    }
+
+    chunks.push(normalized.slice(index, end));
+    index = end;
+  }
+
+  return chunks;
+};
 
 const getSwaggerHtml = (): string => `<!doctype html>
 <html lang="fr">
@@ -515,6 +552,199 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           query: url.searchParams.get("q") ?? "",
           limit: parseLimit(),
         });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/assistant/conversation") {
+        const accessToken = getBearerToken();
+        const [me, settings] = await Promise.all([
+          authService.me(accessToken),
+          authService.getSettings(accessToken),
+        ]);
+        const response = AssistantConversationResponseSchema.parse(
+          await assistantService.getConversation({
+            orgId: me.user.orgId,
+            userId: me.user.id,
+            assistantSoul: settings.assistantSoul,
+          }),
+        );
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/assistant/conversation/reset") {
+        const accessToken = getBearerToken();
+        const [me, settings] = await Promise.all([
+          authService.me(accessToken),
+          authService.getSettings(accessToken),
+        ]);
+        const response = AssistantConversationResponseSchema.parse(
+          await assistantService.resetConversation({
+            orgId: me.user.orgId,
+            userId: me.user.id,
+            assistantSoul: settings.assistantSoul,
+          }),
+        );
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/assistant/messages") {
+        const accessToken = getBearerToken();
+        const [me, settings, payload] = await Promise.all([
+          authService.me(accessToken),
+          authService.getSettings(accessToken),
+          parseJson(AssistantMessageCreateRequestSchema),
+        ]);
+
+        const response = AssistantMessageCreateResponseSchema.parse(
+          await assistantService.postUserMessage({
+            orgId: me.user.orgId,
+            userId: me.user.id,
+            message: payload.message,
+            context: payload.context,
+            assistantSoul: settings.assistantSoul,
+          }),
+        );
+
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/assistant/messages/stream") {
+        const accessToken = getBearerToken();
+        const [me, settings, payload] = await Promise.all([
+          authService.me(accessToken),
+          authService.getSettings(accessToken),
+          parseJson(AssistantMessageCreateRequestSchema),
+        ]);
+
+        let streamClosed = false;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const encoder = new TextEncoder();
+
+            const send = (event: string, data: unknown): boolean => {
+              if (streamClosed) {
+                return false;
+              }
+
+              try {
+                controller.enqueue(encoder.encode(toSseEvent(event, data)));
+                return true;
+              } catch {
+                streamClosed = true;
+                return false;
+              }
+            };
+
+            const safeClose = (): void => {
+              if (streamClosed) {
+                return;
+              }
+
+              try {
+                controller.close();
+              } catch {
+                // Le client peut avoir annulé le stream avant la fermeture explicite.
+              } finally {
+                streamClosed = true;
+              }
+            };
+
+            void (async () => {
+              try {
+                send("status", { state: "processing" });
+
+                const response = AssistantMessageCreateResponseSchema.parse(
+                  await assistantService.postUserMessage({
+                    orgId: me.user.orgId,
+                    userId: me.user.id,
+                    message: payload.message,
+                    context: payload.context,
+                    assistantSoul: settings.assistantSoul,
+                  }),
+                );
+
+                const chunks = splitStreamingText(response.assistantMessage.text);
+                for (const chunk of chunks) {
+                  send("delta", { text: chunk });
+                  await new Promise((resolve) => setTimeout(resolve, 14));
+                }
+
+                send("final", response);
+              } catch (streamError) {
+                if (streamError instanceof HttpError) {
+                  const apiError = toApiError(streamError);
+                  send("error", apiError);
+                } else {
+                  send("error", {
+                    code: "ASSISTANT_STREAM_FAILED",
+                    message:
+                      streamError instanceof Error ? streamError.message : "Streaming assistant impossible",
+                  });
+                }
+              } finally {
+                safeClose();
+              }
+            })();
+          },
+          cancel() {
+            // Le client a fermé la connexion SSE.
+            streamClosed = true;
+          },
+        });
+
+        return withCors(
+          request,
+          new Response(stream, {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream; charset=utf-8",
+              "cache-control": "no-cache, no-transform",
+              connection: "keep-alive",
+              "x-accel-buffering": "no",
+            },
+          }),
+        );
+      }
+
+      const assistantActionConfirmMatch = url.pathname.match(/^\/assistant\/actions\/([^/]+)\/confirm$/);
+      if (assistantActionConfirmMatch && request.method === "POST") {
+        const actionId = decodeURIComponent(assistantActionConfirmMatch[1]);
+        const accessToken = getBearerToken();
+        const [me, settings] = await Promise.all([
+          authService.me(accessToken),
+          authService.getSettings(accessToken),
+        ]);
+
+        const response = AssistantActionResolveResponseSchema.parse(
+          await assistantService.confirmAction({
+            orgId: me.user.orgId,
+            userId: me.user.id,
+            actionId,
+            assistantSoul: settings.assistantSoul,
+          }),
+        );
+
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      const assistantActionCancelMatch = url.pathname.match(/^\/assistant\/actions\/([^/]+)\/cancel$/);
+      if (assistantActionCancelMatch && request.method === "POST") {
+        const actionId = decodeURIComponent(assistantActionCancelMatch[1]);
+        const accessToken = getBearerToken();
+        const [me, settings] = await Promise.all([
+          authService.me(accessToken),
+          authService.getSettings(accessToken),
+        ]);
+
+        const response = AssistantActionResolveResponseSchema.parse(
+          await assistantService.cancelAction({
+            orgId: me.user.orgId,
+            userId: me.user.id,
+            actionId,
+            assistantSoul: settings.assistantSoul,
+          }),
+        );
+
         return withCors(request, json(response, { status: 200 }));
       }
 

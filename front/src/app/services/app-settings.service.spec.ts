@@ -22,6 +22,7 @@ describe("AppSettingsService", () => {
                   notaryFeePct: 7.4,
                   aiProvider: "openai",
                   valuationAiOutputFormat: defaultFormat,
+                  assistantSoul: "Soul test",
                 });
               }
               if (args[0] === "PATCH") {
@@ -29,6 +30,7 @@ describe("AppSettingsService", () => {
                   notaryFeePct: 6.9,
                   aiProvider: "openai",
                   valuationAiOutputFormat: defaultFormat,
+                  assistantSoul: "Soul test",
                 });
               }
               return Promise.resolve({});
@@ -42,15 +44,18 @@ describe("AppSettingsService", () => {
     expect(service.notaryFeePct()).toBe(DEFAULT_NOTARY_FEE_PCT);
     expect(service.aiProvider()).toBe("openai");
     expect(service.valuationAiOutputFormat()).toBe("");
+    expect(service.assistantSoul().length).toBeGreaterThan(0);
     await service.refresh();
     expect(service.notaryFeePct()).toBe(7.4);
     expect(service.aiProvider()).toBe("openai");
     expect(service.valuationAiOutputFormat()).toBe(defaultFormat);
+    expect(service.assistantSoul()).toBe("Soul test");
 
     await service.updateNotaryFeePct(6.9);
     expect(service.notaryFeePct()).toBe(6.9);
     expect(service.aiProvider()).toBe("openai");
     expect(service.valuationAiOutputFormat()).toBe(defaultFormat);
+    expect(service.assistantSoul()).toBe("Soul test");
     expect(calls).toEqual([
       ["GET", "/me/settings"],
       ["GET", "/me/settings"],
@@ -70,6 +75,7 @@ describe("AppSettingsService", () => {
                 notaryFeePct: options?.body?.notaryFeePct ?? DEFAULT_NOTARY_FEE_PCT,
                 aiProvider: "openai",
                 valuationAiOutputFormat: "## Format",
+                assistantSoul: "Soul test",
               }),
           },
         },
@@ -99,6 +105,7 @@ describe("AppSettingsService", () => {
                   notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
                   aiProvider: "openai",
                   valuationAiOutputFormat: "## Format initial",
+                  assistantSoul: "Soul test",
                 });
               }
 
@@ -106,6 +113,7 @@ describe("AppSettingsService", () => {
                 notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
                 aiProvider: "openai",
                 valuationAiOutputFormat: "## Format personnalisé",
+                assistantSoul: "Soul test",
               });
             },
           },
@@ -140,6 +148,7 @@ describe("AppSettingsService", () => {
                   notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
                   aiProvider: "openai",
                   valuationAiOutputFormat: "## Format initial",
+                  assistantSoul: "Soul test",
                 });
               }
 
@@ -147,6 +156,7 @@ describe("AppSettingsService", () => {
                 notaryFeePct: DEFAULT_NOTARY_FEE_PCT,
                 aiProvider: "anthropic",
                 valuationAiOutputFormat: "## Format initial",
+                assistantSoul: "Soul test",
               });
             },
           },

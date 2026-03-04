@@ -18,6 +18,7 @@ tags:
   - name: ReviewQueue
   - name: Integrations
   - name: Privacy
+  - name: Assistant
 paths:
   /health:
     get:
@@ -295,6 +296,148 @@ paths:
                 $ref: "#/components/schemas/GlobalSearchResponse"
         "401":
           description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/conversation:
+    get:
+      tags: [Assistant]
+      operationId: getAssistantConversation
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Conversation assistant courante (persistante, reset manuel).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConversationResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/conversation/reset:
+    post:
+      tags: [Assistant]
+      operationId: postAssistantConversationReset
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Conversation assistant réinitialisée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConversationResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/messages:
+    post:
+      tags: [Assistant]
+      operationId: postAssistantMessage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantMessageCreateRequest"
+      responses:
+        "200":
+          description: Message utilisateur traité et réponse assistant produite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantMessageCreateResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/messages/stream:
+    post:
+      tags: [Assistant]
+      operationId: postAssistantMessageStream
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantMessageCreateRequest"
+      responses:
+        "200":
+          description: Flux SSE de la réponse assistant (delta + final).
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/actions/{id}/confirm:
+    post:
+      tags: [Assistant]
+      operationId: postAssistantActionConfirmById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Action assistant confirmée et exécutée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantActionResolveResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Action introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/actions/{id}/cancel:
+    post:
+      tags: [Assistant]
+      operationId: postAssistantActionCancelById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Action assistant annulée.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantActionResolveResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Action introuvable.
           content:
             application/json:
               schema:
@@ -1559,7 +1702,7 @@ components:
           $ref: "#/components/schemas/UserResponse"
     AppSettingsResponse:
       type: object
-      required: [notaryFeePct, aiProvider, valuationAiOutputFormat]
+      required: [notaryFeePct, aiProvider, valuationAiOutputFormat, assistantSoul]
       properties:
         notaryFeePct:
           type: number
@@ -1572,6 +1715,9 @@ components:
         valuationAiOutputFormat:
           type: string
           description: Format Markdown attendu pour la clé justification de la valorisation IA.
+        assistantSoul:
+          type: string
+          description: Persona système injectée au début de chaque conversation assistant.
     AppSettingsPatchRequest:
       type: object
       properties:
@@ -1586,10 +1732,15 @@ components:
           type: string
           nullable: true
           description: Null ou chaîne vide pour revenir au format par défaut.
+        assistantSoul:
+          type: string
+          nullable: true
+          description: Null ou chaîne vide pour revenir à la soul par défaut.
       anyOf:
         - required: [notaryFeePct]
         - required: [aiProvider]
         - required: [valuationAiOutputFormat]
+        - required: [assistantSoul]
     AICallLogResponse:
       type: object
       required:
@@ -1669,6 +1820,126 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GlobalSearchItemResponse"
+    AssistantObjectType:
+      type: string
+      enum: [bien, client, rdv, visite]
+    AssistantActionOperation:
+      type: string
+      enum: [create, update]
+    AssistantPendingActionStatus:
+      type: string
+      enum: [PENDING, EXECUTED, CANCELED, FAILED]
+    AssistantCitationResponse:
+      type: object
+      required: [title, url, snippet]
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        snippet:
+          type: string
+    AssistantPendingActionResponse:
+      type: object
+      required:
+        [id, status, operation, objectType, objectId, previewText, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/AssistantPendingActionStatus"
+        operation:
+          $ref: "#/components/schemas/AssistantActionOperation"
+        objectType:
+          $ref: "#/components/schemas/AssistantObjectType"
+        objectId:
+          type: string
+          nullable: true
+        previewText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AssistantMessageResponse:
+      type: object
+      required: [id, role, text, citations, pendingAction, createdAt]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [USER, ASSISTANT]
+        text:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantCitationResponse"
+        pendingAction:
+          allOf:
+            - $ref: "#/components/schemas/AssistantPendingActionResponse"
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AssistantConversationResponse:
+      type: object
+      required: [id, greeting, messages, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        greeting:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantMessageResponse"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AssistantMessageContextRequest:
+      type: object
+      required: [objectType, objectId]
+      properties:
+        objectType:
+          $ref: "#/components/schemas/AssistantObjectType"
+        objectId:
+          type: string
+          minLength: 1
+    AssistantMessageCreateRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+        context:
+          $ref: "#/components/schemas/AssistantMessageContextRequest"
+    AssistantMessageCreateResponse:
+      type: object
+      required: [conversation, assistantMessage]
+      properties:
+        conversation:
+          $ref: "#/components/schemas/AssistantConversationResponse"
+        assistantMessage:
+          $ref: "#/components/schemas/AssistantMessageResponse"
+    AssistantActionResolveResponse:
+      type: object
+      required: [action, conversation, assistantMessage]
+      properties:
+        action:
+          $ref: "#/components/schemas/AssistantPendingActionResponse"
+        conversation:
+          $ref: "#/components/schemas/AssistantConversationResponse"
+        assistantMessage:
+          $ref: "#/components/schemas/AssistantMessageResponse"
     LoginRequest:
       type: object
       required: [email, password]

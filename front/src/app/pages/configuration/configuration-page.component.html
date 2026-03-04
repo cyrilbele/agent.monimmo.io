@@ -90,6 +90,20 @@
           </p>
         </div>
 
+        <div>
+          <label class="field-label" for="assistant-soul">
+            Soul assistant (personnalité)
+          </label>
+          <textarea
+            id="assistant-soul"
+            class="field-input min-h-40"
+            formControlName="assistantSoul"
+          ></textarea>
+          <p class="mt-1 text-xs text-slate-500">
+            Injectée au début de chaque conversation assistant.
+          </p>
+        </div>
+
         <button
           class="btn w-full sm:w-auto"
           type="submit"
@@ -249,14 +263,14 @@
                   <p
                     class="max-w-[28rem] whitespace-pre-wrap break-words text-xs [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden"
                   >
-                    {{ call.prompt }}
+                    {{ tablePromptSummary(call) }}
                   </p>
                 </td>
                 <td class="px-3 py-3 text-slate-700">
                   <p
                     class="max-w-[28rem] whitespace-pre-wrap break-words text-xs [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden"
                   >
-                    {{ call.textResponse }}
+                    {{ tableResponseSummary(call) }}
                   </p>
                 </td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ formatPrice(call.price) }}</td>

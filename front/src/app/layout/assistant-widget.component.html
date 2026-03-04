@@ -1,0 +1,106 @@
+<button
+  type="button"
+  class="assistant-fab"
+  aria-label="Ouvrir l'assistant"
+  (click)="toggle()"
+>
+  <span>AI</span>
+</button>
+
+@if (open()) {
+  <div class="assistant-overlay" [class.assistant-overlay--mobile]="mobileLayout()">
+    <section
+      class="assistant-panel"
+      [class.assistant-panel--mobile]="mobileLayout()"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Assistant Monimmo"
+    >
+      <header class="assistant-header">
+        <div>
+          <p class="assistant-eyebrow">Assistant</p>
+          <h3>Monimmo</h3>
+        </div>
+        <div class="assistant-header-actions">
+          <button type="button" class="assistant-link" (click)="resetConversation()" [disabled]="loading()">
+            Réinitialiser
+          </button>
+          <button type="button" class="assistant-link" (click)="close()">
+            Fermer
+          </button>
+        </div>
+      </header>
+
+      <div class="assistant-body" aria-live="polite">
+        @if (loading()) {
+          <p class="assistant-state">Chargement...</p>
+        } @else {
+          @for (message of messages(); track trackMessage($index, message)) {
+            <article class="assistant-message" [class.assistant-message--user]="message.role === 'USER'">
+              <div class="assistant-markdown" [innerHTML]="messageHTML(message)"></div>
+
+              @if (message.citations.length > 0) {
+                <ul class="assistant-citations">
+                  @for (citation of message.citations; track citation.url) {
+                    <li>
+                      <a [href]="citation.url" target="_blank" rel="noopener noreferrer">{{ citation.title }}</a>
+                      @if (citation.snippet) {
+                        <p>{{ citation.snippet }}</p>
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (message.pendingAction && message.pendingAction.status === 'PENDING') {
+                <div class="assistant-action-box">
+                  <p>{{ message.pendingAction.previewText }}</p>
+                  <div class="assistant-action-buttons">
+                    <button
+                      type="button"
+                      class="btn"
+                      [disabled]="isActionPending(message.pendingAction.id)"
+                      (click)="confirmAction(message.pendingAction.id)"
+                    >
+                      Confirmer
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost"
+                      [disabled]="isActionPending(message.pendingAction.id)"
+                      (click)="cancelAction(message.pendingAction.id)"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              }
+            </article>
+          }
+
+          @if (assistantThinking()) {
+            <p class="assistant-state">L'assistant est en train de répondre...</p>
+          }
+        }
+      </div>
+
+      @if (feedback()) {
+        <p class="assistant-feedback" role="status">{{ feedback() }}</p>
+      }
+
+      <footer class="assistant-footer">
+        <textarea
+          class="field-input"
+          rows="2"
+          placeholder="Posez votre question..."
+          [ngModel]="draft()"
+          (ngModelChange)="draft.set($event)"
+          (keydown)="onDraftKeydown($event)"
+        ></textarea>
+        <button type="button" class="btn" [disabled]="sending()" (click)="send()">
+          {{ sending() ? "Envoi..." : "Envoyer" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+}

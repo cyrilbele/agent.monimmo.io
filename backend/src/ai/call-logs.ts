@@ -14,6 +14,8 @@ export const AI_CALL_USE_CASES = [
   "VOCAL_INITIAL_VISIT_EXTRACTION",
   "VOCAL_INSIGHTS_EXTRACTION",
   "PROPERTY_VALUATION",
+  "ASSISTANT_CHAT",
+  "ASSISTANT_WEB_SEARCH",
 ] as const;
 
 export type AICallUseCase = (typeof AI_CALL_USE_CASES)[number];

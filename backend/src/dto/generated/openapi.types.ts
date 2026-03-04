@@ -180,6 +180,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assistant/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAssistantConversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/conversation/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postAssistantConversationReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postAssistantMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/messages/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postAssistantMessageStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/actions/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postAssistantActionConfirmById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/actions/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postAssistantActionCancelById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -903,6 +999,8 @@ export interface components {
             aiProvider: "openai" | "anthropic";
             /** @description Format Markdown attendu pour la clé justification de la valorisation IA. */
             valuationAiOutputFormat: string;
+            /** @description Persona système injectée au début de chaque conversation assistant. */
+            assistantSoul: string;
         };
         AppSettingsPatchRequest: {
             notaryFeePct?: number;
@@ -910,7 +1008,9 @@ export interface components {
             aiProvider?: "openai" | "anthropic";
             /** @description Null ou chaîne vide pour revenir au format par défaut. */
             valuationAiOutputFormat?: string | null;
-        } | unknown | unknown | unknown;
+            /** @description Null ou chaîne vide pour revenir à la soul par défaut. */
+            assistantSoul?: string | null;
+        } | unknown | unknown | unknown | unknown;
         AICallLogResponse: {
             id: string;
             /** Format: date-time */
@@ -941,6 +1041,66 @@ export interface components {
         };
         GlobalSearchResponse: {
             items: components["schemas"]["GlobalSearchItemResponse"][];
+        };
+        /** @enum {string} */
+        AssistantObjectType: "bien" | "client" | "rdv" | "visite";
+        /** @enum {string} */
+        AssistantActionOperation: "create" | "update";
+        /** @enum {string} */
+        AssistantPendingActionStatus: "PENDING" | "EXECUTED" | "CANCELED" | "FAILED";
+        AssistantCitationResponse: {
+            title: string;
+            /** Format: uri */
+            url: string;
+            snippet: string;
+        };
+        AssistantPendingActionResponse: {
+            id: string;
+            status: components["schemas"]["AssistantPendingActionStatus"];
+            operation: components["schemas"]["AssistantActionOperation"];
+            objectType: components["schemas"]["AssistantObjectType"];
+            objectId: string | null;
+            previewText: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AssistantMessageResponse: {
+            id: string;
+            /** @enum {string} */
+            role: "USER" | "ASSISTANT";
+            text: string;
+            citations: components["schemas"]["AssistantCitationResponse"][];
+            pendingAction: components["schemas"]["AssistantPendingActionResponse"] | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AssistantConversationResponse: {
+            id: string;
+            greeting: string;
+            messages: components["schemas"]["AssistantMessageResponse"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AssistantMessageContextRequest: {
+            objectType: components["schemas"]["AssistantObjectType"];
+            objectId: string;
+        };
+        AssistantMessageCreateRequest: {
+            message: string;
+            context?: components["schemas"]["AssistantMessageContextRequest"];
+        };
+        AssistantMessageCreateResponse: {
+            conversation: components["schemas"]["AssistantConversationResponse"];
+            assistantMessage: components["schemas"]["AssistantMessageResponse"];
+        };
+        AssistantActionResolveResponse: {
+            action: components["schemas"]["AssistantPendingActionResponse"];
+            conversation: components["schemas"]["AssistantConversationResponse"];
+            assistantMessage: components["schemas"]["AssistantMessageResponse"];
         };
         LoginRequest: {
             /** Format: email */
@@ -1839,6 +1999,210 @@ export interface operations {
             };
             /** @description Non authentifié. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAssistantConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Conversation assistant courante (persistante, reset manuel). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversationResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postAssistantConversationReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Conversation assistant réinitialisée. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversationResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postAssistantMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantMessageCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Message utilisateur traité et réponse assistant produite. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantMessageCreateResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postAssistantMessageStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantMessageCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Flux SSE de la réponse assistant (delta + final). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postAssistantActionConfirmById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Action assistant confirmée et exécutée. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantActionResolveResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Action introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postAssistantActionCancelById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Action assistant annulée. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantActionResolveResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Action introuvable. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

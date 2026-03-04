@@ -167,6 +167,8 @@ describe("auth endpoints", () => {
     );
     expect(typeof initialSettings.valuationAiOutputFormat).toBe("string");
     expect(initialSettings.valuationAiOutputFormat.trim().length).toBeGreaterThan(0);
+    expect(typeof initialSettings.assistantSoul).toBe("string");
+    expect(initialSettings.assistantSoul.trim().length).toBeGreaterThan(0);
 
     const updateResponse = await createApp().fetch(
       new Request("http://localhost/me/settings", {
@@ -179,6 +181,7 @@ describe("auth endpoints", () => {
           notaryFeePct: 7.35,
           aiProvider: "anthropic",
           valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
+          assistantSoul: "Assistant perso",
         }),
       }),
     );
@@ -188,6 +191,7 @@ describe("auth endpoints", () => {
       notaryFeePct: 7.35,
       aiProvider: "anthropic",
       valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
+      assistantSoul: "Assistant perso",
     });
 
     const getUpdatedResponse = await createApp().fetch(
@@ -204,6 +208,7 @@ describe("auth endpoints", () => {
       notaryFeePct: 7.35,
       aiProvider: "anthropic",
       valuationAiOutputFormat: "## Format custom agent\n\n- Bloc A\n- Bloc B",
+      assistantSoul: "Assistant perso",
     });
 
     const resetFormatResponse = await createApp().fetch(
@@ -224,6 +229,7 @@ describe("auth endpoints", () => {
     expect(resetFormatPayload.notaryFeePct).toBe(7.35);
     expect(resetFormatPayload.aiProvider).toBe("anthropic");
     expect(resetFormatPayload.valuationAiOutputFormat).toContain("## 1️⃣ Synthèse exécutive");
+    expect(resetFormatPayload.assistantSoul).toBe("Assistant perso");
 
     const getResetFormatResponse = await createApp().fetch(
       new Request("http://localhost/me/settings", {
@@ -242,6 +248,7 @@ describe("auth endpoints", () => {
     expect(resetSettings.valuationAiOutputFormat).toContain(
       "Fourchette de commercialisation conseillée",
     );
+    expect(resetSettings.assistantSoul).toBe("Assistant perso");
   });
 
   it("partage le provider IA entre organisations (scope global)", async () => {

@@ -11,6 +11,8 @@ const DEFAULT_NOTARY_FEE_PCT = 8;
 const DEFAULT_AI_PROVIDER: AiProvider = "openai";
 const MIN_NOTARY_FEE_PCT = 0;
 const MAX_NOTARY_FEE_PCT = 100;
+const DEFAULT_ASSISTANT_SOUL =
+  "Tu es Monimmo, un assistant immobilier pragmatique, clair et orienté action pour les agents français.";
 
 @Injectable({ providedIn: "root" })
 export class AppSettingsService {
@@ -19,6 +21,7 @@ export class AppSettingsService {
   readonly notaryFeePct = signal<number>(DEFAULT_NOTARY_FEE_PCT);
   readonly aiProvider = signal<AiProvider>(DEFAULT_AI_PROVIDER);
   readonly valuationAiOutputFormat = signal<string>("");
+  readonly assistantSoul = signal<string>(DEFAULT_ASSISTANT_SOUL);
   readonly loaded = signal(false);
 
   constructor() {
@@ -36,6 +39,7 @@ export class AppSettingsService {
         notaryFeePct: this.notaryFeePct(),
         aiProvider: this.aiProvider(),
         valuationAiOutputFormat: this.valuationAiOutputFormat(),
+        assistantSoul: this.assistantSoul(),
       };
     } finally {
       this.loaded.set(true);
@@ -54,6 +58,9 @@ export class AppSettingsService {
       payload.valuationAiOutputFormat = this.normalizeValuationAiOutputFormatInput(
         input.valuationAiOutputFormat,
       );
+    }
+    if (typeof input.assistantSoul !== "undefined") {
+      payload.assistantSoul = this.normalizeAssistantSoulInput(input.assistantSoul);
     }
 
     const response = await this.api.request<AppSettingsResponse>("PATCH", "/me/settings", {
@@ -94,6 +101,7 @@ export class AppSettingsService {
       valuationAiOutputFormat: this.normalizeValuationAiOutputFormatResponse(
         response.valuationAiOutputFormat,
       ),
+      assistantSoul: this.normalizeAssistantSoulResponse(response.assistantSoul),
     };
   }
 
@@ -101,6 +109,7 @@ export class AppSettingsService {
     this.notaryFeePct.set(response.notaryFeePct);
     this.aiProvider.set(response.aiProvider);
     this.valuationAiOutputFormat.set(response.valuationAiOutputFormat);
+    this.assistantSoul.set(response.assistantSoul);
   }
 
   private normalizeAiProvider(value: unknown): AiProvider {
@@ -123,6 +132,24 @@ export class AppSettingsService {
   private normalizeValuationAiOutputFormatInput(
     value: string | null,
   ): string | null {
+    if (value === null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  private normalizeAssistantSoulResponse(value: unknown): string {
+    if (typeof value !== "string") {
+      return this.assistantSoul();
+    }
+
+    const trimmed = value.trim();
+    return trimmed ? trimmed : this.assistantSoul();
+  }
+
+  private normalizeAssistantSoulInput(value: string | null): string | null {
     if (value === null) {
       return null;
     }

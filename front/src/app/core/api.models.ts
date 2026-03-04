@@ -92,12 +92,73 @@ export interface AppSettingsResponse {
   notaryFeePct: number;
   aiProvider: AiProvider;
   valuationAiOutputFormat: string;
+  assistantSoul: string;
 }
 
 export interface AppSettingsPatchRequest {
   notaryFeePct?: number;
   aiProvider?: AiProvider;
   valuationAiOutputFormat?: string | null;
+  assistantSoul?: string | null;
+}
+
+export type AssistantObjectType = "bien" | "client" | "rdv" | "visite";
+export type AssistantActionOperation = "create" | "update";
+export type AssistantPendingActionStatus = "PENDING" | "EXECUTED" | "CANCELED" | "FAILED";
+
+export interface AssistantCitationResponse {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface AssistantPendingActionResponse {
+  id: string;
+  status: AssistantPendingActionStatus;
+  operation: AssistantActionOperation;
+  objectType: AssistantObjectType;
+  objectId: string | null;
+  previewText: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantMessageResponse {
+  id: string;
+  role: "USER" | "ASSISTANT";
+  text: string;
+  citations: AssistantCitationResponse[];
+  pendingAction: AssistantPendingActionResponse | null;
+  createdAt: string;
+}
+
+export interface AssistantConversationResponse {
+  id: string;
+  greeting: string;
+  messages: AssistantMessageResponse[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantMessageContextRequest {
+  objectType: AssistantObjectType;
+  objectId: string;
+}
+
+export interface AssistantMessageCreateRequest {
+  message: string;
+  context?: AssistantMessageContextRequest;
+}
+
+export interface AssistantMessageCreateResponse {
+  conversation: AssistantConversationResponse;
+  assistantMessage: AssistantMessageResponse;
+}
+
+export interface AssistantActionResolveResponse {
+  action: AssistantPendingActionResponse;
+  conversation: AssistantConversationResponse;
+  assistantMessage: AssistantMessageResponse;
 }
 
 export interface AICallLogResponse {

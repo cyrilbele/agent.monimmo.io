@@ -107,6 +107,7 @@ export const AppSettingsResponseSchema = z.object({
   notaryFeePct: z.number(),
   aiProvider: z.enum(["openai", "anthropic"]),
   valuationAiOutputFormat: z.string(),
+  assistantSoul: z.string(),
 });
 
 export const AppSettingsPatchRequestSchema = z
@@ -114,16 +115,18 @@ export const AppSettingsPatchRequestSchema = z
     notaryFeePct: z.number().optional(),
     aiProvider: z.enum(["openai", "anthropic"]).optional(),
     valuationAiOutputFormat: z.string().nullable().optional(),
+    assistantSoul: z.string().nullable().optional(),
   })
   .superRefine((value, context) => {
     if (
       typeof value.notaryFeePct === "undefined" &&
       typeof value.aiProvider === "undefined" &&
-      typeof value.valuationAiOutputFormat === "undefined"
+      typeof value.valuationAiOutputFormat === "undefined" &&
+      typeof value.assistantSoul === "undefined"
     ) {
       context.addIssue({
         code: "custom",
-        message: "notaryFeePct ou aiProvider ou valuationAiOutputFormat est obligatoire",
+        message: "notaryFeePct ou aiProvider ou valuationAiOutputFormat ou assistantSoul est obligatoire",
         path: ["notaryFeePct"],
       });
     }
@@ -160,6 +163,72 @@ export const GlobalSearchItemResponseSchema = z.object({
 
 export const GlobalSearchResponseSchema = z.object({
   items: z.array(GlobalSearchItemResponseSchema),
+});
+
+export const AssistantObjectTypeSchema = z.enum(["bien", "client", "rdv", "visite"]);
+
+export const AssistantActionOperationSchema = z.enum(["create", "update"]);
+
+export const AssistantPendingActionStatusSchema = z.enum([
+  "PENDING",
+  "EXECUTED",
+  "CANCELED",
+  "FAILED",
+]);
+
+export const AssistantCitationResponseSchema = z.object({
+  title: z.string(),
+  url: z.url(),
+  snippet: z.string(),
+});
+
+export const AssistantPendingActionResponseSchema = z.object({
+  id: z.string(),
+  status: AssistantPendingActionStatusSchema,
+  operation: AssistantActionOperationSchema,
+  objectType: AssistantObjectTypeSchema,
+  objectId: z.string().nullable(),
+  previewText: z.string(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const AssistantMessageResponseSchema = z.object({
+  id: z.string(),
+  role: z.enum(["USER", "ASSISTANT"]),
+  text: z.string(),
+  citations: z.array(AssistantCitationResponseSchema),
+  pendingAction: AssistantPendingActionResponseSchema.nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export const AssistantConversationResponseSchema = z.object({
+  id: z.string(),
+  greeting: z.string(),
+  messages: z.array(AssistantMessageResponseSchema),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const AssistantMessageContextRequestSchema = z.object({
+  objectType: AssistantObjectTypeSchema,
+  objectId: z.string().trim().min(1),
+});
+
+export const AssistantMessageCreateRequestSchema = z.object({
+  message: z.string().trim().min(1),
+  context: AssistantMessageContextRequestSchema.optional(),
+});
+
+export const AssistantMessageCreateResponseSchema = z.object({
+  conversation: AssistantConversationResponseSchema,
+  assistantMessage: AssistantMessageResponseSchema,
+});
+
+export const AssistantActionResolveResponseSchema = z.object({
+  action: AssistantPendingActionResponseSchema,
+  conversation: AssistantConversationResponseSchema,
+  assistantMessage: AssistantMessageResponseSchema,
 });
 
 export const LoginRequestSchema = z.object({
@@ -774,6 +843,24 @@ export const DtoSchemaMap = {
   UserCreateRequest: UserCreateRequestSchema,
   UserPatchRequest: UserPatchRequestSchema,
   MeResponse: MeResponseSchema,
+  AppSettingsResponse: AppSettingsResponseSchema,
+  AppSettingsPatchRequest: AppSettingsPatchRequestSchema,
+  AICallLogResponse: AICallLogResponseSchema,
+  AICallLogListResponse: AICallLogListResponseSchema,
+  GlobalSearchItemType: GlobalSearchItemTypeSchema,
+  GlobalSearchItemResponse: GlobalSearchItemResponseSchema,
+  GlobalSearchResponse: GlobalSearchResponseSchema,
+  AssistantObjectType: AssistantObjectTypeSchema,
+  AssistantActionOperation: AssistantActionOperationSchema,
+  AssistantPendingActionStatus: AssistantPendingActionStatusSchema,
+  AssistantCitationResponse: AssistantCitationResponseSchema,
+  AssistantPendingActionResponse: AssistantPendingActionResponseSchema,
+  AssistantMessageResponse: AssistantMessageResponseSchema,
+  AssistantConversationResponse: AssistantConversationResponseSchema,
+  AssistantMessageContextRequest: AssistantMessageContextRequestSchema,
+  AssistantMessageCreateRequest: AssistantMessageCreateRequestSchema,
+  AssistantMessageCreateResponse: AssistantMessageCreateResponseSchema,
+  AssistantActionResolveResponse: AssistantActionResolveResponseSchema,
   LoginRequest: LoginRequestSchema,
   LoginResponse: LoginResponseSchema,
   RefreshRequest: RefreshRequestSchema,

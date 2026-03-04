@@ -34,6 +34,7 @@ type ValuationSettingsFormGroup = FormGroup<{
   notaryFeePct: FormControl<string>;
   aiProvider: FormControl<AiProvider>;
   valuationAiOutputFormat: FormControl<string>;
+  assistantSoul: FormControl<string>;
 }>;
 
 interface IntegrationCard {
@@ -96,6 +97,7 @@ export class ConfigurationPageComponent {
     notaryFeePct: [this.formatNotaryFeePct(this.appSettingsService.notaryFeePct())],
     aiProvider: [this.appSettingsService.aiProvider()],
     valuationAiOutputFormat: [this.appSettingsService.valuationAiOutputFormat()],
+    assistantSoul: [this.appSettingsService.assistantSoul()],
   });
 
   readonly feedback = signal<Record<IntegrationPath, string | null>>({
@@ -268,6 +270,79 @@ export class ConfigurationPageComponent {
     }
   }
 
+  tablePromptSummary(call: AICallLogResponse): string {
+    const parsed = this.tryParseJson(call.prompt);
+    if (this.isRecord(parsed)) {
+      const userMessage = this.readStringField(parsed, "userMessage");
+      if (userMessage) {
+        return this.compactTableText(userMessage);
+      }
+
+      const modelInput = Array.isArray(parsed["input"]) ? parsed["input"] : [];
+      const functionOutput = modelInput.find(
+        (entry) =>
+          this.isRecord(entry) && entry["type"] === "function_call_output",
+      );
+      if (this.isRecord(functionOutput)) {
+        const callId = this.readStringField(functionOutput, "call_id");
+        const functionName = this.extractFunctionNameFromCallId(callId);
+        if (functionName) {
+          return `Fonction appelée: ${functionName}`;
+        }
+
+        return "Réponse de fonction";
+      }
+
+      const userText = this.extractOpenAIUserText(modelInput);
+      if (userText) {
+        return this.compactTableText(userText);
+      }
+    }
+
+    return this.compactTableText(call.prompt);
+  }
+
+  tableResponseSummary(call: AICallLogResponse): string {
+    const parsed = this.tryParseJson(call.textResponse);
+    if (this.isRecord(parsed)) {
+      const assistantResponse = this.readStringField(parsed, "assistantResponse");
+      if (assistantResponse) {
+        return this.compactTableText(assistantResponse);
+      }
+
+      const outputText = this.readStringField(parsed, "output_text");
+      if (outputText) {
+        return this.compactTableText(outputText);
+      }
+
+      const message = this.readStringField(parsed, "message");
+      if (message) {
+        return this.compactTableText(message);
+      }
+
+      const output = Array.isArray(parsed["output"]) ? parsed["output"] : [];
+      const functionCall = output.find(
+        (entry) =>
+          this.isRecord(entry) && entry["type"] === "function_call",
+      );
+      if (this.isRecord(functionCall)) {
+        const functionName = this.readStringField(functionCall, "name");
+        if (functionName) {
+          return `Appel fonction: ${functionName}`;
+        }
+
+        return "Appel fonction";
+      }
+
+      const outputChunkText = this.extractOpenAIOutputText(output);
+      if (outputChunkText) {
+        return this.compactTableText(outputChunkText);
+      }
+    }
+
+    return this.compactTableText(call.textResponse);
+  }
+
   async saveValuationSettings(): Promise<void> {
     if (this.valuationPending()) {
       return;
@@ -282,6 +357,8 @@ export class ConfigurationPageComponent {
     }
     const outputFormatRaw = this.valuationSettingsForm.controls.valuationAiOutputFormat.value;
     const normalizedOutputFormat = outputFormatRaw.trim();
+    const assistantSoulRaw = this.valuationSettingsForm.controls.assistantSoul.value;
+    const normalizedAssistantSoul = assistantSoulRaw.trim();
 
     this.valuationPending.set(true);
 
@@ -290,6 +367,7 @@ export class ConfigurationPageComponent {
         notaryFeePct: parsed,
         aiProvider: this.valuationSettingsForm.controls.aiProvider.value,
         valuationAiOutputFormat: normalizedOutputFormat || null,
+        assistantSoul: normalizedAssistantSoul || null,
       });
       this.valuationSettingsForm.controls.notaryFeePct.setValue(
         this.formatNotaryFeePct(persisted.notaryFeePct),
@@ -298,6 +376,7 @@ export class ConfigurationPageComponent {
       this.valuationSettingsForm.controls.valuationAiOutputFormat.setValue(
         persisted.valuationAiOutputFormat,
       );
+      this.valuationSettingsForm.controls.assistantSoul.setValue(persisted.assistantSoul);
       this.valuationFeedback.set("Paramètre enregistré.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Enregistrement impossible.";
@@ -368,6 +447,7 @@ export class ConfigurationPageComponent {
     this.valuationSettingsForm.controls.valuationAiOutputFormat.setValue(
       loaded.valuationAiOutputFormat,
     );
+    this.valuationSettingsForm.controls.assistantSoul.setValue(loaded.assistantSoul);
   }
 
   private formatNotaryFeePct(value: number): string {
@@ -376,5 +456,114 @@ export class ConfigurationPageComponent {
     }
 
     return value.toFixed(2).replace(/\.00$/, "");
+  }
+
+  private compactTableText(value: string, maxLength = 240): string {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "";
+    }
+
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength - 1)}…`;
+  }
+
+  private tryParseJson(value: string): unknown | null {
+    const trimmed = value.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return null;
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  private readStringField(record: Record<string, unknown>, key: string): string | null {
+    const value = record[key];
+    return typeof value === "string" && value.trim() ? value : null;
+  }
+
+  private extractFunctionNameFromCallId(callId: string | null): string | null {
+    if (!callId) {
+      return null;
+    }
+
+    const normalized = callId.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const match = normalized.match(/^call_([a-z0-9_]+?)(?:_\d+)?$/i);
+    if (!match?.[1]) {
+      return normalized;
+    }
+
+    const snake = match[1].toLowerCase();
+    return snake.replace(/_([a-z0-9])/g, (_whole, letter: string) => letter.toUpperCase());
+  }
+
+  private extractOpenAIUserText(input: unknown[]): string | null {
+    for (let index = input.length - 1; index >= 0; index -= 1) {
+      const item = input[index];
+      if (!this.isRecord(item) || item["role"] !== "user") {
+        continue;
+      }
+
+      const content = Array.isArray(item["content"]) ? item["content"] : [];
+      for (const chunk of content) {
+        if (!this.isRecord(chunk)) {
+          continue;
+        }
+
+        if (chunk["type"] !== "input_text" && chunk["type"] !== "output_text") {
+          continue;
+        }
+
+        const text = this.readStringField(chunk, "text");
+        if (text) {
+          return text;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private extractOpenAIOutputText(output: unknown[]): string | null {
+    const chunks: string[] = [];
+
+    for (const item of output) {
+      if (!this.isRecord(item)) {
+        continue;
+      }
+
+      const content = Array.isArray(item["content"]) ? item["content"] : [];
+      for (const chunk of content) {
+        if (!this.isRecord(chunk)) {
+          continue;
+        }
+
+        const text = this.readStringField(chunk, "text");
+        if (text) {
+          chunks.push(text);
+        }
+      }
+    }
+
+    if (chunks.length === 0) {
+      return null;
+    }
+
+    return chunks.join(" ").trim();
   }
 }

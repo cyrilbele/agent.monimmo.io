@@ -169,6 +169,13 @@
       "when": 1772550000000,
       "tag": "0023_rgpd_alpha_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1772553600000,
+      "tag": "0024_assistant_conversation_v1",
+      "breakpoints": true
     }
   ]
 }

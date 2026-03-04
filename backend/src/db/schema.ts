@@ -10,6 +10,7 @@ export const organizations = sqliteTable("organizations", {
   name: text("name").notNull(),
   notaryFeePct: real("notary_fee_pct").notNull().default(8),
   valuationAiOutputFormat: text("valuation_ai_output_format"),
+  assistantSoul: text("assistant_soul"),
   ...timestampColumns,
 });
 
@@ -430,5 +431,88 @@ export const calendarEvents = sqliteTable(
       table.provider,
       table.externalId,
     ),
+  }),
+);
+
+export const assistantConversations = sqliteTable(
+  "assistant_conversations",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    orgUserUnique: uniqueIndex("assistant_conversations_org_user_unique").on(
+      table.orgId,
+      table.userId,
+    ),
+  }),
+);
+
+export const assistantPendingActions = sqliteTable(
+  "assistant_pending_actions",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => assistantConversations.id),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    status: text("status").notNull(),
+    operation: text("operation").notNull(),
+    objectType: text("object_type").notNull(),
+    objectId: text("object_id"),
+    payloadJson: text("payload_json").notNull(),
+    previewText: text("preview_text").notNull(),
+    resultJson: text("result_json"),
+    errorMessage: text("error_message"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    conversationCreatedAtIdx: index("assistant_pending_actions_conversation_created_at_idx").on(
+      table.conversationId,
+      table.createdAt,
+    ),
+    orgUserStatusIdx: index("assistant_pending_actions_org_user_status_idx").on(
+      table.orgId,
+      table.userId,
+      table.status,
+    ),
+  }),
+);
+
+export const assistantMessages = sqliteTable(
+  "assistant_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => assistantConversations.id),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    role: text("role").notNull(),
+    text: text("text").notNull(),
+    citationsJson: text("citations_json").notNull().default("[]"),
+    pendingActionId: text("pending_action_id").references(() => assistantPendingActions.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    conversationCreatedAtIdx: index("assistant_messages_conversation_created_at_idx").on(
+      table.conversationId,
+      table.createdAt,
+    ),
+    orgCreatedAtIdx: index("assistant_messages_org_created_at_idx").on(table.orgId, table.createdAt),
   }),
 );

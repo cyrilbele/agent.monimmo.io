@@ -279,6 +279,81 @@ export const calendarService = {
     };
   },
 
+  async getManualAppointmentById(input: {
+    orgId: string;
+    id: string;
+  }) {
+    const row = await db.query.calendarEvents.findFirst({
+      where: and(
+        eq(calendarEvents.id, input.id),
+        eq(calendarEvents.orgId, input.orgId),
+        eq(calendarEvents.provider, MANUAL_PROVIDER),
+      ),
+    });
+
+    if (!row) {
+      throw new HttpError(404, "CALENDAR_APPOINTMENT_NOT_FOUND", "Rendez-vous introuvable");
+    }
+
+    const listed = await this.listManualAppointments({
+      orgId: input.orgId,
+      from: new Date(row.startsAt.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+      to: new Date(row.endsAt.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    const found = listed.items.find((item) => item.id === input.id);
+    if (!found) {
+      throw new HttpError(404, "CALENDAR_APPOINTMENT_NOT_FOUND", "Rendez-vous introuvable");
+    }
+
+    return found;
+  },
+
+  async patchManualAppointmentComment(input: {
+    orgId: string;
+    id: string;
+    comment?: string | null;
+  }) {
+    const row = await db.query.calendarEvents.findFirst({
+      where: and(
+        eq(calendarEvents.id, input.id),
+        eq(calendarEvents.orgId, input.orgId),
+        eq(calendarEvents.provider, MANUAL_PROVIDER),
+      ),
+    });
+
+    if (!row) {
+      throw new HttpError(404, "CALENDAR_APPOINTMENT_NOT_FOUND", "Rendez-vous introuvable");
+    }
+
+    const parsedPayload = parseManualPayload(row.payload);
+    if (!parsedPayload) {
+      throw new HttpError(
+        400,
+        "INVALID_CALENDAR_APPOINTMENT_PAYLOAD",
+        "Payload rendez-vous invalide",
+      );
+    }
+
+    const nextPayload: ManualCalendarPayload = {
+      ...parsedPayload,
+      comment: normalizeOptionalString(input.comment),
+    };
+
+    await db
+      .update(calendarEvents)
+      .set({
+        payload: JSON.stringify(nextPayload),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(calendarEvents.id, input.id), eq(calendarEvents.orgId, input.orgId)));
+
+    return this.getManualAppointmentById({
+      orgId: input.orgId,
+      id: input.id,
+    });
+  },
+
   async createManualAppointment(input: {
     orgId: string;
     title: string;

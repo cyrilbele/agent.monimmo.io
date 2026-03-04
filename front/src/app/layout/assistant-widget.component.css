@@ -1,0 +1,235 @@
+:host {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  z-index: 60;
+}
+
+.assistant-fab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 0;
+  border-radius: 9999px;
+  background: #1d4ed8;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 12px 24px rgba(29, 78, 216, 0.28);
+  cursor: pointer;
+}
+
+.assistant-fab:hover {
+  background: #1e40af;
+}
+
+.assistant-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 1rem;
+  pointer-events: none;
+  background: transparent;
+}
+
+.assistant-overlay--mobile {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: calc(env(safe-area-inset-top) + 0.5rem) calc(env(safe-area-inset-right) + 0.5rem)
+    calc(env(safe-area-inset-bottom) + 0.5rem) calc(env(safe-area-inset-left) + 0.5rem);
+}
+
+.assistant-panel {
+  width: min(26rem, calc(100vw - 2rem));
+  height: min(38rem, calc(100vh - 2rem));
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.assistant-panel--mobile {
+  width: 100%;
+  height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem);
+  border-radius: 1rem;
+}
+
+.assistant-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.assistant-eyebrow {
+  margin: 0;
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #475569;
+}
+
+.assistant-header h3 {
+  margin: 0.1rem 0 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.assistant-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.assistant-link {
+  border: 0;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.assistant-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.assistant-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0.9rem;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.assistant-state {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.assistant-message {
+  align-self: flex-start;
+  max-width: 90%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.assistant-markdown {
+  line-height: 1.45;
+}
+
+.assistant-markdown :first-child {
+  margin-top: 0;
+}
+
+.assistant-markdown :last-child {
+  margin-bottom: 0;
+}
+
+.assistant-markdown p {
+  margin: 0.3rem 0;
+}
+
+.assistant-markdown ul,
+.assistant-markdown ol {
+  margin: 0.35rem 0;
+  padding-left: 1.1rem;
+}
+
+.assistant-markdown li {
+  margin: 0.15rem 0;
+}
+
+.assistant-markdown a {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.assistant-markdown strong {
+  font-weight: 700;
+}
+
+.assistant-message--user {
+  align-self: flex-end;
+  background: #dbeafe;
+  border-color: #bfdbfe;
+}
+
+.assistant-citations {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.assistant-citations a {
+  color: #1d4ed8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.assistant-citations p {
+  margin-top: 0.1rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.assistant-action-box {
+  margin-top: 0.6rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.5rem;
+}
+
+.assistant-action-buttons {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.assistant-feedback {
+  margin: 0;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.82rem;
+  color: #991b1b;
+  background: #fee2e2;
+  border-top: 1px solid #fecaca;
+}
+
+.assistant-footer {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-end;
+  padding: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.assistant-footer textarea {
+  resize: none;
+  min-height: 3rem;
+}
+
+@media (max-width: 768px) {
+  :host {
+    inset: auto 0.75rem 0.75rem auto;
+  }
+}

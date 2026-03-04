@@ -28,6 +28,7 @@ import { GlobalSearchService } from "../services/global-search.service";
 import { PropertyService } from "../services/property.service";
 import { UserService } from "../services/user.service";
 import { VocalService } from "../services/vocal.service";
+import { AssistantWidgetComponent } from "./assistant-widget.component";
 
 interface NavItem {
   label: string;
@@ -41,7 +42,7 @@ interface BreadcrumbItem {
 
 @Component({
   selector: "app-shell",
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, AssistantWidgetComponent],
   templateUrl: "./app-shell.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
