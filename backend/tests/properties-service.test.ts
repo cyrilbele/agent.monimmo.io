@@ -4,10 +4,10 @@ import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
 import {
+  businessLinks,
   properties,
-  propertyParties,
   propertyTimelineEvents,
-  propertyUserLinks,
+  users,
 } from "../src/db/schema";
 import { propertiesService } from "../src/properties/service";
 
@@ -30,7 +30,7 @@ describe("propertiesService", () => {
     await runSeed();
   });
 
-  it("crée puis lit un bien sans liaison client automatique", async () => {
+  it("crée puis lit un bien sans liaison utilisateur automatique", async () => {
     const created = await propertiesService.create({
       orgId: "org_demo",
       title: "Service Bien",
@@ -52,8 +52,14 @@ describe("propertiesService", () => {
 
     const links = await db
       .select()
-      .from(propertyUserLinks)
-      .where(eq(propertyUserLinks.propertyId, created.id));
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "bien_user"),
+          eq(businessLinks.objectId1, created.id),
+        ),
+      );
     expect(links).toHaveLength(0);
   });
 
@@ -128,7 +134,7 @@ describe("propertiesService", () => {
     expect(timeline).not.toBeNull();
   });
 
-  it("ajoute un participant à un bien", async () => {
+  it("ajoute un participant à un bien via business_links", async () => {
     const created = await propertiesService.create({
       orgId: "org_demo",
       title: "Service Participant",
@@ -138,23 +144,49 @@ describe("propertiesService", () => {
       owner: ownerPayload(),
     });
 
+    const contactId = crypto.randomUUID();
+    const passwordHash = await Bun.password.hash("temporary-password");
+    const now = new Date();
+
+    await db.insert(users).values({
+      id: contactId,
+      orgId: "org_demo",
+      firstName: "Contact",
+      lastName: "Participant",
+      email: `participant.${crypto.randomUUID()}@example.test`,
+      phone: "0600000000",
+      address: null,
+      postalCode: null,
+      city: null,
+      personalNotes: null,
+      accountType: "CLIENT",
+      role: "CLIENT",
+      passwordHash,
+      createdAt: now,
+      updatedAt: now,
+    });
+
     const participant = await propertiesService.addParticipant({
       orgId: "org_demo",
       propertyId: created.id,
-      contactId: "contact-service-1",
+      contactId,
       role: "VENDEUR",
     });
 
     expect(participant.propertyId).toBe(created.id);
-    expect(participant.contactId).toBe("contact-service-1");
+    expect(participant.contactId).toBe(contactId);
 
-    const inDb = await db.query.propertyParties.findFirst({
+    const inDb = await db.query.businessLinks.findFirst({
       where: and(
-        eq(propertyParties.propertyId, created.id),
-        eq(propertyParties.contactId, "contact-service-1"),
+        eq(businessLinks.orgId, "org_demo"),
+        eq(businessLinks.typeLien, "bien_user"),
+        eq(businessLinks.objectId1, created.id),
+        eq(businessLinks.objectId2, contactId),
       ),
     });
     expect(inDb).not.toBeNull();
+    const params = JSON.parse(inDb?.params ?? "{}") as Record<string, unknown>;
+    expect(params.relationRole).toBe("PROSPECT");
   });
 
   it("renvoie une erreur si bien hors scope org", async () => {

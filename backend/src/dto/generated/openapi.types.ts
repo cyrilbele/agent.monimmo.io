@@ -180,6 +180,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data-structure/lien": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLinkTypeDefinitions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-structure/lien/{typeLien}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLinkDataStructureByType"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data-structure/{objectType}": {
         parameters: {
             query?: never;
@@ -188,6 +220,54 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getObjectDataStructureByType"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLinks"];
+        put?: never;
+        post: operations["postLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLinkById"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteLinkById"];
+        options?: never;
+        head?: never;
+        patch: operations["patchLinkById"];
+        trace?: never;
+    };
+    "/links/related/{objectType}/{objectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getRelatedLinks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -402,38 +482,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["patchPropertyStatusById"];
-        trace?: never;
-    };
-    "/properties/{id}/participants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["postPropertyParticipants"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/properties/{id}/clients": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getPropertyClients"];
-        put?: never;
-        post: operations["postPropertyClients"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/properties/{id}/visits": {
@@ -954,7 +1002,7 @@ export interface components {
             status: string;
             relationRole: string;
             /** @enum {string} */
-            source: "USER_LINK" | "PARTY_LINK";
+            source: "BUSINESS_LINK";
         };
         AccountUserDetailResponse: components["schemas"]["AccountUserResponse"] & {
             linkedProperties: components["schemas"]["AccountUserLinkedPropertyResponse"][];
@@ -1043,7 +1091,7 @@ export interface components {
             items: components["schemas"]["GlobalSearchItemResponse"][];
         };
         /** @enum {string} */
-        AssistantObjectType: "bien" | "client" | "rdv" | "visite";
+        AssistantObjectType: "bien" | "user" | "rdv" | "visite" | "lien";
         AssistantCitationResponse: {
             title: string;
             /** Format: uri */
@@ -1124,6 +1172,65 @@ export interface components {
             hide?: components["schemas"]["ObjectDataFieldHideRule"][];
         };
         ObjectDataStructureResponse: components["schemas"]["ObjectDataFieldDefinition"][];
+        /** @enum {string} */
+        LinkObjectType: "bien" | "user" | "rdv" | "visite";
+        /** @enum {string} */
+        LinkType: "bien_user" | "rdv_bien" | "rdv_user" | "visite_bien" | "visite_user";
+        LinkTypeDefinition: {
+            typeLien: components["schemas"]["LinkType"];
+            name: string;
+            objectType1: components["schemas"]["LinkObjectType"];
+            objectType2: components["schemas"]["LinkObjectType"];
+            paramsSchema: components["schemas"]["ObjectDataStructureResponse"];
+        };
+        LinkTypeDefinitionListResponse: {
+            items: components["schemas"]["LinkTypeDefinition"][];
+        };
+        LinkResponse: {
+            id: string;
+            typeLien: components["schemas"]["LinkType"];
+            objectId1: string;
+            objectId2: string;
+            params: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        LinkListResponse: {
+            items: components["schemas"]["LinkResponse"][];
+            nextCursor?: string | null;
+        };
+        LinkCreateRequest: {
+            typeLien: components["schemas"]["LinkType"];
+            objectId1: string;
+            objectId2: string;
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        LinkPatchRequest: {
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        LinkRelatedItemResponse: {
+            link: components["schemas"]["LinkResponse"];
+            otherSideObjectType: components["schemas"]["LinkObjectType"];
+            otherSideObjectId: string;
+            otherSide: unknown;
+        };
+        LinkRelatedResponse: {
+            items: components["schemas"]["LinkRelatedItemResponse"][];
+            grouped: {
+                bien: unknown[];
+                user: unknown[];
+                rdv: unknown[];
+                visite: unknown[];
+            };
+        };
         LoginRequest: {
             /** Format: email */
             email: string;
@@ -1318,7 +1425,7 @@ export interface components {
         CalendarAppointmentCreateRequest: {
             title: string;
             propertyId: string;
-            clientUserId?: string | null;
+            userId?: string | null;
             /** Format: date-time */
             startsAt: string;
             /** Format: date-time */
@@ -1331,9 +1438,9 @@ export interface components {
             title: string;
             propertyId: string;
             propertyTitle: string;
-            clientUserId: string | null;
-            clientFirstName: string | null;
-            clientLastName: string | null;
+            userId: string | null;
+            userFirstName: string | null;
+            userLastName: string | null;
             address: string | null;
             comment: string | null;
             /** Format: date-time */
@@ -2030,12 +2137,81 @@ export interface operations {
             };
         };
     };
+    getLinkTypeDefinitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Catalogue des types de liens et de leurs paramètres. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkTypeDefinitionListResponse"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLinkDataStructureByType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                typeLien: components["schemas"]["LinkType"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Structure des paramètres pour un type de lien. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkTypeDefinition"];
+                };
+            };
+            /** @description Non authentifié. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Type de lien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getObjectDataStructureByType: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                objectType: components["schemas"]["AssistantObjectType"];
+                objectType: "bien" | "user" | "rdv" | "visite";
             };
             cookie?: never;
         };
@@ -2061,6 +2237,202 @@ export interface operations {
             };
             /** @description Non authentifié. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getLinks: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["LimitParam"];
+                cursor?: components["parameters"]["CursorParam"];
+                typeLien?: components["schemas"]["LinkType"];
+                objectId?: string;
+                objectId1?: string;
+                objectId2?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste des liens business. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkListResponse"];
+                };
+            };
+        };
+    };
+    postLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Lien déjà existant mis à jour (upsert). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkResponse"];
+                };
+            };
+            /** @description Lien créé. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkResponse"];
+                };
+            };
+        };
+    };
+    getLinkById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Détail d'un lien. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkResponse"];
+                };
+            };
+            /** @description Lien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteLinkById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lien supprimé. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Lien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patchLinkById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Lien mis à jour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkResponse"];
+                };
+            };
+            /** @description Lien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getRelatedLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                objectType: components["schemas"]["LinkObjectType"];
+                objectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liens et objets liés hydratés pour un objet source. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRelatedResponse"];
+                };
+            };
+            /** @description Type d'objet invalide. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Objet source introuvable. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2572,80 +2944,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PropertyResponse"];
-                };
-            };
-        };
-    };
-    postPropertyParticipants: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["IdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PropertyParticipantCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Participant ajouté. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PropertyParticipantResponse"];
-                };
-            };
-        };
-    };
-    getPropertyClients: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["IdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Liste des clients lies au bien (prospects, acheteurs, proprietaires). */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PropertyProspectListResponse"];
-                };
-            };
-        };
-    };
-    postPropertyClients: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["IdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PropertyProspectCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Client lié au bien. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PropertyProspectResponse"];
                 };
             };
         };

@@ -14,9 +14,12 @@ import {
 import { HttpError } from "../http/errors";
 import { externalFetch } from "../http/external-fetch";
 import {
+  getLinkDataStructure,
   getObjectDataStructure,
   listObjectDataFieldKeysByGroup,
+  type ObjectFieldDefinition,
 } from "../object-data/structure";
+import { linksService } from "../links/service";
 import { propertiesService } from "../properties/service";
 import { usersService } from "../users/service";
 import {
@@ -25,7 +28,7 @@ import {
   type AssistantWebSearchTrace,
 } from "./web-search";
 
-export type AssistantObjectType = "bien" | "client" | "rdv" | "visite";
+export type AssistantObjectType = "bien" | "user" | "rdv" | "visite" | "lien";
 
 export type AssistantMessageResponse = {
   id: string;
@@ -114,6 +117,9 @@ type AssistantToolCall = {
 type AssistantModelTurnResult = {
   text: string;
   citations: AssistantCitation[];
+  mutationSuccessCount: number;
+  mutationFailureCount: number;
+  firstMutationError: string | null;
 };
 
 type AssistantModelToolHandlers = {
@@ -122,7 +128,7 @@ type AssistantModelToolHandlers = {
     objectType?: AssistantObjectType;
   }) => Promise<Record<string, unknown>>;
   get: (input: { objectType: AssistantObjectType; objectId: string }) => Promise<unknown>;
-  getParams: (input: { objectType: AssistantObjectType }) => unknown;
+  getParams: (input: { objectType: AssistantObjectType; typeLien?: string }) => unknown;
   create: (input: {
     objectType: AssistantObjectType;
     params: Record<string, unknown>;
@@ -139,7 +145,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
     type: "function",
     name: "search",
     description:
-      "Recherche des objets métiers locaux (bien, client, rdv, visite) dans la base Monimmo.",
+      "Recherche des objets métiers locaux (bien, user, rdv, visite, lien) dans la base Monimmo.",
     parameters: {
       type: "object",
       properties: {
@@ -149,7 +155,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
         },
         objectType: {
           type: "string",
-          enum: ["bien", "client", "rdv", "visite"],
+          enum: ["bien", "user", "rdv", "visite", "lien"],
           description: "Type d'objet ciblé. Optionnel.",
         },
       },
@@ -166,7 +172,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "client", "rdv", "visite"],
+          enum: ["bien", "user", "rdv", "visite", "lien"],
         },
         objectId: {
           type: "string",
@@ -187,7 +193,11 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "client", "rdv", "visite"],
+          enum: ["bien", "user", "rdv", "visite", "lien"],
+        },
+        typeLien: {
+          type: "string",
+          description: "Requis quand objectType=lien pour récupérer les paramètres spécifiques.",
         },
       },
       required: ["objectType"],
@@ -204,7 +214,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "client", "rdv", "visite"],
+          enum: ["bien", "user", "rdv", "visite", "lien"],
         },
         params: {
           type: "object",
@@ -225,7 +235,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "client", "rdv", "visite"],
+          enum: ["bien", "user", "rdv", "visite", "lien"],
         },
         objectId: {
           type: "string",
@@ -268,6 +278,9 @@ const normalizeOptionalString = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 };
+
+const hasOwnKeys = (value: Record<string, unknown>): boolean =>
+  Object.keys(value).length > 0;
 
 const readPatchStringField = (
   params: Record<string, unknown>,
@@ -944,7 +957,7 @@ const extractOpenAIToolCalls = (payload: unknown): AssistantToolCall[] => {
 };
 
 const normalizeAssistantObjectType = (value: unknown): AssistantObjectType | null => {
-  if (value !== "bien" && value !== "client" && value !== "rdv" && value !== "visite") {
+  if (value !== "bien" && value !== "user" && value !== "rdv" && value !== "visite" && value !== "lien") {
     return null;
   }
 
@@ -1112,17 +1125,18 @@ const parseIntent = (message: string): ParsedIntent => {
     }
   }
 
-  if (
-    (normalized.includes("ajoute") || normalized.includes("cree") || normalized.includes("crée")) &&
-    normalized.includes("client")
-  ) {
+  const isCreateIntent = normalized.includes("ajoute") || normalized.includes("cree") || normalized.includes("crée");
+  const mentionsUser = normalized.includes("user") || normalized.includes("utilisateur");
+  const mentionsClient = normalized.includes("client");
+
+  if (isCreateIntent && (mentionsUser || mentionsClient)) {
     const phoneMatch = message.match(/(\+?\d[\d\s]{7,})/);
     const phone = normalizeOptionalString(phoneMatch?.[1]?.replace(/\s+/g, "") ?? null);
     const emailMatch = message.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
     const email = normalizeOptionalString(emailMatch?.[0] ?? null)?.toLowerCase() ?? null;
 
-    const afterClient = message.replace(/^.*client\s+/i, "").trim();
-    const cleaned = afterClient
+    const afterTarget = message.replace(/^.*(?:utilisateur|user|client)\s+/i, "").trim();
+    const cleaned = afterTarget
       .replace(phoneMatch?.[0] ?? "", "")
       .replace(emailMatch?.[0] ?? "", "")
       .trim();
@@ -1200,7 +1214,7 @@ const parseIntent = (message: string): ParsedIntent => {
 
 const toLookupLabel = (input: { firstName: string; lastName: string }): string => {
   const fullName = `${input.firstName} ${input.lastName}`.trim();
-  return fullName || "Client";
+  return fullName || "Utilisateur";
 };
 
 const toAssistantSoul = (value: string | null | undefined): string => {
@@ -1561,6 +1575,8 @@ const runOpenAIToolDrivenTurn = async (input: {
       "Tu es l'assistant Monimmo pour des agents immobiliers français.",
       "Utilise en priorité les tools locaux search/get/getParams/create/update pour répondre.",
       "Pour toute demande de création/mise à jour: appelle d'abord getParams(objectType), puis envoie create/update avec des params strictement conformes (types + valeurs de select autorisées).",
+      "Pour create/update, params est obligatoire et doit contenir au moins un champ.",
+      "N'annonce une action comme faite que si le tool correspondant a retourné status=EXECUTED.",
       "N'invente jamais des données métier; si ambigu, pose une question de clarification.",
       "N'utilise pas internet ici.",
       "Réponds en français, de façon concise et actionnable.",
@@ -1571,7 +1587,7 @@ const runOpenAIToolDrivenTurn = async (input: {
           "Contexte de navigation transmis par l'application:",
           `objectType=${input.context.objectType}`,
           `objectId=${input.context.objectId}`,
-          "Si l'utilisateur dit \"ce bien\", \"ce client\", \"ce rdv\" ou \"cette visite\", utilise cet objet comme référence principale.",
+          "Si l'utilisateur dit \"ce bien\", \"cet utilisateur\", \"ce rdv\" ou \"cette visite\", utilise cet objet comme référence principale.",
         ].join("\n")
       : "",
   ].filter((value) => value.length > 0);
@@ -1585,6 +1601,9 @@ const runOpenAIToolDrivenTurn = async (input: {
     tool_choice: "auto",
     max_output_tokens: 900,
   };
+  let mutationSuccessCount = 0;
+  let mutationFailureCount = 0;
+  let firstMutationError: string | null = null;
 
   for (let i = 0; i < MAX_ASSISTANT_TOOL_LOOPS; i += 1) {
     const response = await externalFetch({
@@ -1621,6 +1640,9 @@ const runOpenAIToolDrivenTurn = async (input: {
         return {
           text: responseText,
           citations: [],
+          mutationSuccessCount,
+          mutationFailureCount,
+          firstMutationError,
         };
       }
 
@@ -1686,7 +1708,10 @@ const runOpenAIToolDrivenTurn = async (input: {
             );
           }
 
-          const result = input.handlers.getParams({ objectType });
+          const result = input.handlers.getParams({
+            objectType,
+            typeLien: normalizeOptionalString(args.typeLien) ?? undefined,
+          });
           toolOutputs.push({
             type: "function_call_output",
             call_id: toolCall.callId,
@@ -1708,10 +1733,18 @@ const runOpenAIToolDrivenTurn = async (input: {
           const params = isRecord(args.params)
             ? args.params
             : extractFlatToolParams(args, ["objectType"]);
+          if (!hasOwnKeys(params)) {
+            throw new HttpError(
+              400,
+              "ASSISTANT_TOOL_INVALID_ARGUMENT",
+              "Le paramètre params est requis et ne peut pas être vide.",
+            );
+          }
           const result = await input.handlers.create({
             objectType,
             params,
           });
+          mutationSuccessCount += 1;
 
           toolOutputs.push({
             type: "function_call_output",
@@ -1734,11 +1767,19 @@ const runOpenAIToolDrivenTurn = async (input: {
         const params = isRecord(args.params)
           ? args.params
           : extractFlatToolParams(args, ["objectType", "objectId"]);
+        if (!hasOwnKeys(params)) {
+          throw new HttpError(
+            400,
+            "ASSISTANT_TOOL_INVALID_ARGUMENT",
+            "Le paramètre params est requis et ne peut pas être vide.",
+          );
+        }
         const result = await input.handlers.update({
           objectType,
           objectId,
           params,
         });
+        mutationSuccessCount += 1;
 
         toolOutputs.push({
           type: "function_call_output",
@@ -1751,6 +1792,18 @@ const runOpenAIToolDrivenTurn = async (input: {
           call_id: toolCall.callId,
           output: serializeUnknown(buildAssistantToolErrorPayload(error)),
         });
+        if (toolCall.name === "create" || toolCall.name === "update") {
+          mutationFailureCount += 1;
+          if (!firstMutationError) {
+            if (error instanceof HttpError) {
+              firstMutationError = error.message;
+            } else if (error instanceof Error) {
+              firstMutationError = error.message;
+            } else {
+              firstMutationError = "Erreur outil inconnue";
+            }
+          }
+        }
       }
     }
 
@@ -1772,7 +1825,7 @@ const executeCreate = async (input: {
   objectType: AssistantObjectType;
   params: Record<string, unknown>;
 }): Promise<{ objectId: string; summary: string; result: unknown }> => {
-  if (input.objectType === "client") {
+  if (input.objectType === "user") {
     const created = await usersService.create({
       orgId: input.orgId,
       changeMode: "AI",
@@ -1791,7 +1844,7 @@ const executeCreate = async (input: {
 
     return {
       objectId: created.id,
-      summary: `Client créé: ${toLookupLabel(created)}.`,
+      summary: `Utilisateur créé: ${toLookupLabel(created)}.`,
       result: created,
     };
   }
@@ -1845,7 +1898,7 @@ const executeCreate = async (input: {
       orgId: input.orgId,
       title,
       propertyId,
-      clientUserId: normalizeOptionalString(input.params.clientUserId),
+      userId: normalizeOptionalString(input.params.userId),
       startsAt,
       endsAt,
       address: normalizeOptionalString(input.params.address),
@@ -1890,6 +1943,40 @@ const executeCreate = async (input: {
     };
   }
 
+  if (input.objectType === "lien") {
+    const typeLien = normalizeOptionalString(input.params.typeLien);
+    const objectId1 = normalizeOptionalString(input.params.objectId1);
+    const objectId2 = normalizeOptionalString(input.params.objectId2);
+
+    if (!typeLien || !objectId1 || !objectId2) {
+      throw new HttpError(
+        400,
+        "ASSISTANT_INVALID_CREATE_PAYLOAD",
+        "Le lien nécessite typeLien, objectId1 et objectId2.",
+      );
+    }
+
+    const params = isRecord(input.params.params)
+      ? input.params.params
+      : extractFlatToolParams(input.params, ["typeLien", "objectId1", "objectId2"]);
+
+    const created = await linksService.upsert({
+      orgId: input.orgId,
+      typeLien,
+      objectId1,
+      objectId2,
+      params,
+    });
+
+    return {
+      objectId: created.item.id,
+      summary: created.created
+        ? `Lien créé: ${created.item.typeLien} (${created.item.objectId1} -> ${created.item.objectId2}).`
+        : `Lien mis à jour: ${created.item.typeLien} (${created.item.objectId1} -> ${created.item.objectId2}).`,
+      result: created.item,
+    };
+  }
+
   throw new HttpError(400, "ASSISTANT_UNSUPPORTED_OBJECT", "Type d'objet non supporté");
 };
 
@@ -1899,7 +1986,7 @@ const executeUpdate = async (input: {
   objectId: string;
   params: Record<string, unknown>;
 }): Promise<{ objectId: string; summary: string; result: unknown }> => {
-  if (input.objectType === "client") {
+  if (input.objectType === "user") {
     const updated = await usersService.patchById({
       orgId: input.orgId,
       id: input.objectId,
@@ -1919,7 +2006,7 @@ const executeUpdate = async (input: {
 
     return {
       objectId: updated.id,
-      summary: `Client mis à jour: ${toLookupLabel(updated)}.`,
+      summary: `Utilisateur mis à jour: ${toLookupLabel(updated)}.`,
       result: updated,
     };
   }
@@ -1934,23 +2021,32 @@ const executeUpdate = async (input: {
       isRecord(existing.details) ? (existing.details as Record<string, unknown>) : {},
     );
     const hasDetailsPatch = Object.keys(normalizedParams.detailsPatch).length > 0;
-
-    const updated = await propertiesService.patchById({
-      orgId: input.orgId,
-      id: input.objectId,
-      changeMode: "AI",
-      data: {
-        title: normalizedParams.title,
-        city: normalizedParams.city,
-        postalCode: normalizedParams.postalCode,
-        address: normalizedParams.address,
-        price: normalizedParams.price,
-        details: hasDetailsPatch
-          ? mergePropertyDetailsPatch(existingDetails, normalizedParams.detailsPatch)
-          : undefined,
-        hiddenExpectedDocumentKeys: normalizedParams.hiddenExpectedDocumentKeys,
-      },
-    });
+    const hasPropertyScalarPatch =
+      typeof normalizedParams.title !== "undefined" ||
+      typeof normalizedParams.city !== "undefined" ||
+      typeof normalizedParams.postalCode !== "undefined" ||
+      typeof normalizedParams.address !== "undefined" ||
+      typeof normalizedParams.price !== "undefined" ||
+      typeof normalizedParams.hiddenExpectedDocumentKeys !== "undefined";
+    const shouldPatchProperty = hasPropertyScalarPatch || hasDetailsPatch;
+    const updated = shouldPatchProperty
+      ? await propertiesService.patchById({
+          orgId: input.orgId,
+          id: input.objectId,
+          changeMode: "AI",
+          data: {
+            title: normalizedParams.title,
+            city: normalizedParams.city,
+            postalCode: normalizedParams.postalCode,
+            address: normalizedParams.address,
+            price: normalizedParams.price,
+            details: hasDetailsPatch
+              ? mergePropertyDetailsPatch(existingDetails, normalizedParams.detailsPatch)
+              : undefined,
+            hiddenExpectedDocumentKeys: normalizedParams.hiddenExpectedDocumentKeys,
+          },
+        })
+      : existing;
 
     return {
       objectId: updated.id,
@@ -1992,6 +2088,20 @@ const executeUpdate = async (input: {
     };
   }
 
+  if (input.objectType === "lien") {
+    const updated = await linksService.patchById({
+      orgId: input.orgId,
+      id: input.objectId,
+      params: input.params,
+    });
+
+    return {
+      objectId: updated.id,
+      summary: `Lien mis à jour: ${updated.typeLien}.`,
+      result: updated,
+    };
+  }
+
   throw new HttpError(400, "ASSISTANT_UNSUPPORTED_OBJECT", "Type d'objet non supporté");
 };
 
@@ -2003,6 +2113,53 @@ const formatWebSearchResponse = (citations: AssistantCitation[]): string => {
   return `Voici ce que j'ai trouvé sur internet:\n${citations
     .map((citation) => `- ${citation.title} (${citation.url})`)
     .join("\n")}`;
+};
+
+const buildAssistantToolParams = (
+  objectType: AssistantObjectType,
+  typeLien?: string,
+): ObjectFieldDefinition[] => {
+  if (objectType === "lien") {
+    if (!typeLien) {
+      throw new HttpError(
+        400,
+        "ASSISTANT_LINK_TYPE_REQUIRED",
+        "typeLien est requis pour getParams quand objectType=lien.",
+      );
+    }
+
+    const definition = getLinkDataStructure(typeLien);
+    if (!definition) {
+      throw new HttpError(404, "LINK_TYPE_NOT_FOUND", "Type de lien introuvable.");
+    }
+
+    return [
+      {
+        key: "typeLien",
+        name: "Type de lien",
+        group: "general",
+        type: "string",
+        required: true,
+      },
+      {
+        key: "objectId1",
+        name: `ID ${definition.objectType1}`,
+        group: "general",
+        type: "string",
+        required: true,
+      },
+      {
+        key: "objectId2",
+        name: `ID ${definition.objectType2}`,
+        group: "general",
+        type: "string",
+        required: true,
+      },
+      ...definition.paramsSchema,
+    ];
+  }
+
+  return getObjectDataStructure(objectType);
 };
 
 const trackAssistantTurn = async (input: {
@@ -2277,6 +2434,7 @@ export const assistantService = {
         getParams: (toolInput) =>
           assistantService.toolGetParams({
             objectType: toolInput.objectType,
+            typeLien: toolInput.typeLien,
           }),
         create: async (toolInput) =>
           assistantService.toolCreate({
@@ -2299,6 +2457,17 @@ export const assistantService = {
     });
 
     if (modelTurn) {
+      if (modelTurn.mutationFailureCount > 0 && modelTurn.mutationSuccessCount === 0) {
+        const firstError = modelTurn.firstMutationError?.trim();
+        const failureText = firstError
+          ? `Je n'ai pas pu exécuter l'action demandée: ${firstError}`
+          : "Je n'ai pas pu exécuter l'action demandée. Vérifiez les paramètres puis réessayez.";
+        return respond(failureText, {
+          citations: modelTurn.citations,
+          skipAICallLog: true,
+        });
+      }
+
       return respond(modelTurn.text, {
         citations: modelTurn.citations,
         skipAICallLog: true,
@@ -2319,7 +2488,7 @@ export const assistantService = {
           : `Rendez-vous d'aujourd'hui:\n${appointments.items
               .map(
                 (item) =>
-                  `- ${formatTime(item.startsAt)} ${item.title} (${item.propertyTitle}${item.clientFirstName ? ` · ${item.clientFirstName} ${item.clientLastName ?? ""}` : ""})`,
+                  `- ${formatTime(item.startsAt)} ${item.title} (${item.propertyTitle}${item.userFirstName ? ` · ${item.userFirstName} ${item.userLastName ?? ""}` : ""})`,
               )
               .join("\n")}`;
 
@@ -2396,13 +2565,13 @@ export const assistantService = {
 
     if (intent.kind === "create_client") {
       if (!intent.phone && !intent.email) {
-        return respond("Pour créer le client, il me faut au moins un email ou un téléphone.");
+        return respond("Pour créer l'utilisateur, il me faut au moins un email ou un téléphone.");
       }
       const created = await assistantService.toolCreate({
         orgId: input.orgId,
         userId: input.userId,
         conversationId: conversation.id,
-        objectType: "client",
+        objectType: "user",
         params: {
           firstName: intent.firstName,
           lastName: intent.lastName,
@@ -2458,7 +2627,7 @@ export const assistantService = {
       });
 
       return respond(
-        `${created.summary}\n\nVous pouvez ensuite lier un client en propriétaire depuis l'onglet Clients.`,
+        `${created.summary}\n\nVous pouvez ensuite créer un lien propriétaire avec un utilisateur.`,
       );
     }
 
@@ -2478,36 +2647,35 @@ export const assistantService = {
         );
       }
 
-      const clientsFound = await usersService.list({
+      const usersFound = await usersService.list({
         orgId: input.orgId,
         limit: 5,
         query: intent.clientQuery,
-        accountType: "CLIENT",
       });
 
-      if (clientsFound.items.length === 0) {
-        return respond(`Je ne trouve pas le client « ${intent.clientQuery} ».`);
+      if (usersFound.items.length === 0) {
+        return respond(`Je ne trouve pas l'utilisateur « ${intent.clientQuery} ».`);
       }
 
-      if (clientsFound.items.length > 1) {
+      if (usersFound.items.length > 1) {
         return respond(
-          `Plusieurs clients correspondent: ${clientsFound.items
+          `Plusieurs utilisateurs correspondent: ${usersFound.items
             .map((item) => toLookupLabel(item))
             .join(", ")}.`,
         );
       }
 
       const property = propertiesFound.items[0]!;
-      const client = clientsFound.items[0]!;
+      const linkedUser = usersFound.items[0]!;
       const created = await assistantService.toolCreate({
         orgId: input.orgId,
         userId: input.userId,
         conversationId: conversation.id,
         objectType: "rdv",
         params: {
-          title: `Rendez-vous avec ${toLookupLabel(client)}`,
+          title: `Rendez-vous avec ${toLookupLabel(linkedUser)}`,
           propertyId: property.id,
-          clientUserId: client.id,
+          userId: linkedUser.id,
           startsAt: intent.startsAt.toISOString(),
           endsAt: intent.endsAt.toISOString(),
           address: null,
@@ -2519,7 +2687,7 @@ export const assistantService = {
     }
 
     return respondWithOptionalWebFallback(
-      "Je peux vous aider sur les biens, clients, rendez-vous et visites. Donnez-moi une action précise.",
+      "Je peux vous aider sur les biens, utilisateurs, rendez-vous, visites et liens. Donnez-moi une action précise.",
     );
   },
 
@@ -2544,14 +2712,13 @@ export const assistantService = {
       }
     }
 
-    if (!input.objectType || input.objectType === "client") {
+    if (!input.objectType || input.objectType === "user") {
       const listed = await usersService.list({
         orgId: input.orgId,
         query: q,
         limit: 20,
-        accountType: "CLIENT",
       });
-      if (input.objectType === "client") {
+      if (input.objectType === "user") {
         return listed;
       }
     }
@@ -2559,11 +2726,25 @@ export const assistantService = {
     if (!input.objectType || input.objectType === "rdv") {
       const listed = await calendarService.listManualAppointments({ orgId: input.orgId });
       const filtered = listed.items.filter((item) =>
-        normalizeText(`${item.title} ${item.propertyTitle} ${item.clientFirstName ?? ""} ${item.clientLastName ?? ""}`).includes(
+        normalizeText(`${item.title} ${item.propertyTitle} ${item.userFirstName ?? ""} ${item.userLastName ?? ""}`).includes(
           normalizeText(q),
         ),
       );
       if (input.objectType === "rdv") {
+        return { items: filtered };
+      }
+    }
+
+    if (!input.objectType || input.objectType === "lien") {
+      const listed = await linksService.list({
+        orgId: input.orgId,
+        limit: 100,
+      });
+      const normalizedQ = normalizeText(q);
+      const filtered = listed.items.filter((item) =>
+        normalizeText(`${item.typeLien} ${item.objectId1} ${item.objectId2}`).includes(normalizedQ),
+      );
+      if (input.objectType === "lien") {
         return { items: filtered };
       }
     }
@@ -2589,11 +2770,19 @@ export const assistantService = {
           orgId: input.orgId,
           query: q,
           limit: 10,
-          accountType: "CLIENT",
         })).items.map((item) => ({
-          objectType: "client",
+          objectType: "user",
           data: item,
         })),
+        ...(await linksService.list({
+          orgId: input.orgId,
+          limit: 50,
+        })).items
+          .filter((item) =>
+            normalizeText(`${item.typeLien} ${item.objectId1} ${item.objectId2}`).includes(normalizeText(q)),
+          )
+          .slice(0, 10)
+          .map((item) => ({ objectType: "lien", data: item })),
         ...filteredVisits.slice(0, 10).map((item) => ({ objectType: "visite", data: item })),
       ],
     };
@@ -2608,7 +2797,7 @@ export const assistantService = {
       return propertiesService.getById({ orgId: input.orgId, id: input.objectId });
     }
 
-    if (input.objectType === "client") {
+    if (input.objectType === "user") {
       return usersService.getById({ orgId: input.orgId, id: input.objectId });
     }
 
@@ -2616,11 +2805,15 @@ export const assistantService = {
       return calendarService.getManualAppointmentById({ orgId: input.orgId, id: input.objectId });
     }
 
+    if (input.objectType === "lien") {
+      return linksService.getById({ orgId: input.orgId, id: input.objectId });
+    }
+
     return propertiesService.getVisitById({ orgId: input.orgId, id: input.objectId });
   },
 
-  toolGetParams(input: { objectType: AssistantObjectType }): unknown {
-    return getObjectDataStructure(input.objectType);
+  toolGetParams(input: { objectType: AssistantObjectType; typeLien?: string }): unknown {
+    return buildAssistantToolParams(input.objectType, input.typeLien);
   },
 
   async toolCreate(input: {

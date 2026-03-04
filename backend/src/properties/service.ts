@@ -2,14 +2,13 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
+  businessLinks,
   files,
   marketDvfQueryCache,
   marketDvfTransactions,
   organizations,
   properties,
-  propertyParties,
   propertyTimelineEvents,
-  propertyUserLinks,
   propertyVisits,
   users,
 } from "../db/schema";
@@ -31,6 +30,7 @@ import {
 } from "../object-data/change-log";
 import { getSearchEngine } from "../search/factory";
 import { listObjectDataFieldKeysByGroup } from "../object-data/structure";
+import { usersService } from "../users/service";
 
 type PropertyRow = typeof properties.$inferSelect;
 
@@ -51,21 +51,9 @@ type OwnerContactInput = {
   city?: string | null;
 };
 
-type ProspectContactInput = OwnerContactInput;
 type PropertyClientRelationRole = "OWNER" | "PROSPECT" | "ACHETEUR";
 
 type PropertyDetailsInput = Record<string, unknown>;
-type ClientBusinessData = {
-  firstName: string;
-  lastName: string;
-  email: string | null;
-  phone: string | null;
-  address: string | null;
-  postalCode: string | null;
-  city: string | null;
-  personalNotes: string | null;
-  accountType: "CLIENT";
-};
 type VisitBusinessData = {
   propertyId: string;
   prospectUserId: string;
@@ -211,11 +199,6 @@ export type PropertyComparablesResponse = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const generateRandomPassword = (): string => {
-  const randomBytes = crypto.getRandomValues(new Uint8Array(24));
-  return Buffer.from(randomBytes).toString("base64url");
-};
-
 const normalizeOptionalString = (value: string | null | undefined): string | null | undefined => {
   if (value === undefined) {
     return undefined;
@@ -228,45 +211,6 @@ const normalizeOptionalString = (value: string | null | undefined): string | nul
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 };
-
-const resolveRoleFromAccountType = (accountType: "AGENT" | "CLIENT" | "NOTAIRE"): string => {
-  switch (accountType) {
-    case "AGENT":
-      return "AGENT";
-    case "NOTAIRE":
-      return "NOTAIRE";
-    default:
-      return "OWNER";
-  }
-};
-
-const normalizePropertyClientRelationRole = (
-  value: unknown,
-): PropertyClientRelationRole | null => {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim().toUpperCase();
-  if (normalized === "OWNER" || normalized === "PROSPECT" || normalized === "ACHETEUR") {
-    return normalized;
-  }
-
-  return null;
-};
-
-const serializeClientBusinessData = (data: ClientBusinessData): string =>
-  JSON.stringify({
-    firstName: data.firstName,
-    lastName: data.lastName,
-    email: data.email,
-    phone: data.phone,
-    address: data.address,
-    postalCode: data.postalCode,
-    city: data.city,
-    personalNotes: data.personalNotes,
-    accountType: data.accountType,
-  });
 
 const parseDetails = (raw: string | null): Record<string, unknown> => {
   if (!raw) {
@@ -2016,8 +1960,8 @@ export const propertiesService = {
 
     const rows = await db
       .select({
-        id: propertyUserLinks.id,
-        propertyId: propertyUserLinks.propertyId,
+        id: businessLinks.id,
+        propertyId: businessLinks.objectId1,
         userId: users.id,
         firstName: users.firstName,
         lastName: users.lastName,
@@ -2026,22 +1970,22 @@ export const propertiesService = {
         address: users.address,
         postalCode: users.postalCode,
         city: users.city,
-        relationRole: propertyUserLinks.role,
-        createdAt: propertyUserLinks.createdAt,
+        relationRole: sql<string>`coalesce(json_extract(${businessLinks.params}, '$.relationRole'), 'PROSPECT')`,
+        createdAt: businessLinks.createdAt,
       })
-      .from(propertyUserLinks)
+      .from(businessLinks)
       .innerJoin(
         users,
-        and(eq(propertyUserLinks.userId, users.id), eq(users.orgId, input.orgId)),
+        and(eq(businessLinks.objectId2, users.id), eq(users.orgId, input.orgId)),
       )
       .where(
         and(
-          eq(propertyUserLinks.orgId, input.orgId),
-          eq(propertyUserLinks.propertyId, input.propertyId),
-          inArray(propertyUserLinks.role, ["OWNER", "PROSPECT", "ACHETEUR"]),
+          eq(businessLinks.orgId, input.orgId),
+          eq(businessLinks.typeLien, "bien_user"),
+          eq(businessLinks.objectId1, input.propertyId),
         ),
       )
-      .orderBy(desc(propertyUserLinks.createdAt));
+      .orderBy(desc(businessLinks.createdAt));
 
     return {
       items: rows.map((item) => ({
@@ -2065,7 +2009,7 @@ export const propertiesService = {
     orgId: string;
     propertyId: string;
     userId?: string;
-    newClient?: ProspectContactInput;
+    newClient?: OwnerContactInput;
     relationRole?: PropertyClientRelationRole;
   }) {
     const property = await db.query.properties.findFirst({
@@ -2085,163 +2029,81 @@ export const propertiesService = {
     }
 
     const relationRole = input.relationRole ?? "PROSPECT";
+    let userId = input.userId ?? null;
+
+    if (!userId && input.newClient) {
+      const created = await usersService.create({
+        orgId: input.orgId,
+        data: {
+          firstName: input.newClient.firstName,
+          lastName: input.newClient.lastName,
+          email: input.newClient.email,
+          phone: input.newClient.phone,
+          address: input.newClient.address ?? null,
+          postalCode: input.newClient.postalCode ?? null,
+          city: input.newClient.city ?? null,
+          personalNotes: null,
+          accountType: "CLIENT",
+        },
+      });
+      userId = created.id;
+    }
+
+    if (!userId) {
+      throw new HttpError(500, "USER_CREATE_FAILED", "Impossible de créer l'utilisateur lié.");
+    }
+
+    const linkedUser = await db.query.users.findFirst({
+      where: and(eq(users.id, userId), eq(users.orgId, input.orgId)),
+    });
+    if (!linkedUser) {
+      throw new HttpError(404, "USER_NOT_FOUND", "Utilisateur introuvable");
+    }
 
     const now = new Date();
-    let userId = input.userId ?? "";
-    let client = userId
-      ? await db.query.users.findFirst({
-          where: and(eq(users.id, userId), eq(users.orgId, input.orgId)),
-        })
-      : null;
-
-    if (input.userId) {
-      if (!client) {
-        throw new HttpError(404, "USER_NOT_FOUND", "Client introuvable");
-      }
-
-      if (client.accountType !== "CLIENT") {
-        throw new HttpError(
-          400,
-          "PROSPECT_MUST_BE_CLIENT",
-          "Le prospect doit etre un utilisateur de type client",
-        );
-      }
-    } else if (input.newClient) {
-      const normalizedEmail = input.newClient.email.trim().toLowerCase();
-      const existingByEmail = await db.query.users.findFirst({
-        where: eq(users.email, normalizedEmail),
-      });
-
-      if (existingByEmail) {
-        if (existingByEmail.orgId !== input.orgId) {
-          throw new HttpError(
-            409,
-            "EMAIL_ALREADY_USED",
-            "Cet email est deja utilise par une autre organisation",
-          );
-        }
-
-        if (existingByEmail.accountType !== "CLIENT") {
-          throw new HttpError(
-            400,
-            "PROSPECT_MUST_BE_CLIENT",
-            "Le prospect doit etre un utilisateur de type client",
-          );
-        }
-
-        userId = existingByEmail.id;
-        const nextProspectData: ClientBusinessData = {
-          firstName: input.newClient.firstName,
-          lastName: input.newClient.lastName,
-          email: normalizedEmail,
-          phone: input.newClient.phone.trim(),
-          address: normalizeOptionalString(input.newClient.address) ?? null,
-          postalCode: normalizeOptionalString(input.newClient.postalCode) ?? null,
-          city: normalizeOptionalString(input.newClient.city) ?? null,
-          personalNotes: null,
-          accountType: "CLIENT",
-        };
-        await db
-          .update(users)
-          .set({
-            firstName: nextProspectData.firstName,
-            lastName: nextProspectData.lastName,
-            email: nextProspectData.email,
-            phone: nextProspectData.phone,
-            address: nextProspectData.address,
-            postalCode: nextProspectData.postalCode,
-            city: nextProspectData.city,
-            accountType: "CLIENT",
-            data: serializeClientBusinessData(nextProspectData),
-            updatedAt: now,
-          })
-          .where(and(eq(users.id, userId), eq(users.orgId, input.orgId)));
-
-        client = await db.query.users.findFirst({
-          where: and(eq(users.id, userId), eq(users.orgId, input.orgId)),
-        });
-      } else {
-        userId = crypto.randomUUID();
-        const passwordHash = await Bun.password.hash(generateRandomPassword());
-        const createdProspectData: ClientBusinessData = {
-          firstName: input.newClient.firstName,
-          lastName: input.newClient.lastName,
-          email: normalizedEmail,
-          phone: input.newClient.phone.trim(),
-          address: normalizeOptionalString(input.newClient.address) ?? null,
-          postalCode: normalizeOptionalString(input.newClient.postalCode) ?? null,
-          city: normalizeOptionalString(input.newClient.city) ?? null,
-          personalNotes: null,
-          accountType: "CLIENT",
-        };
-
-        await db.insert(users).values({
-          id: userId,
-          orgId: input.orgId,
-          firstName: createdProspectData.firstName,
-          lastName: createdProspectData.lastName,
-          email: createdProspectData.email,
-          phone: createdProspectData.phone,
-          address: createdProspectData.address,
-          postalCode: createdProspectData.postalCode,
-          city: createdProspectData.city,
-          accountType: "CLIENT",
-          data: serializeClientBusinessData(createdProspectData),
-          role: resolveRoleFromAccountType("CLIENT"),
-          passwordHash,
-          createdAt: now,
-          updatedAt: now,
-        });
-
-        client = await db.query.users.findFirst({
-          where: and(eq(users.id, userId), eq(users.orgId, input.orgId)),
-        });
-      }
-    }
-
-    if (!client) {
-      throw new HttpError(500, "PROSPECT_CREATE_FAILED", "Impossible de recuperer le client");
-    }
-
-    const existingLink = await db.query.propertyUserLinks.findFirst({
+    const existingLink = await db.query.businessLinks.findFirst({
       where: and(
-        eq(propertyUserLinks.propertyId, input.propertyId),
-        eq(propertyUserLinks.userId, userId),
-        eq(propertyUserLinks.orgId, input.orgId),
+        eq(businessLinks.orgId, input.orgId),
+        eq(businessLinks.typeLien, "bien_user"),
+        eq(businessLinks.objectId1, input.propertyId),
+        eq(businessLinks.objectId2, userId),
       ),
     });
 
     let linkId = existingLink?.id ?? "";
     if (existingLink) {
-      if (existingLink.role !== relationRole) {
-        await db
-          .update(propertyUserLinks)
-          .set({ role: relationRole })
-          .where(eq(propertyUserLinks.id, existingLink.id));
-      }
+      await db
+        .update(businessLinks)
+        .set({
+          params: JSON.stringify({ relationRole }),
+          updatedAt: now,
+        })
+        .where(eq(businessLinks.id, existingLink.id));
     } else {
       linkId = crypto.randomUUID();
-      await db.insert(propertyUserLinks).values({
+      await db.insert(businessLinks).values({
         id: linkId,
         orgId: input.orgId,
-        propertyId: input.propertyId,
-        userId,
-        role: relationRole,
+        typeLien: "bien_user",
+        objectId1: input.propertyId,
+        objectId2: userId,
+        params: JSON.stringify({ relationRole }),
         createdAt: now,
+        updatedAt: now,
       });
     }
 
     return {
       id: linkId || existingLink?.id || "",
       propertyId: input.propertyId,
-      userId: client.id,
-      firstName: client.firstName,
-      lastName: client.lastName,
-      email: client.email,
-      phone: client.phone,
-      address: client.address,
-      postalCode: client.postalCode,
-      city: client.city,
+      userId: linkedUser.id,
+      firstName: linkedUser.firstName,
+      lastName: linkedUser.lastName,
+      email: linkedUser.email,
+      phone: linkedUser.phone,
+      address: linkedUser.address,
+      postalCode: linkedUser.postalCode,
+      city: linkedUser.city,
       relationRole,
       createdAt: (existingLink?.createdAt ?? now).toISOString(),
     };
@@ -2658,24 +2520,52 @@ export const propertiesService = {
       throw new HttpError(404, "PROPERTY_NOT_FOUND", "Bien introuvable");
     }
 
-    const createdAt = new Date();
-    const participantId = crypto.randomUUID();
+    const linkedUser = await db.query.users.findFirst({
+      where: and(eq(users.id, input.contactId), eq(users.orgId, input.orgId)),
+    });
+    if (!linkedUser) {
+      throw new HttpError(404, "USER_NOT_FOUND", "Utilisateur introuvable");
+    }
 
-    await db.insert(propertyParties).values({
-      id: participantId,
-      propertyId: input.propertyId,
-      orgId: input.orgId,
-      contactId: input.contactId,
-      role: input.role,
-      createdAt,
+    const now = new Date();
+    const existingLink = await db.query.businessLinks.findFirst({
+      where: and(
+        eq(businessLinks.orgId, input.orgId),
+        eq(businessLinks.typeLien, "bien_user"),
+        eq(businessLinks.objectId1, input.propertyId),
+        eq(businessLinks.objectId2, input.contactId),
+      ),
     });
 
+    let linkId = existingLink?.id ?? "";
+    if (existingLink) {
+      await db
+        .update(businessLinks)
+        .set({
+          params: JSON.stringify({ relationRole: "PROSPECT" }),
+          updatedAt: now,
+        })
+        .where(eq(businessLinks.id, existingLink.id));
+    } else {
+      linkId = crypto.randomUUID();
+      await db.insert(businessLinks).values({
+        id: linkId,
+        orgId: input.orgId,
+        typeLien: "bien_user",
+        objectId1: input.propertyId,
+        objectId2: input.contactId,
+        params: JSON.stringify({ relationRole: "PROSPECT" }),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
     return {
-      id: participantId,
+      id: linkId || existingLink?.id || "",
       propertyId: input.propertyId,
       contactId: input.contactId,
       role: input.role,
-      createdAt: createdAt.toISOString(),
+      createdAt: (existingLink?.createdAt ?? now).toISOString(),
     };
   },
 

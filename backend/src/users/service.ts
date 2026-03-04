@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { properties, propertyParties, propertyUserLinks, users } from "../db/schema";
+import { businessLinks, properties, users } from "../db/schema";
 import { HttpError } from "../http/errors";
 import {
   trackObjectChangesSafe,
@@ -32,7 +32,7 @@ type LinkedProperty = {
   postalCode: string;
   status: string;
   relationRole: string;
-  source: "USER_LINK" | "PARTY_LINK";
+  source: "BUSINESS_LINK";
 };
 
 type ListUsersInput = {
@@ -269,53 +269,33 @@ const listLinkedPropertiesForUsers = async (
     return new Map();
   }
 
-  const [directLinks, partyLinks] = await Promise.all([
-    db
-      .select({
-        userId: propertyUserLinks.userId,
-        propertyId: properties.id,
-        title: properties.title,
-        city: properties.city,
-        postalCode: properties.postalCode,
-        status: properties.status,
-        relationRole: propertyUserLinks.role,
-        source: sql<"USER_LINK">`'USER_LINK'`,
-      })
-      .from(propertyUserLinks)
-      .innerJoin(
-        properties,
-        and(
-          eq(propertyUserLinks.propertyId, properties.id),
-          eq(properties.orgId, orgId),
-        ),
-      )
-      .where(
-        and(eq(propertyUserLinks.orgId, orgId), inArray(propertyUserLinks.userId, userIds)),
+  const directLinks = await db
+    .select({
+      userId: businessLinks.objectId2,
+      propertyId: properties.id,
+      title: properties.title,
+      city: properties.city,
+      postalCode: properties.postalCode,
+      status: properties.status,
+      relationRole: sql<string>`coalesce(json_extract(${businessLinks.params}, '$.relationRole'), 'PROSPECT')`,
+      source: sql<"BUSINESS_LINK">`'BUSINESS_LINK'`,
+    })
+    .from(businessLinks)
+    .innerJoin(
+      properties,
+      and(eq(businessLinks.objectId1, properties.id), eq(properties.orgId, orgId)),
+    )
+    .where(
+      and(
+        eq(businessLinks.orgId, orgId),
+        eq(businessLinks.typeLien, "bien_user"),
+        inArray(businessLinks.objectId2, userIds),
       ),
-    db
-      .select({
-        userId: propertyParties.contactId,
-        propertyId: properties.id,
-        title: properties.title,
-        city: properties.city,
-        postalCode: properties.postalCode,
-        status: properties.status,
-        relationRole: propertyParties.role,
-        source: sql<"PARTY_LINK">`'PARTY_LINK'`,
-      })
-      .from(propertyParties)
-      .innerJoin(
-        properties,
-        and(eq(propertyParties.propertyId, properties.id), eq(properties.orgId, orgId)),
-      )
-      .where(
-        and(eq(propertyParties.orgId, orgId), inArray(propertyParties.contactId, userIds)),
-      ),
-  ]);
+    );
 
   const grouped = new Map<string, Map<string, LinkedProperty>>();
 
-  for (const link of [...directLinks, ...partyLinks]) {
+  for (const link of directLinks) {
     const userMap = grouped.get(link.userId) ?? new Map<string, LinkedProperty>();
     const current = userMap.get(link.propertyId);
 
@@ -483,7 +463,7 @@ export const usersService = {
 
     await trackObjectChangesSafe({
       orgId: input.orgId,
-      objectType: "client",
+      objectType: "user",
       objectId: createdUser.id,
       mode: input.changeMode ?? "USER",
       changes: [
@@ -647,7 +627,7 @@ export const usersService = {
 
     await trackObjectChangesSafe({
       orgId: input.orgId,
-      objectType: "client",
+      objectType: "user",
       objectId: patchedUser.id,
       mode: input.changeMode ?? "USER",
       changes: changes.filter((change) => isTrackableValue(change.paramValue)),

@@ -48,7 +48,7 @@ export interface AccountUserLinkedPropertyResponse {
   postalCode: string;
   status: string;
   relationRole: string;
-  source: "USER_LINK" | "PARTY_LINK";
+  source: "BUSINESS_LINK";
 }
 
 export interface AccountUserDetailResponse extends AccountUserResponse {
@@ -102,7 +102,7 @@ export interface AppSettingsPatchRequest {
   assistantSoul?: string | null;
 }
 
-export type AssistantObjectType = "bien" | "client" | "rdv" | "visite";
+export type AssistantObjectType = "bien" | "user" | "rdv" | "visite" | "lien";
 
 export interface AssistantCitationResponse {
   title: string;
@@ -195,6 +195,52 @@ export interface ObjectChangeEntryResponse {
 
 export interface ObjectChangeListResponse {
   items: ObjectChangeEntryResponse[];
+}
+
+export type LinkObjectType = "bien" | "user" | "rdv" | "visite";
+export type LinkType = "bien_user" | "rdv_bien" | "rdv_user" | "visite_bien" | "visite_user";
+
+export interface LinkResponse {
+  id: string;
+  typeLien: LinkType;
+  objectId1: string;
+  objectId2: string;
+  params: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LinkListResponse {
+  items: LinkResponse[];
+  nextCursor?: string | null;
+}
+
+export interface LinkCreateRequest {
+  typeLien: LinkType;
+  objectId1: string;
+  objectId2: string;
+  params?: Record<string, unknown>;
+}
+
+export interface LinkPatchRequest {
+  params: Record<string, unknown>;
+}
+
+export interface LinkRelatedItemResponse {
+  link: LinkResponse;
+  otherSideObjectType: LinkObjectType;
+  otherSideObjectId: string;
+  otherSide: unknown | null;
+}
+
+export interface LinkRelatedResponse {
+  items: LinkRelatedItemResponse[];
+  grouped: {
+    bien: unknown[];
+    user: unknown[];
+    rdv: unknown[];
+    visite: unknown[];
+  };
 }
 
 export interface AICallLogResponse {
@@ -393,7 +439,7 @@ export interface PropertyVisitListResponse {
 export interface CalendarAppointmentCreateRequest {
   title: string;
   propertyId: string;
-  clientUserId?: string | null;
+  userId?: string | null;
   startsAt: string;
   endsAt: string;
   address?: string | null;
@@ -405,9 +451,9 @@ export interface CalendarAppointmentResponse {
   title: string;
   propertyId: string;
   propertyTitle: string;
-  clientUserId: string | null;
-  clientFirstName: string | null;
-  clientLastName: string | null;
+  userId: string | null;
+  userFirstName: string | null;
+  userLastName: string | null;
   address: string | null;
   comment: string | null;
   startsAt: string;

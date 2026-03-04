@@ -198,15 +198,19 @@ describe("users endpoints", () => {
     const createdProperty = await createPropertyResponse.json();
 
     const linkResponse = await createApp().fetch(
-      new Request(`http://localhost/properties/${createdProperty.id}/clients`, {
+      new Request("http://localhost/links", {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          userId: ownerUser.id,
-          relationRole: "OWNER",
+          typeLien: "bien_user",
+          objectId1: createdProperty.id,
+          objectId2: ownerUser.id,
+          params: {
+            relationRole: "OWNER",
+          },
         }),
       }),
     );

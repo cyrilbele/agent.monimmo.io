@@ -28,7 +28,9 @@ Objectifs principaux:
 
 ## Standard objets business (obligatoire)
 
-Pour tout nouvel objet business (`bien`, `client`, `rdv`, `visite`, etc.), appliquer le meme standard:
+Pour tout nouvel objet business (`bien`, `user`, `rdv`, `visite`, `lien`, etc.), appliquer le meme standard:
+
+`user` est l'unique objet personne du produit (ne plus introduire `client` comme objet métier séparé).
 
 1. **Stockage lineaire**: la donnée métier doit etre stockée en base dans un dictionnaire JSON `key:value` (pas de structure imbriquée).
 2. **Definition des champs**: exposer la structure via `GET /data-structure/{objectType}` (ou alias `GET /getdatastructure/{objectType}`) avec un tableau de definitions incluant:
@@ -37,8 +39,9 @@ Pour tout nouvel objet business (`bien`, `client`, `rdv`, `visite`, etc.), appli
    - choix possibles (`options`) pour les select
    - regles conditionnelles de visibilité (`hide`)
 3. **Front**: l’affichage des champs doit etre piloté par la data-structure API (groupes/sous-groupes inclus), pas par une liste codée en dur.
-4. **IA tools**: `getParams(objectType)` doit reutiliser la meme data-structure, afin de garantir la coherence entre UI, API et assistant.
-5. **Suivi des modifications**: toute creation/mise a jour doit ecrire dans `object_changes` avec:
+4. **Liens inter-objets**: toute relation entre objets doit passer par `business_links` (`type_lien`, `object_id_1`, `object_id_2`, `params`), jamais par une table dédiée par couple d'objets.
+5. **IA tools**: `getParams(objectType)` doit reutiliser la meme data-structure. Pour `objectType=lien`, `getParams` doit recevoir `typeLien`.
+6. **Suivi des modifications**: toute creation/mise a jour doit ecrire dans `object_changes` avec:
    - `objectType`, `objectId`, `paramName`, `paramValue`, `date` (`createdAt`), `mode` (`USER` ou `AI`).
 
 ## Regles pour la UI

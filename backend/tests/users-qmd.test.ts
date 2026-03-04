@@ -45,7 +45,7 @@ const buildLinkedProperties = (): LinkedPropertiesInput => [
     postalCode: "75011",
     status: "MANDAT_SIGNE",
     relationRole: "OWNER",
-    source: "USER_LINK",
+    source: "BUSINESS_LINK",
   },
 ];
 

@@ -1,6 +1,8 @@
 import { inject, Injectable } from "@angular/core";
 
 import type {
+  AccountUserCreateRequest,
+  AccountUserResponse,
   PropertyCreateRequest,
   PropertyListResponse,
   PropertyParticipantCreateRequest,
@@ -27,12 +29,39 @@ import type {
   AssistantObjectType,
   ObjectDataStructureResponse,
   ObjectChangeListResponse,
+  LinkCreateRequest,
+  LinkRelatedResponse,
+  LinkResponse,
 } from "../core/api.models";
 import { ApiClientService } from "../core/api-client.service";
 
 @Injectable({ providedIn: "root" })
 export class PropertyService {
   private readonly api = inject(ApiClientService);
+
+  private toProspectFromLink(
+    propertyId: string,
+    link: LinkResponse,
+    user: AccountUserResponse,
+  ): PropertyProspectResponse {
+    const relationRoleRaw = link.params?.["relationRole"];
+    const relationRole = typeof relationRoleRaw === "string" ? relationRoleRaw : "PROSPECT";
+
+    return {
+      id: link.id,
+      propertyId,
+      userId: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+      postalCode: user.postalCode,
+      city: user.city,
+      relationRole,
+      createdAt: link.createdAt,
+    };
+  }
 
   list(limit = 100, query?: string): Promise<PropertyListResponse> {
     const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 100;
@@ -73,33 +102,89 @@ export class PropertyService {
     propertyId: string,
     payload: PropertyParticipantCreateRequest,
   ): Promise<PropertyParticipantResponse> {
-    return this.api.request<PropertyParticipantResponse>(
-      "POST",
-      `/properties/${encodeURIComponent(propertyId)}/participants`,
-      {
-        body: payload,
+    const linkPayload: LinkCreateRequest = {
+      typeLien: "bien_user",
+      objectId1: propertyId,
+      objectId2: payload.contactId,
+      params: {
+        relationRole: "PROSPECT",
       },
-    );
+    };
+
+    return this.api
+      .request<LinkResponse>("POST", "/links", {
+        body: linkPayload,
+      })
+      .then((link) => ({
+        id: link.id,
+        propertyId,
+        contactId: payload.contactId,
+        role: payload.role,
+        createdAt: link.createdAt,
+      }));
   }
 
-  listProspects(propertyId: string): Promise<PropertyProspectListResponse> {
-    return this.api.request<PropertyProspectListResponse>(
+  async listProspects(propertyId: string): Promise<PropertyProspectListResponse> {
+    const related = await this.api.request<LinkRelatedResponse>(
       "GET",
-      `/properties/${encodeURIComponent(propertyId)}/clients`,
+      `/links/related/bien/${encodeURIComponent(propertyId)}`,
     );
+
+    const items = related.items
+      .filter(
+        (item): item is LinkRelatedResponse["items"][number] & { otherSide: AccountUserResponse } =>
+          item.otherSideObjectType === "user" &&
+          !!item.otherSide &&
+          typeof item.otherSide === "object" &&
+          !Array.isArray(item.otherSide) &&
+          typeof (item.otherSide as { id?: unknown }).id === "string",
+      )
+      .map((item) => this.toProspectFromLink(propertyId, item.link, item.otherSide));
+
+    return { items };
   }
 
-  addProspect(
+  async addProspect(
     propertyId: string,
     payload: PropertyProspectCreateRequest,
   ): Promise<PropertyProspectResponse> {
-    return this.api.request<PropertyProspectResponse>(
-      "POST",
-      `/properties/${encodeURIComponent(propertyId)}/clients`,
-      {
-        body: payload,
+    let user: AccountUserResponse;
+
+    if (payload.userId) {
+      user = await this.api.request<AccountUserResponse>(
+        "GET",
+        `/users/${encodeURIComponent(payload.userId)}`,
+      );
+    } else if (payload.newClient) {
+      const createUserPayload: AccountUserCreateRequest = {
+        firstName: payload.newClient.firstName,
+        lastName: payload.newClient.lastName,
+        phone: payload.newClient.phone,
+        email: payload.newClient.email,
+        address: payload.newClient.address ?? null,
+        postalCode: payload.newClient.postalCode ?? null,
+        city: payload.newClient.city ?? null,
+        accountType: "CLIENT",
+      };
+      user = await this.api.request<AccountUserResponse>("POST", "/users", {
+        body: createUserPayload,
+      });
+    } else {
+      throw new Error("userId ou newClient est obligatoire.");
+    }
+
+    const link = await this.api.request<LinkResponse>("POST", "/links", {
+      body: {
+        typeLien: "bien_user",
+        objectId1: propertyId,
+        objectId2: user.id,
+        params: {
+          relationRole: payload.relationRole ?? "PROSPECT",
+        },
       },
-    );
+    });
+
+    return this.toProspectFromLink(propertyId, link, user);
   }
 
   listVisits(propertyId: string): Promise<PropertyVisitListResponse> {

@@ -1,4 +1,6 @@
-export type ObjectType = "bien" | "client" | "rdv" | "visite";
+import { getLinkTypeDefinition, listLinkTypeDefinitions } from "../links/catalog";
+
+export type ObjectType = "bien" | "user" | "rdv" | "visite";
 
 export type ObjectFieldType =
   | "string"
@@ -325,7 +327,7 @@ const bienFields: ObjectFieldDefinition[] = [
   { key: "mandateEndDate", name: "Fin mandat", group: "marketing", type: "date" },
 ];
 
-const clientFields: ObjectFieldDefinition[] = [
+const userFields: ObjectFieldDefinition[] = [
   { key: "firstName", name: "Prénom", group: "identity", type: "string" },
   { key: "lastName", name: "Nom", group: "identity", type: "string" },
   { key: "email", name: "Email", group: "contact", type: "string" },
@@ -350,7 +352,7 @@ const clientFields: ObjectFieldDefinition[] = [
 const rdvFields: ObjectFieldDefinition[] = [
   { key: "title", name: "Titre", group: "general", type: "string", required: true },
   { key: "propertyId", name: "Bien lié", group: "relations", type: "string", required: true },
-  { key: "clientUserId", name: "Client lié", group: "relations", type: "string" },
+  { key: "userId", name: "Utilisateur lié", group: "relations", type: "string" },
   { key: "startsAt", name: "Début", group: "schedule", type: "datetime", required: true },
   { key: "endsAt", name: "Fin", group: "schedule", type: "datetime", required: true },
   { key: "address", name: "Adresse", group: "schedule", type: "string" },
@@ -368,7 +370,7 @@ const visiteFields: ObjectFieldDefinition[] = [
 
 const byObjectType: Record<ObjectType, ObjectFieldDefinition[]> = {
   bien: bienFields,
-  client: clientFields,
+  user: userFields,
   rdv: rdvFields,
   visite: visiteFields,
 };
@@ -398,3 +400,35 @@ export const getObjectDataFieldDefinition = (
   byObjectType[objectType].find((field) => field.key === key) ?? null;
 
 export const OBJECT_FIELD_BOOLEAN_OPTIONS = yesNoOptions;
+
+export const listLinkDataStructures = () =>
+  listLinkTypeDefinitions().map((definition) => ({
+    typeLien: definition.typeLien,
+    name: definition.name,
+    objectType1: definition.objectType1,
+    objectType2: definition.objectType2,
+    paramsSchema: definition.paramsSchema.map((field) => ({
+      ...field,
+      options: field.options?.map((option) => ({ ...option })),
+      hide: field.hide?.map((rule) => ({ ...rule })),
+    })),
+  }));
+
+export const getLinkDataStructure = (typeLien: string) => {
+  const definition = getLinkTypeDefinition(typeLien);
+  if (!definition) {
+    return null;
+  }
+
+  return {
+    typeLien: definition.typeLien,
+    name: definition.name,
+    objectType1: definition.objectType1,
+    objectType2: definition.objectType2,
+    paramsSchema: definition.paramsSchema.map((field) => ({
+      ...field,
+      options: field.options?.map((option) => ({ ...option })),
+      hide: field.hide?.map((rule) => ({ ...rule })),
+    })),
+  };
+};

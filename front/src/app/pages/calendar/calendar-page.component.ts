@@ -77,7 +77,7 @@ export class CalendarPageComponent implements OnDestroy {
   readonly appointmentForm = this.formBuilder.nonNullable.group({
     title: ["Rendez-vous"],
     propertyId: [""],
-    clientUserId: [""],
+    userId: [""],
     startsAt: [""],
     endsAt: [""],
     address: [""],
@@ -175,7 +175,7 @@ export class CalendarPageComponent implements OnDestroy {
     const payload: CalendarAppointmentCreateRequest = {
       title,
       propertyId: raw.propertyId,
-      clientUserId: raw.clientUserId.trim() ? raw.clientUserId : null,
+      userId: raw.userId.trim() ? raw.userId : null,
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),
       address: raw.address.trim() ? raw.address.trim() : null,
@@ -210,7 +210,7 @@ export class CalendarPageComponent implements OnDestroy {
     this.appointmentForm.setValue({
       title: "Rendez-vous",
       propertyId: fallbackPropertyId,
-      clientUserId: this.appointmentForm.controls.clientUserId.value || "",
+      userId: this.appointmentForm.controls.userId.value || "",
       startsAt: this.toLocalDateTimeInputValue(start),
       endsAt: this.toLocalDateTimeInputValue(end),
       address: "",
@@ -294,7 +294,7 @@ export class CalendarPageComponent implements OnDestroy {
   }
 
   private toAppointmentCalendarEvent(appointment: CalendarAppointmentResponse): EventInput {
-    const clientLabel = [appointment.clientFirstName, appointment.clientLastName]
+    const clientLabel = [appointment.userFirstName, appointment.userLastName]
       .filter((part): part is string => Boolean(part))
       .join(" ")
       .trim();
@@ -309,7 +309,7 @@ export class CalendarPageComponent implements OnDestroy {
       extendedProps: {
         kind: "APPOINTMENT" as const,
         propertyId: appointment.propertyId,
-        clientUserId: appointment.clientUserId,
+        userId: appointment.userId,
         address: appointment.address,
         comment: appointment.comment,
       },
@@ -329,13 +329,13 @@ export class CalendarPageComponent implements OnDestroy {
   }
 
   private ensureSelectedClientExists(options: ClientOption[]): void {
-    const selected = this.appointmentForm.controls.clientUserId.value;
+    const selected = this.appointmentForm.controls.userId.value;
     if (!selected) {
       return;
     }
 
     if (!options.some((option) => option.id === selected)) {
-      this.appointmentForm.controls.clientUserId.setValue("");
+      this.appointmentForm.controls.userId.setValue("");
     }
   }
 

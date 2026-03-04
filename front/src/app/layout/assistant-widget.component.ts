@@ -313,7 +313,7 @@ export class AssistantWidgetComponent implements OnDestroy {
 
     if (section === "utilisateurs") {
       return {
-        objectType: "client",
+        objectType: "user",
         objectId,
       };
     }

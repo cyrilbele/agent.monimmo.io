@@ -50,7 +50,7 @@ export const AccountUserLinkedPropertyResponseSchema = z.object({
   postalCode: z.string(),
   status: z.string(),
   relationRole: z.string(),
-  source: z.enum(["USER_LINK", "PARTY_LINK"]),
+  source: z.enum(["BUSINESS_LINK"]),
 });
 
 export const AccountUserDetailResponseSchema = AccountUserResponseSchema.extend({
@@ -165,7 +165,7 @@ export const GlobalSearchResponseSchema = z.object({
   items: z.array(GlobalSearchItemResponseSchema),
 });
 
-export const AssistantObjectTypeSchema = z.enum(["bien", "client", "rdv", "visite"]);
+export const AssistantObjectTypeSchema = z.enum(["bien", "user", "rdv", "visite", "lien"]);
 
 export const AssistantCitationResponseSchema = z.object({
   title: z.string(),
@@ -266,6 +266,70 @@ export const ObjectDataFieldDefinitionSchema = z.object({
 });
 
 export const ObjectDataStructureResponseSchema = z.array(ObjectDataFieldDefinitionSchema);
+
+export const LinkObjectTypeSchema = z.enum(["bien", "user", "rdv", "visite"]);
+export const LinkTypeSchema = z.enum([
+  "bien_user",
+  "rdv_bien",
+  "rdv_user",
+  "visite_bien",
+  "visite_user",
+]);
+
+export const LinkTypeDefinitionSchema = z.object({
+  typeLien: LinkTypeSchema,
+  name: z.string(),
+  objectType1: LinkObjectTypeSchema,
+  objectType2: LinkObjectTypeSchema,
+  paramsSchema: ObjectDataStructureResponseSchema,
+});
+
+export const LinkTypeDefinitionListResponseSchema = z.object({
+  items: z.array(LinkTypeDefinitionSchema),
+});
+
+export const LinkResponseSchema = z.object({
+  id: z.string(),
+  typeLien: LinkTypeSchema,
+  objectId1: z.string(),
+  objectId2: z.string(),
+  params: z.record(z.string(), z.unknown()),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const LinkListResponseSchema = z.object({
+  items: z.array(LinkResponseSchema),
+  nextCursor: z.string().nullable().optional(),
+});
+
+export const LinkCreateRequestSchema = z.object({
+  typeLien: LinkTypeSchema,
+  objectId1: z.string().min(1),
+  objectId2: z.string().min(1),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const LinkPatchRequestSchema = z.object({
+  params: z.record(z.string(), z.unknown()),
+});
+
+export const LinkRelatedItemResponseSchema = z.object({
+  link: LinkResponseSchema,
+  otherSideObjectType: LinkObjectTypeSchema,
+  otherSideObjectId: z.string(),
+  otherSide: z.unknown().nullable(),
+});
+
+export const LinkRelatedResponseSchema = z.object({
+  items: z.array(LinkRelatedItemResponseSchema),
+  grouped: z.object({
+    bien: z.array(z.unknown()),
+    user: z.array(z.unknown()),
+    rdv: z.array(z.unknown()),
+    visite: z.array(z.unknown()),
+  }),
+});
 
 export const LoginRequestSchema = z.object({
   email: z.email(),
@@ -474,7 +538,7 @@ export const PropertyVisitListResponseSchema = z.object({
 export const CalendarAppointmentCreateRequestSchema = z.object({
   title: z.string().min(1),
   propertyId: z.string().min(1),
-  clientUserId: z.string().nullable().optional(),
+  userId: z.string().nullable().optional(),
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime(),
   address: z.string().nullable().optional(),
@@ -486,9 +550,9 @@ export const CalendarAppointmentResponseSchema = z.object({
   title: z.string(),
   propertyId: z.string(),
   propertyTitle: z.string(),
-  clientUserId: z.string().nullable(),
-  clientFirstName: z.string().nullable(),
-  clientLastName: z.string().nullable(),
+  userId: z.string().nullable(),
+  userFirstName: z.string().nullable(),
+  userLastName: z.string().nullable(),
   address: z.string().nullable(),
   comment: z.string().nullable(),
   startsAt: z.iso.datetime(),
@@ -893,6 +957,16 @@ export const DtoSchemaMap = {
   ObjectDataFieldHideRule: ObjectDataFieldHideRuleSchema,
   ObjectDataFieldDefinition: ObjectDataFieldDefinitionSchema,
   ObjectDataStructureResponse: ObjectDataStructureResponseSchema,
+  LinkObjectType: LinkObjectTypeSchema,
+  LinkType: LinkTypeSchema,
+  LinkTypeDefinition: LinkTypeDefinitionSchema,
+  LinkTypeDefinitionListResponse: LinkTypeDefinitionListResponseSchema,
+  LinkResponse: LinkResponseSchema,
+  LinkListResponse: LinkListResponseSchema,
+  LinkCreateRequest: LinkCreateRequestSchema,
+  LinkPatchRequest: LinkPatchRequestSchema,
+  LinkRelatedItemResponse: LinkRelatedItemResponseSchema,
+  LinkRelatedResponse: LinkRelatedResponseSchema,
   LoginRequest: LoginRequestSchema,
   LoginResponse: LoginResponseSchema,
   RefreshRequest: RefreshRequestSchema,

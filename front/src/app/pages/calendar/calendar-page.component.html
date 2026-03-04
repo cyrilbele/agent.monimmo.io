@@ -81,7 +81,7 @@
 
           <div>
             <label class="field-label" for="calendar-appointment-client">Client concerne (optionnel)</label>
-            <select id="calendar-appointment-client" class="field-input" formControlName="clientUserId">
+            <select id="calendar-appointment-client" class="field-input" formControlName="userId">
               <option value="">Aucun client</option>
               @for (client of clients(); track client.id) {
                 <option [value]="client.id">{{ client.label }}</option>

@@ -5,12 +5,11 @@ import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
 import {
+  businessLinks,
   files,
   organizations,
   properties,
-  propertyParties,
   propertyTimelineEvents,
-  propertyUserLinks,
   propertyVisits,
 } from "../src/db/schema";
 import { createApp } from "../src/server";
@@ -63,7 +62,7 @@ describe("properties endpoints", () => {
     await runSeed();
   });
 
-  it("crée un bien sans liaison client automatique et force le statut PROSPECTION", async () => {
+  it("crée un bien sans liaison utilisateur automatique et force le statut PROSPECTION", async () => {
     const token = await loginAndGetAccessToken();
     const response = await createApp().fetch(
       new Request("http://localhost/properties", {
@@ -90,8 +89,14 @@ describe("properties endpoints", () => {
 
     const links = await db
       .select()
-      .from(propertyUserLinks)
-      .where(eq(propertyUserLinks.propertyId, payload.id));
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "bien_user"),
+          eq(businessLinks.objectId1, payload.id),
+        ),
+      );
     expect(links).toHaveLength(0);
   });
 
@@ -403,7 +408,7 @@ describe("properties endpoints", () => {
     expect(response.status).toBe(401);
   });
 
-  it("ajoute un participant à un bien", async () => {
+  it("n'expose plus l'endpoint legacy participants", async () => {
     const token = await loginAndGetAccessToken();
 
     const createResponse = await createApp().fetch(
@@ -438,19 +443,7 @@ describe("properties endpoints", () => {
       }),
     );
 
-    expect(participantResponse.status).toBe(201);
-    const participantPayload = await participantResponse.json();
-    expect(participantPayload.propertyId).toBe(created.id);
-    expect(participantPayload.contactId).toBe("contact_123");
-    expect(participantPayload.role).toBe("VENDEUR");
-
-    const dbParticipant = await db.query.propertyParties.findFirst({
-      where: and(
-        eq(propertyParties.propertyId, created.id),
-        eq(propertyParties.contactId, "contact_123"),
-      ),
-    });
-    expect(dbParticipant).not.toBeNull();
+    expect(participantResponse.status).toBe(404);
   });
 
   it("cree un bien sans creer de lien automatique meme avec ownerUserId", async () => {
@@ -496,16 +489,18 @@ describe("properties endpoints", () => {
     expect(createPropertyResponse.status).toBe(201);
     const propertyPayload = await createPropertyResponse.json();
 
-    const ownerLink = await db.query.propertyUserLinks.findFirst({
+    const ownerLink = await db.query.businessLinks.findFirst({
       where: and(
-        eq(propertyUserLinks.propertyId, propertyPayload.id),
-        eq(propertyUserLinks.userId, clientPayload.id),
+        eq(businessLinks.orgId, "org_demo"),
+        eq(businessLinks.typeLien, "bien_user"),
+        eq(businessLinks.objectId1, propertyPayload.id),
+        eq(businessLinks.objectId2, clientPayload.id),
       ),
     });
     expect(ownerLink).toBeUndefined();
   });
 
-  it("ajoute et liste les clients d'un bien avec role explicite", async () => {
+  it("ajoute et liste les utilisateurs liés d'un bien via /links", async () => {
     const token = await loginAndGetAccessToken();
 
     const createPropertyResponse = await createApp().fetch(
@@ -527,31 +522,48 @@ describe("properties endpoints", () => {
     expect(createPropertyResponse.status).toBe(201);
     const propertyPayload = await createPropertyResponse.json();
 
-    const addProspectResponse = await createApp().fetch(
-      new Request(`http://localhost/properties/${propertyPayload.id}/clients`, {
+    const createUserResponse = await createApp().fetch(
+      new Request("http://localhost/users", {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          relationRole: "OWNER",
-          newClient: {
-            firstName: "Paul",
-            lastName: "Prospect",
-            phone: "0605040302",
-            email: `prospect.${crypto.randomUUID()}@monimmo.fr`,
+          firstName: "Paul",
+          lastName: "Prospect",
+          phone: "0605040302",
+          email: `prospect.${crypto.randomUUID()}@monimmo.fr`,
+          accountType: "CLIENT",
+        }),
+      }),
+    );
+    expect(createUserResponse.status).toBe(201);
+    const createdUser = await createUserResponse.json();
+
+    const createLinkResponse = await createApp().fetch(
+      new Request("http://localhost/links", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          typeLien: "bien_user",
+          objectId1: propertyPayload.id,
+          objectId2: createdUser.id,
+          params: {
+            relationRole: "OWNER",
           },
         }),
       }),
     );
+    expect(createLinkResponse.status).toBe(201);
+    const createdLink = await createLinkResponse.json();
+    expect(createdLink.typeLien).toBe("bien_user");
 
-    expect(addProspectResponse.status).toBe(201);
-    const addedProspect = await addProspectResponse.json();
-    expect(addedProspect.relationRole).toBe("OWNER");
-
-    const listProspectsResponse = await createApp().fetch(
-      new Request(`http://localhost/properties/${propertyPayload.id}/clients`, {
+    const relatedResponse = await createApp().fetch(
+      new Request(`http://localhost/links/related/bien/${propertyPayload.id}`, {
         method: "GET",
         headers: {
           authorization: `Bearer ${token}`,
@@ -559,13 +571,19 @@ describe("properties endpoints", () => {
       }),
     );
 
-    expect(listProspectsResponse.status).toBe(200);
-    const listPayload = await listProspectsResponse.json();
-    expect(Array.isArray(listPayload.items)).toBe(true);
+    expect(relatedResponse.status).toBe(200);
+    const relatedPayload = await relatedResponse.json();
+    expect(Array.isArray(relatedPayload.items)).toBe(true);
+    expect(Array.isArray(relatedPayload.grouped?.user)).toBe(true);
     expect(
-      listPayload.items.some(
-        (item: { userId: string; relationRole: string }) =>
-          item.userId === addedProspect.userId && item.relationRole === "OWNER",
+      relatedPayload.items.some(
+        (item: {
+          link: { objectId2: string; params?: Record<string, unknown> };
+          otherSideObjectType: string;
+        }) =>
+          item.otherSideObjectType === "user" &&
+          item.link.objectId2 === createdUser.id &&
+          item.link.params?.relationRole === "OWNER",
       ),
     ).toBe(true);
   });
@@ -592,25 +610,24 @@ describe("properties endpoints", () => {
     expect(createPropertyResponse.status).toBe(201);
     const propertyPayload = await createPropertyResponse.json();
 
-    const addProspectResponse = await createApp().fetch(
-      new Request(`http://localhost/properties/${propertyPayload.id}/clients`, {
+    const createUserResponse = await createApp().fetch(
+      new Request("http://localhost/users", {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          newClient: {
-            firstName: "Julie",
-            lastName: "Visite",
-            phone: "0600000001",
-            email: `visite.${crypto.randomUUID()}@monimmo.fr`,
-          },
+          firstName: "Julie",
+          lastName: "Visite",
+          phone: "0600000001",
+          email: `visite.${crypto.randomUUID()}@monimmo.fr`,
+          accountType: "CLIENT",
         }),
       }),
     );
-    expect(addProspectResponse.status).toBe(201);
-    const prospectPayload = await addProspectResponse.json();
+    expect(createUserResponse.status).toBe(201);
+    const prospectPayload = await createUserResponse.json();
 
     const startsAt = "2026-03-10T09:30:00.000Z";
     const endsAt = "2026-03-10T10:15:00.000Z";
@@ -623,7 +640,7 @@ describe("properties endpoints", () => {
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          prospectUserId: prospectPayload.userId,
+          prospectUserId: prospectPayload.id,
           startsAt,
           endsAt,
         }),
@@ -632,7 +649,7 @@ describe("properties endpoints", () => {
     expect(addVisitResponse.status).toBe(201);
     const visitPayload = await addVisitResponse.json();
     expect(visitPayload.propertyId).toBe(propertyPayload.id);
-    expect(visitPayload.prospectUserId).toBe(prospectPayload.userId);
+    expect(visitPayload.prospectUserId).toBe(prospectPayload.id);
     expect(visitPayload.startsAt).toBe(startsAt);
     expect(visitPayload.endsAt).toBe(endsAt);
     expect(visitPayload.compteRendu).toBeNull();
@@ -798,10 +815,12 @@ describe("properties endpoints", () => {
     );
     expect(addVisitResponse.status).toBe(201);
 
-    const autoLink = await db.query.propertyUserLinks.findFirst({
+    const autoLink = await db.query.businessLinks.findFirst({
       where: and(
-        eq(propertyUserLinks.propertyId, propertyPayload.id),
-        eq(propertyUserLinks.userId, clientPayload.id),
+        eq(businessLinks.orgId, "org_demo"),
+        eq(businessLinks.typeLien, "bien_user"),
+        eq(businessLinks.objectId1, propertyPayload.id),
+        eq(businessLinks.objectId2, clientPayload.id),
       ),
     });
 

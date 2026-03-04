@@ -5,6 +5,13 @@ import { assertManagerOrAdmin } from "./auth/rbac";
 import { authService } from "./auth/service";
 import {
   AssistantConversationResponseSchema,
+  LinkCreateRequestSchema,
+  LinkListResponseSchema,
+  LinkPatchRequestSchema,
+  LinkRelatedResponseSchema,
+  LinkResponseSchema,
+  LinkTypeDefinitionListResponseSchema,
+  LinkTypeDefinitionSchema,
   ObjectDataStructureResponseSchema,
   ObjectChangeListResponseSchema,
   AssistantMessageCreateRequestSchema,
@@ -22,8 +29,6 @@ import {
   MessageUpdateRequestSchema,
   PropertyCreateRequestSchema,
   PropertyPatchRequestSchema,
-  PropertyParticipantCreateRequestSchema,
-  PropertyProspectCreateRequestSchema,
   PropertyVisitPatchRequestSchema,
   PropertyVisitCreateRequestSchema,
   PropertyStatusUpdateRequestSchema,
@@ -67,7 +72,8 @@ import {
 import { usersService } from "./users/service";
 import { vocalsService } from "./vocals/service";
 import { objectChangeLogService } from "./object-data/change-log";
-import { getObjectDataStructure } from "./object-data/structure";
+import { getLinkDataStructure, getObjectDataStructure, listLinkDataStructures } from "./object-data/structure";
+import { linksService } from "./links/service";
 
 const json = (data: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(data), {
@@ -185,7 +191,7 @@ const buildCorsHeaders = (request: Request): Headers | null => {
     "access-control-allow-origin",
     allowedCorsOrigins.has("*") ? "*" : origin,
   );
-  headers.set("access-control-allow-methods", "GET,POST,PATCH,OPTIONS");
+  headers.set("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
   headers.set(
     "access-control-allow-headers",
     request.headers.get("access-control-request-headers") ??
@@ -558,11 +564,34 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return withCors(request, json(response, { status: 200 }));
       }
 
+      if (
+        request.method === "GET" &&
+        (url.pathname === "/data-structure/lien" || url.pathname === "/getdatastructure/lien")
+      ) {
+        await getAuthenticatedUser();
+        const response = LinkTypeDefinitionListResponseSchema.parse({
+          items: listLinkDataStructures(),
+        });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      const linkDataStructureMatch = url.pathname.match(/^\/(?:data-structure|getdatastructure)\/lien\/([^/]+)$/);
+      if (linkDataStructureMatch && request.method === "GET") {
+        await getAuthenticatedUser();
+        const typeLien = decodeURIComponent(linkDataStructureMatch[1]);
+        const definition = getLinkDataStructure(typeLien);
+        if (!definition) {
+          throw new HttpError(404, "LINK_TYPE_NOT_FOUND", "Type de lien introuvable");
+        }
+        const response = LinkTypeDefinitionSchema.parse(definition);
+        return withCors(request, json(response, { status: 200 }));
+      }
+
       const objectDataStructureMatch = url.pathname.match(/^\/(?:data-structure|getdatastructure)\/([^/]+)$/);
       if (objectDataStructureMatch && request.method === "GET") {
         const user = await getAuthenticatedUser();
         const objectType = decodeURIComponent(objectDataStructureMatch[1]).toLowerCase();
-        if (objectType !== "bien" && objectType !== "client" && objectType !== "rdv" && objectType !== "visite") {
+        if (objectType !== "bien" && objectType !== "user" && objectType !== "rdv" && objectType !== "visite") {
           throw new HttpError(400, "INVALID_OBJECT_TYPE", "Type d'objet invalide");
         }
 
@@ -573,6 +602,89 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           throw new HttpError(403, "ORG_SCOPE_REQUIRED", "Organisation requise");
         }
 
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      if (url.pathname === "/links") {
+        const user = await getAuthenticatedUser();
+
+        if (request.method === "GET") {
+          const response = LinkListResponseSchema.parse(
+            await linksService.list({
+              orgId: user.orgId,
+              limit: parseLimit(),
+              cursor: url.searchParams.get("cursor") ?? undefined,
+              typeLien: url.searchParams.get("typeLien") ?? undefined,
+              objectId: url.searchParams.get("objectId") ?? undefined,
+              objectId1: url.searchParams.get("objectId1") ?? undefined,
+              objectId2: url.searchParams.get("objectId2") ?? undefined,
+            }),
+          );
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "POST") {
+          const payload = await parseJson(LinkCreateRequestSchema);
+          const upserted = await linksService.upsert({
+            orgId: user.orgId,
+            typeLien: payload.typeLien,
+            objectId1: payload.objectId1,
+            objectId2: payload.objectId2,
+            params: payload.params,
+          });
+          const response = LinkResponseSchema.parse(upserted.item);
+          return withCors(request, json(response, { status: upserted.created ? 201 : 200 }));
+        }
+      }
+
+      const linkByIdMatch = url.pathname.match(/^\/links\/([^/]+)$/);
+      if (linkByIdMatch) {
+        const user = await getAuthenticatedUser();
+        const linkId = decodeURIComponent(linkByIdMatch[1]);
+
+        if (request.method === "GET") {
+          const response = LinkResponseSchema.parse(
+            await linksService.getById({
+              orgId: user.orgId,
+              id: linkId,
+            }),
+          );
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "PATCH") {
+          const payload = await parseJson(LinkPatchRequestSchema);
+          const response = LinkResponseSchema.parse(
+            await linksService.patchById({
+              orgId: user.orgId,
+              id: linkId,
+              params: payload.params,
+            }),
+          );
+          return withCors(request, json(response, { status: 200 }));
+        }
+
+        if (request.method === "DELETE") {
+          await linksService.deleteById({
+            orgId: user.orgId,
+            id: linkId,
+          });
+          return withCors(request, new Response(null, { status: 204 }));
+        }
+      }
+
+      const relatedLinksMatch = url.pathname.match(/^\/links\/related\/([^/]+)\/([^/]+)$/);
+      if (relatedLinksMatch && request.method === "GET") {
+        const user = await getAuthenticatedUser();
+        const objectType = decodeURIComponent(relatedLinksMatch[1]).toLowerCase();
+        const objectId = decodeURIComponent(relatedLinksMatch[2]);
+        const response = LinkRelatedResponseSchema.parse(
+          await linksService.getRelated({
+            orgId: user.orgId,
+            objectType,
+            objectId,
+          }),
+        );
         return withCors(request, json(response, { status: 200 }));
       }
 
@@ -733,7 +845,13 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         const objectType = decodeURIComponent(objectChangesMatch[1]).toLowerCase();
         const objectId = decodeURIComponent(objectChangesMatch[2]);
 
-        if (objectType !== "bien" && objectType !== "client" && objectType !== "rdv" && objectType !== "visite") {
+        if (
+          objectType !== "bien" &&
+          objectType !== "user" &&
+          objectType !== "rdv" &&
+          objectType !== "visite" &&
+          objectType !== "lien"
+        ) {
           throw new HttpError(400, "INVALID_OBJECT_TYPE", "Type d'objet invalide");
         }
 
@@ -836,7 +954,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           orgId: user.orgId,
           title: payload.title,
           propertyId: payload.propertyId,
-          clientUserId: payload.clientUserId ?? null,
+          userId: payload.userId ?? null,
           startsAt: payload.startsAt,
           endsAt: payload.endsAt,
           address: payload.address ?? null,
@@ -1167,50 +1285,6 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           status: payload.status,
         });
         return withCors(request, json(response, { status: 200 }));
-      }
-
-      const propertyParticipantsMatch = url.pathname.match(
-        /^\/properties\/([^/]+)\/participants$/,
-      );
-      if (propertyParticipantsMatch && request.method === "POST") {
-        const propertyId = decodeURIComponent(propertyParticipantsMatch[1]);
-        const user = await getAuthenticatedUser();
-        const payload = await parseJson(PropertyParticipantCreateRequestSchema);
-        const response = await propertiesService.addParticipant({
-          orgId: user.orgId,
-          propertyId,
-          contactId: payload.contactId,
-          role: payload.role,
-        });
-        return withCors(request, json(response, { status: 201 }));
-      }
-
-      const propertyProspectsMatch = url.pathname.match(
-        /^\/properties\/([^/]+)\/(?:prospects|clients)$/,
-      );
-      if (propertyProspectsMatch) {
-        const propertyId = decodeURIComponent(propertyProspectsMatch[1]);
-        const user = await getAuthenticatedUser();
-
-        if (request.method === "GET") {
-          const response = await propertiesService.listProspects({
-            orgId: user.orgId,
-            propertyId,
-          });
-          return withCors(request, json(response, { status: 200 }));
-        }
-
-        if (request.method === "POST") {
-          const payload = await parseJson(PropertyProspectCreateRequestSchema);
-          const response = await propertiesService.addProspect({
-            orgId: user.orgId,
-            propertyId,
-            userId: payload.userId,
-            newClient: payload.newClient,
-            relationRole: payload.relationRole,
-          });
-          return withCors(request, json(response, { status: 201 }));
-        }
       }
 
       const propertyVisitsMatch = url.pathname.match(/^\/properties\/([^/]+)\/visits$/);

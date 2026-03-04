@@ -14,9 +14,8 @@ import {
   organizations,
   privacyExports,
   properties,
-  propertyParties,
   propertyTimelineEvents,
-  propertyUserLinks,
+  businessLinks,
   propertyVisits,
   reviewQueueItems,
   users,
@@ -88,8 +87,7 @@ const buildExportPayload = async (orgId: string): Promise<Record<string, unknown
     orgRow,
     userRows,
     propertyRows,
-    propertyUserLinkRows,
-    propertyPartyRows,
+    businessLinkRows,
     visitRows,
     timelineRows,
     fileRows,
@@ -107,8 +105,7 @@ const buildExportPayload = async (orgId: string): Promise<Record<string, unknown
     }),
     db.select().from(users).where(eq(users.orgId, orgId)),
     db.select().from(properties).where(eq(properties.orgId, orgId)),
-    db.select().from(propertyUserLinks).where(eq(propertyUserLinks.orgId, orgId)),
-    db.select().from(propertyParties).where(eq(propertyParties.orgId, orgId)),
+    db.select().from(businessLinks).where(eq(businessLinks.orgId, orgId)),
     db.select().from(propertyVisits).where(eq(propertyVisits.orgId, orgId)),
     db.select().from(propertyTimelineEvents).where(eq(propertyTimelineEvents.orgId, orgId)),
     db.select().from(files).where(eq(files.orgId, orgId)),
@@ -128,8 +125,7 @@ const buildExportPayload = async (orgId: string): Promise<Record<string, unknown
     organization: orgRow ?? null,
     users: userRows,
     properties: propertyRows,
-    propertyUserLinks: propertyUserLinkRows,
-    propertyParties: propertyPartyRows,
+    businessLinks: businessLinkRows,
     propertyVisits: visitRows,
     propertyTimelineEvents: timelineRows,
     files: fileRows,
@@ -268,8 +264,7 @@ const executeEraseJob = async (input: {
     await db.transaction(async (tx) => {
       await tx.delete(messageFileLinks).where(eq(messageFileLinks.orgId, input.orgId));
       await tx.delete(propertyVisits).where(eq(propertyVisits.orgId, input.orgId));
-      await tx.delete(propertyUserLinks).where(eq(propertyUserLinks.orgId, input.orgId));
-      await tx.delete(propertyParties).where(eq(propertyParties.orgId, input.orgId));
+      await tx.delete(businessLinks).where(eq(businessLinks.orgId, input.orgId));
       await tx.delete(propertyTimelineEvents).where(eq(propertyTimelineEvents.orgId, input.orgId));
       await tx.delete(reviewQueueItems).where(eq(reviewQueueItems.orgId, input.orgId));
       await tx.delete(vocals).where(eq(vocals.orgId, input.orgId));

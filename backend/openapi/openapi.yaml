@@ -19,6 +19,7 @@ tags:
   - name: Integrations
   - name: Privacy
   - name: Assistant
+  - name: Links
 paths:
   /health:
     get:
@@ -300,6 +301,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /data-structure/lien:
+    get:
+      tags: [Assistant]
+      operationId: getLinkTypeDefinitions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Catalogue des types de liens et de leurs paramètres.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkTypeDefinitionListResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /data-structure/lien/{typeLien}:
+    get:
+      tags: [Assistant]
+      operationId: getLinkDataStructureByType
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: typeLien
+          required: true
+          schema:
+            $ref: "#/components/schemas/LinkType"
+      responses:
+        "200":
+          description: Structure des paramètres pour un type de lien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkTypeDefinition"
+        "404":
+          description: Type de lien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /data-structure/{objectType}:
     get:
       tags: [Assistant]
@@ -311,7 +362,8 @@ paths:
           name: objectType
           required: true
           schema:
-            $ref: "#/components/schemas/AssistantObjectType"
+            type: string
+            enum: [bien, user, rdv, visite]
       responses:
         "200":
           description: Structure des paramètres pour un type d'objet.
@@ -327,6 +379,165 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Non authentifié.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /links:
+    get:
+      tags: [Links]
+      operationId: getLinks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+        - in: query
+          name: typeLien
+          required: false
+          schema:
+            $ref: "#/components/schemas/LinkType"
+        - in: query
+          name: objectId
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: objectId1
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: objectId2
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liste des liens business.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkListResponse"
+    post:
+      tags: [Links]
+      operationId: postLinks
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkCreateRequest"
+      responses:
+        "201":
+          description: Lien créé.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+        "200":
+          description: Lien déjà existant mis à jour (upsert).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+  /links/{id}:
+    get:
+      tags: [Links]
+      operationId: getLinkById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail d'un lien.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+        "404":
+          description: Lien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Links]
+      operationId: patchLinkById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkPatchRequest"
+      responses:
+        "200":
+          description: Lien mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkResponse"
+        "404":
+          description: Lien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Links]
+      operationId: deleteLinkById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Lien supprimé.
+        "404":
+          description: Lien introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /links/related/{objectType}/{objectId}:
+    get:
+      tags: [Links]
+      operationId: getRelatedLinks
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: objectType
+          required: true
+          schema:
+            $ref: "#/components/schemas/LinkObjectType"
+        - in: path
+          name: objectId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liens et objets liés hydratés pour un objet source.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkRelatedResponse"
+        "400":
+          description: Type d'objet invalide.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Objet source introuvable.
           content:
             application/json:
               schema:
@@ -708,62 +919,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PropertyResponse"
-  /properties/{id}/participants:
-    post:
-      tags: [Properties]
-      operationId: postPropertyParticipants
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/IdParam"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PropertyParticipantCreateRequest"
-      responses:
-        "201":
-          description: Participant ajouté.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PropertyParticipantResponse"
-  /properties/{id}/clients:
-    get:
-      tags: [Properties]
-      operationId: getPropertyClients
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/IdParam"
-      responses:
-        "200":
-          description: Liste des clients lies au bien (prospects, acheteurs, proprietaires).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PropertyProspectListResponse"
-    post:
-      tags: [Properties]
-      operationId: postPropertyClients
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/IdParam"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PropertyProspectCreateRequest"
-      responses:
-        "201":
-          description: Client lié au bien.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PropertyProspectResponse"
   /properties/{id}/visits:
     get:
       tags: [Visits]
@@ -1622,7 +1777,7 @@ components:
           type: string
         source:
           type: string
-          enum: [USER_LINK, PARTY_LINK]
+          enum: [BUSINESS_LINK]
     AccountUserDetailResponse:
       allOf:
         - $ref: "#/components/schemas/AccountUserResponse"
@@ -1835,7 +1990,7 @@ components:
             $ref: "#/components/schemas/GlobalSearchItemResponse"
     AssistantObjectType:
       type: string
-      enum: [bien, client, rdv, visite]
+      enum: [bien, user, rdv, visite, lien]
     AssistantCitationResponse:
       type: object
       required: [title, url, snippet]
@@ -2009,6 +2164,122 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/ObjectDataFieldDefinition"
+    LinkObjectType:
+      type: string
+      enum: [bien, user, rdv, visite]
+    LinkType:
+      type: string
+      enum: [bien_user, rdv_bien, rdv_user, visite_bien, visite_user]
+    LinkTypeDefinition:
+      type: object
+      required: [typeLien, name, objectType1, objectType2, paramsSchema]
+      properties:
+        typeLien:
+          $ref: "#/components/schemas/LinkType"
+        name:
+          type: string
+        objectType1:
+          $ref: "#/components/schemas/LinkObjectType"
+        objectType2:
+          $ref: "#/components/schemas/LinkObjectType"
+        paramsSchema:
+          $ref: "#/components/schemas/ObjectDataStructureResponse"
+    LinkTypeDefinitionListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkTypeDefinition"
+    LinkResponse:
+      type: object
+      required: [id, typeLien, objectId1, objectId2, params, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        typeLien:
+          $ref: "#/components/schemas/LinkType"
+        objectId1:
+          type: string
+        objectId2:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    LinkListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkResponse"
+        nextCursor:
+          type: string
+          nullable: true
+    LinkCreateRequest:
+      type: object
+      required: [typeLien, objectId1, objectId2]
+      properties:
+        typeLien:
+          $ref: "#/components/schemas/LinkType"
+        objectId1:
+          type: string
+        objectId2:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+    LinkPatchRequest:
+      type: object
+      required: [params]
+      properties:
+        params:
+          type: object
+          additionalProperties: true
+    LinkRelatedItemResponse:
+      type: object
+      required: [link, otherSideObjectType, otherSideObjectId, otherSide]
+      properties:
+        link:
+          $ref: "#/components/schemas/LinkResponse"
+        otherSideObjectType:
+          $ref: "#/components/schemas/LinkObjectType"
+        otherSideObjectId:
+          type: string
+        otherSide:
+          nullable: true
+    LinkRelatedResponse:
+      type: object
+      required: [items, grouped]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkRelatedItemResponse"
+        grouped:
+          type: object
+          required: [bien, user, rdv, visite]
+          properties:
+            bien:
+              type: array
+              items: {}
+            user:
+              type: array
+              items: {}
+            rdv:
+              type: array
+              items: {}
+            visite:
+              type: array
+              items: {}
     LoginRequest:
       type: object
       required: [email, password]
@@ -2447,7 +2718,7 @@ components:
           type: string
         propertyId:
           type: string
-        clientUserId:
+        userId:
           type: string
           nullable: true
         startsAt:
@@ -2464,7 +2735,7 @@ components:
           nullable: true
     CalendarAppointmentResponse:
       type: object
-      required: [id, title, propertyId, propertyTitle, clientUserId, clientFirstName, clientLastName, address, comment, startsAt, endsAt, createdAt, updatedAt]
+      required: [id, title, propertyId, propertyTitle, userId, userFirstName, userLastName, address, comment, startsAt, endsAt, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -2474,13 +2745,13 @@ components:
           type: string
         propertyTitle:
           type: string
-        clientUserId:
+        userId:
           type: string
           nullable: true
-        clientFirstName:
+        userFirstName:
           type: string
           nullable: true
-        clientLastName:
+        userLastName:
           type: string
           nullable: true
         address:

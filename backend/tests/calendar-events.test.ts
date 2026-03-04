@@ -1,9 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD } from "../src/auth/constants";
 import { db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { runSeed } from "../src/db/seed";
-import { calendarEvents, organizations, properties, users } from "../src/db/schema";
+import { businessLinks, calendarEvents, organizations, properties, users } from "../src/db/schema";
 import { createApp } from "../src/server";
 
 const loginDemoAndGetToken = async (): Promise<string> => {
@@ -155,12 +156,12 @@ describe("calendar events endpoints", () => {
     expect(payload.items.some((item: { id: string }) => item.id === foreignEventId)).toBe(false);
   });
 
-  it("cree un rendez-vous sans créer de lien client implicite sur le bien", async () => {
+  it("cree un rendez-vous sans créer de lien utilisateur implicite sur le bien", async () => {
     const token = await loginDemoAndGetToken();
     const now = new Date();
     const marker = `calendar-client-${crypto.randomUUID().slice(0, 8)}`;
     const propertyId = crypto.randomUUID();
-    const clientUserId = crypto.randomUUID();
+    const userId = crypto.randomUUID();
     const passwordHash = await Bun.password.hash("temporary-password");
 
     await db.insert(properties).values({
@@ -176,7 +177,7 @@ describe("calendar events endpoints", () => {
     });
 
     await db.insert(users).values({
-      id: clientUserId,
+      id: userId,
       orgId: "org_demo",
       firstName: "Nina",
       lastName: "Martin",
@@ -203,7 +204,7 @@ describe("calendar events endpoints", () => {
         body: JSON.stringify({
           title: `${marker} Rendez-vous`,
           propertyId,
-          clientUserId,
+          userId,
           startsAt: "2026-03-12T13:00:00.000Z",
           endsAt: "2026-03-12T14:00:00.000Z",
           address: null,
@@ -214,18 +215,21 @@ describe("calendar events endpoints", () => {
 
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
-    expect(created.clientUserId).toBe(clientUserId);
-    expect(created.clientFirstName).toBe("Nina");
-    expect(created.clientLastName).toBe("Martin");
+    expect(created.userId).toBe(userId);
+    expect(created.userFirstName).toBe("Nina");
+    expect(created.userLastName).toBe("Martin");
 
-    const links = await db.query.propertyUserLinks.findMany({
-      where: (fields, operators) =>
-        operators.and(
-          operators.eq(fields.orgId, "org_demo"),
-          operators.eq(fields.propertyId, propertyId),
-          operators.eq(fields.userId, clientUserId),
+    const links = await db
+      .select()
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "bien_user"),
+          eq(businessLinks.objectId1, propertyId),
+          eq(businessLinks.objectId2, userId),
         ),
-    });
+      );
     expect(links).toHaveLength(0);
   });
 });

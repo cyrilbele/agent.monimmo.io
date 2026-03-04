@@ -13,8 +13,61 @@ describe("PropertyService", () => {
         {
           provide: ApiClientService,
           useValue: {
-            request: (...args: unknown[]) => {
+            request: (method: string, url: string, options?: { body?: unknown }) => {
+              const args: unknown[] = [method, url];
+              if (typeof options !== "undefined") {
+                args.push(options);
+              }
               calls.push(args);
+
+              if (method === "POST" && url === "/links") {
+                const body =
+                  options && typeof options === "object" && options.body && typeof options.body === "object"
+                    ? (options.body as Record<string, unknown>)
+                    : {};
+                return Promise.resolve({
+                  id: "link_1",
+                  typeLien: body["typeLien"] ?? "bien_user",
+                  objectId1: body["objectId1"] ?? "property:1",
+                  objectId2: body["objectId2"] ?? "user_1",
+                  params: body["params"] ?? {},
+                  createdAt: "2026-02-01T10:00:00.000Z",
+                  updatedAt: "2026-02-01T10:00:00.000Z",
+                });
+              }
+
+              if (method === "GET" && url === "/links/related/bien/property%3A1") {
+                return Promise.resolve({
+                  items: [],
+                  grouped: {
+                    bien: [],
+                    user: [],
+                    rdv: [],
+                    visite: [],
+                  },
+                });
+              }
+
+              if (method === "GET" && url === "/users/user_1") {
+                return Promise.resolve({
+                  id: "user_1",
+                  email: "user1@example.test",
+                  firstName: "User",
+                  lastName: "One",
+                  orgId: "org_demo",
+                  accountType: "CLIENT",
+                  role: "OWNER",
+                  phone: null,
+                  address: null,
+                  postalCode: null,
+                  city: null,
+                  personalNotes: null,
+                  linkedProperties: [],
+                  createdAt: "2026-02-01T09:00:00.000Z",
+                  updatedAt: "2026-02-01T09:00:00.000Z",
+                });
+              }
+
               return Promise.resolve({});
             },
           },
@@ -73,7 +126,7 @@ describe("PropertyService", () => {
     await service.createCalendarAppointment({
       title: "Rendez-vous notaire",
       propertyId: "property:1",
-      clientUserId: "user_2",
+      userId: "user_2",
       startsAt: "2026-02-03T09:00:00.000Z",
       endsAt: "2026-02-03T10:00:00.000Z",
       address: "8 rue du Notariat, 75001 Paris",
@@ -99,11 +152,34 @@ describe("PropertyService", () => {
       ["PATCH", "/properties/property%3A1/status", { body: { status: "PROSPECTION" } }],
       [
         "POST",
-        "/properties/property%3A1/participants",
-        { body: { contactId: "contact_1", role: "VENDEUR" } },
+        "/links",
+        {
+          body: {
+            typeLien: "bien_user",
+            objectId1: "property:1",
+            objectId2: "contact_1",
+            params: {
+              relationRole: "PROSPECT",
+            },
+          },
+        },
       ],
-      ["GET", "/properties/property%3A1/clients"],
-      ["POST", "/properties/property%3A1/clients", { body: { userId: "user_1" } }],
+      ["GET", "/links/related/bien/property%3A1"],
+      ["GET", "/users/user_1"],
+      [
+        "POST",
+        "/links",
+        {
+          body: {
+            typeLien: "bien_user",
+            objectId1: "property:1",
+            objectId2: "user_1",
+            params: {
+              relationRole: "PROSPECT",
+            },
+          },
+        },
+      ],
       ["GET", "/properties/property%3A1/visits"],
       [
         "POST",
@@ -168,7 +244,7 @@ describe("PropertyService", () => {
           body: {
             title: "Rendez-vous notaire",
             propertyId: "property:1",
-            clientUserId: "user_2",
+            userId: "user_2",
             startsAt: "2026-02-03T09:00:00.000Z",
             endsAt: "2026-02-03T10:00:00.000Z",
             address: "8 rue du Notariat, 75001 Paris",

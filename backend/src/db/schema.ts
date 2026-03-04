@@ -73,42 +73,40 @@ export const propertyTimelineEvents = sqliteTable("property_timeline_events", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
-export const propertyUserLinks = sqliteTable(
-  "property_user_links",
+export const businessLinks = sqliteTable(
+  "business_links",
   {
     id: text("id").primaryKey(),
     orgId: text("org_id")
       .notNull()
       .references(() => organizations.id),
-    propertyId: text("property_id")
-      .notNull()
-      .references(() => properties.id),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id),
-    role: text("role").notNull(),
+    typeLien: text("type_lien").notNull(),
+    objectId1: text("object_id_1").notNull(),
+    objectId2: text("object_id_2").notNull(),
+    params: text("params").notNull().default("{}"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => ({
-    propertyUserUnique: uniqueIndex("property_user_links_property_user_unique").on(
-      table.propertyId,
-      table.userId,
+    orgTypePairUnique: uniqueIndex("business_links_org_type_pair_unique").on(
+      table.orgId,
+      table.typeLien,
+      table.objectId1,
+      table.objectId2,
     ),
+    orgObject1Idx: index("business_links_org_object1_idx").on(
+      table.orgId,
+      table.objectId1,
+      table.createdAt,
+    ),
+    orgObject2Idx: index("business_links_org_object2_idx").on(
+      table.orgId,
+      table.objectId2,
+      table.createdAt,
+    ),
+    orgCreatedAtIdx: index("business_links_org_created_at_idx").on(table.orgId, table.createdAt),
   }),
 );
-
-export const propertyParties = sqliteTable("property_parties", {
-  id: text("id").primaryKey(),
-  propertyId: text("property_id")
-    .notNull()
-    .references(() => properties.id),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  contactId: text("contact_id").notNull(),
-  role: text("role").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-});
 
 export const propertyVisits = sqliteTable(
   "property_visits",

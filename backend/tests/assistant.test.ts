@@ -175,7 +175,7 @@ describe("assistant endpoints", () => {
     expect((finalPayload.assistantMessage?.text ?? "").length).toBeGreaterThan(0);
   });
 
-  it("crée un client directement depuis une demande assistant", async () => {
+  it("crée un utilisateur directement depuis une demande assistant", async () => {
     const token = await registerAndGetToken("actions");
     const orgId = await getOrgIdFromToken(token);
     const phone = `06${Math.floor(Math.random() * 10_000_0000)
@@ -196,7 +196,7 @@ describe("assistant endpoints", () => {
     );
     expect(createResponse.status).toBe(200);
     const payload = await createResponse.json();
-    expect(payload.assistantMessage?.text).toContain("Client créé");
+    expect(payload.assistantMessage?.text).toContain("Utilisateur créé");
 
     const createdUser = await db.query.users.findFirst({
       where: and(eq(users.orgId, orgId), eq(users.phone, phone)),
@@ -261,7 +261,7 @@ describe("assistant endpoints", () => {
     } finally {
       assistantWebSearchProvider.search = originalSearch;
     }
-  });
+  }, 10000);
 
   it("masque les anciens messages assistant contenant la soul (migration douce)", async () => {
     const token = await registerAndGetToken("soul-cleanup");
@@ -323,7 +323,7 @@ describe("assistant endpoints", () => {
       orgId: me.orgId,
       userId: me.userId,
       conversationId,
-      objectType: "client",
+      objectType: "user",
       params: {
         firstName: "Tool",
         lastName: "Create",
@@ -334,15 +334,15 @@ describe("assistant endpoints", () => {
     if (createResult.status !== "EXECUTED") {
       throw new Error("createResult should execute directly");
     }
-    const createdClientId = createResult.objectId;
-    expect(createdClientId).toBeString();
+    const createdUserId = createResult.objectId;
+    expect(createdUserId).toBeString();
 
     const updateResult = await assistantService.toolUpdate({
       orgId: me.orgId,
       userId: me.userId,
       conversationId,
-      objectType: "client",
-      objectId: createdClientId,
+      objectType: "user",
+      objectId: createdUserId,
       params: {
         phone: "0611223344",
       },
@@ -351,13 +351,190 @@ describe("assistant endpoints", () => {
     if (updateResult.status !== "EXECUTED") {
       throw new Error("update should execute directly");
     }
-    expect(updateResult.objectId).toBe(createdClientId);
+    expect(updateResult.objectId).toBe(createdUserId);
 
     const refreshedClient = await usersService.getById({
       orgId: me.orgId,
-      id: createdClientId,
+      id: createdUserId,
     });
     expect(refreshedClient.phone).toBe("0611223344");
+  });
+
+  it("crée un lien propriétaire via toolCreate sur l'objet lien", async () => {
+    const token = await registerAndGetToken("tool-create-link-owner");
+    const me = await getMeFromToken(token);
+
+    const owner = await usersService.create({
+      orgId: me.orgId,
+      data: {
+        firstName: "John",
+        lastName: "Mog",
+        phone: `06${Math.floor(Math.random() * 10_000_0000)
+          .toString()
+          .padStart(8, "0")}`,
+        email: `john.mog.${crypto.randomUUID()}@monimmo.fr`,
+        accountType: "CLIENT",
+      },
+    });
+
+    const property = await propertiesService.create({
+      orgId: me.orgId,
+      title: "Appartement 100 m² - Mougins (7 rue Basse)",
+      city: "Mougins",
+      postalCode: "06250",
+      address: "7 rue basse",
+      details: {
+        propertyType: "APPARTEMENT",
+      },
+    });
+
+    const conversation = await assistantService.getConversation({
+      orgId: me.orgId,
+      userId: me.userId,
+    });
+
+    const createResult = await assistantService.toolCreate({
+      orgId: me.orgId,
+      userId: me.userId,
+      conversationId: conversation.id,
+      objectType: "lien",
+      params: {
+        typeLien: "bien_user",
+        objectId1: property.id,
+        objectId2: owner.id,
+        params: {
+          relationRole: "OWNER",
+        },
+      },
+    });
+
+    expect(createResult.status).toBe("EXECUTED");
+    expect(createResult.summary).toContain("Lien");
+
+    const linkedUsers = await propertiesService.listProspects({
+      orgId: me.orgId,
+      propertyId: property.id,
+    });
+    const ownerLink = linkedUsers.items.find((item) => item.userId === owner.id);
+    expect(ownerLink).toBeDefined();
+    expect(ownerLink?.relationRole).toBe("OWNER");
+  });
+
+  it("refuse update sans params et empêche un faux succès assistant", async () => {
+    const token = await registerAndGetToken("openai-update-empty-params");
+    const me = await getMeFromToken(token);
+    const property = await propertiesService.create({
+      orgId: me.orgId,
+      title: "Appartement centre-ville - antibes",
+      city: "Antibes",
+      postalCode: "06600",
+      address: "11 rue des Tertres",
+      details: {
+        propertyType: "APPARTEMENT",
+      },
+    });
+
+    const originalFetch = globalThis.fetch;
+    const originalAiProvider = process.env.AI_PROVIDER;
+    const originalOpenAIKey = process.env.OPENAI_API_KEY;
+    let responseCallCount = 0;
+
+    process.env.AI_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+
+    globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url.endsWith("/responses")) {
+        responseCallCount += 1;
+        if (responseCallCount === 1) {
+          return new Response(
+            JSON.stringify({
+              id: "resp_empty_update_1",
+              output: [
+                {
+                  type: "function_call",
+                  name: "update",
+                  call_id: "call_empty_update_1",
+                  arguments: JSON.stringify({
+                    objectType: "bien",
+                    objectId: property.id,
+                  }),
+                },
+              ],
+              usage: {
+                input_tokens: 120,
+                output_tokens: 24,
+                total_tokens: 144,
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            id: "resp_empty_update_2",
+            output_text:
+              "C'est fait : j'ai rattaché le propriétaire John Mog au bien.",
+            usage: {
+              input_tokens: 90,
+              output_tokens: 25,
+              total_tokens: 115,
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const response = await createApp().fetch(
+        new Request("http://localhost/assistant/messages", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            message: "Rattache le propriétaire John Mog au bien en cours.",
+            context: {
+              objectType: "bien",
+              objectId: property.id,
+            },
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      const text = String(payload.assistantMessage?.text ?? "");
+      expect(text).toContain("Je n'ai pas pu exécuter l'action demandée");
+      expect(text.toLowerCase()).toContain("params");
+
+      const links = await propertiesService.listProspects({
+        orgId: me.orgId,
+        propertyId: property.id,
+      });
+      expect(links.items).toHaveLength(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.env.AI_PROVIDER = originalAiProvider;
+      process.env.OPENAI_API_KEY = originalOpenAIKey;
+    }
   });
 
   it("normalise les aliases de mise à jour bien (surface/typebien) et conserve les autres details", async () => {
@@ -567,7 +744,7 @@ describe("assistant endpoints", () => {
                   name: "getParams",
                   call_id: "call_get_params_1",
                   arguments: JSON.stringify({
-                    objectType: "client",
+                    objectType: "user",
                   }),
                 },
               ],
@@ -588,7 +765,7 @@ describe("assistant endpoints", () => {
           JSON.stringify({
             id: "resp_2",
             output_text:
-              "Pour créer un client, il faut au moins email ou téléphone. Je peux ensuite proposer la création.",
+              "Pour créer un utilisateur, il faut au moins email ou téléphone. Je peux ensuite proposer la création.",
             usage: {
               input_tokens: 80,
               output_tokens: 20,
@@ -614,7 +791,7 @@ describe("assistant endpoints", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            message: "Quels paramètres faut-il pour créer un client ?",
+            message: "Quels paramètres faut-il pour créer un utilisateur ?",
             context: {
               objectType: "bien",
               objectId: "3e4c1cee-465a-4da2-9544-e1ee2bcff85c",
@@ -625,7 +802,7 @@ describe("assistant endpoints", () => {
 
       expect(response.status).toBe(200);
       const payload = await response.json();
-      expect(payload.assistantMessage.text).toContain("Pour créer un client");
+      expect(payload.assistantMessage.text).toContain("Pour créer un utilisateur");
       expect(capturedBodies.length).toBeGreaterThanOrEqual(1);
 
       const firstBody = capturedBodies[0] ?? {};

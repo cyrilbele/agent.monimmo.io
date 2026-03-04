@@ -10,7 +10,7 @@ import {
 type ManualCalendarPayload = {
   kind: "MANUAL_APPOINTMENT";
   propertyId: string;
-  clientUserId: string | null;
+  userId: string | null;
   addressOverride: string | null;
   comment: string | null;
 };
@@ -18,7 +18,7 @@ type ManualCalendarPayload = {
 type ManualCalendarData = {
   title: string;
   propertyId: string;
-  clientUserId: string | null;
+  userId: string | null;
   startsAt: string;
   endsAt: string;
   address: string | null;
@@ -136,7 +136,7 @@ const parseManualPayload = (rawPayload: string | null): ManualCalendarPayload | 
     return {
       kind: MANUAL_PAYLOAD_KIND,
       propertyId: propertyId.trim(),
-      clientUserId: normalizeOptionalString(parsed.clientUserId),
+      userId: normalizeOptionalString(parsed.userId),
       addressOverride: normalizeOptionalString(parsed.addressOverride),
       comment: normalizeOptionalString(parsed.comment),
     };
@@ -166,8 +166,8 @@ const parseManualData = (input: {
   return {
     title: normalizeOptionalString(data.title) ?? normalizeOptionalString(input.title) ?? "Rendez-vous",
     propertyId,
-    clientUserId:
-      normalizeOptionalString(data.clientUserId) ?? payload?.clientUserId ?? null,
+    userId:
+      normalizeOptionalString(data.userId) ?? payload?.userId ?? null,
     startsAt: toIsoDateTimeString(data.startsAt) ?? input.startsAt.toISOString(),
     endsAt: toIsoDateTimeString(data.endsAt) ?? input.endsAt.toISOString(),
     address:
@@ -185,7 +185,7 @@ const serializeManualData = (data: ManualCalendarData): string =>
   JSON.stringify({
     title: data.title,
     propertyId: data.propertyId,
-    clientUserId: data.clientUserId,
+    userId: data.userId,
     startsAt: data.startsAt,
     endsAt: data.endsAt,
     address: data.address,
@@ -204,20 +204,20 @@ const assertPropertyExistsInOrg = async (input: { orgId: string; propertyId: str
   return property;
 };
 
-const assertClientExistsInOrg = async (input: { orgId: string; clientUserId: string }) => {
+const assertUserExistsInOrg = async (input: { orgId: string; userId: string }) => {
   const user = await db.query.users.findFirst({
-    where: and(eq(users.id, input.clientUserId), eq(users.orgId, input.orgId)),
+    where: and(eq(users.id, input.userId), eq(users.orgId, input.orgId)),
   });
 
   if (!user) {
-    throw new HttpError(404, "USER_NOT_FOUND", "Client introuvable");
+    throw new HttpError(404, "USER_NOT_FOUND", "Utilisateur introuvable");
   }
 
   if (user.accountType !== "CLIENT") {
     throw new HttpError(
       400,
-      "PROSPECT_MUST_BE_CLIENT",
-      "Le prospect doit etre un utilisateur de type client",
+      "USER_MUST_BE_VALID",
+      "Le participant doit etre un utilisateur valide",
     );
   }
 
@@ -300,16 +300,16 @@ export const calendarService = {
         : [];
 
     const propertyById = new Map(propertyRows.map((property) => [property.id, property]));
-    const clientIds = Array.from(
+    const userIds = Array.from(
       new Set(
         rowsWithData
-          .map((item) => item.data.clientUserId)
-          .filter((clientUserId): clientUserId is string => Boolean(clientUserId)),
+          .map((item) => item.data.userId)
+          .filter((userId): userId is string => Boolean(userId)),
       ),
     );
 
-    const clientRows =
-      clientIds.length > 0
+    const userRows =
+      userIds.length > 0
       ? await db
           .select({
             id: users.id,
@@ -318,10 +318,10 @@ export const calendarService = {
             data: users.data,
           })
           .from(users)
-          .where(and(eq(users.orgId, input.orgId), inArray(users.id, clientIds)))
+          .where(and(eq(users.orgId, input.orgId), inArray(users.id, userIds)))
         : [];
-    const clientById = new Map(
-      clientRows.map((client) => {
+    const userById = new Map(
+      userRows.map((client) => {
         const clientData = parseJsonRecord(client.data);
         return [
           client.id,
@@ -342,8 +342,8 @@ export const calendarService = {
     return {
       items: rowsWithData.map((item) => {
         const property = propertyById.get(item.data.propertyId);
-        const client = item.data.clientUserId
-          ? clientById.get(item.data.clientUserId)
+        const linkedUser = item.data.userId
+          ? userById.get(item.data.userId)
           : undefined;
         const resolvedAddress =
           item.data.address ??
@@ -360,9 +360,9 @@ export const calendarService = {
           title: item.data.title,
           propertyId: item.data.propertyId,
           propertyTitle: property?.title ?? "Bien introuvable",
-          clientUserId: item.data.clientUserId,
-          clientFirstName: client?.firstName ?? null,
-          clientLastName: client?.lastName ?? null,
+          userId: item.data.userId,
+          userFirstName: linkedUser?.firstName ?? null,
+          userLastName: linkedUser?.lastName ?? null,
           address: resolvedAddress,
           comment: item.data.comment,
           startsAt: item.data.startsAt,
@@ -444,7 +444,7 @@ export const calendarService = {
     const nextPayload: ManualCalendarPayload = {
       kind: MANUAL_PAYLOAD_KIND,
       propertyId: nextData.propertyId,
-      clientUserId: nextData.clientUserId,
+      userId: nextData.userId,
       addressOverride: nextData.address,
       comment: nextData.comment,
     };
@@ -488,7 +488,7 @@ export const calendarService = {
     orgId: string;
     title: string;
     propertyId: string;
-    clientUserId?: string | null;
+    userId?: string | null;
     startsAt: string;
     endsAt: string;
     address?: string | null;
@@ -526,25 +526,25 @@ export const calendarService = {
 
     const addressOverride = normalizeOptionalString(input.address);
     const comment = normalizeOptionalString(input.comment);
-    const clientUserId = normalizeOptionalString(input.clientUserId);
-    const client = clientUserId
-      ? await assertClientExistsInOrg({
+    const userId = normalizeOptionalString(input.userId);
+    const linkedUser = userId
+      ? await assertUserExistsInOrg({
           orgId: input.orgId,
-          clientUserId,
+          userId,
         })
       : null;
 
     const payload: ManualCalendarPayload = {
       kind: MANUAL_PAYLOAD_KIND,
       propertyId: property.id,
-      clientUserId: client?.id ?? null,
+      userId: linkedUser?.id ?? null,
       addressOverride,
       comment,
     };
     const data: ManualCalendarData = {
       title,
       propertyId: property.id,
-      clientUserId: client?.id ?? null,
+      userId: linkedUser?.id ?? null,
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),
       address: addressOverride,
@@ -573,9 +573,9 @@ export const calendarService = {
       title,
       propertyId: property.id,
       propertyTitle: property.title,
-      clientUserId: client?.id ?? null,
-      clientFirstName: client?.firstName ?? null,
-      clientLastName: client?.lastName ?? null,
+      userId: linkedUser?.id ?? null,
+      userFirstName: linkedUser?.firstName ?? null,
+      userLastName: linkedUser?.lastName ?? null,
       address:
         addressOverride ??
         toPropertyAddress({
@@ -598,7 +598,7 @@ export const calendarService = {
       changes: [
         { paramName: "title", paramValue: created.title },
         { paramName: "propertyId", paramValue: created.propertyId },
-        { paramName: "clientUserId", paramValue: created.clientUserId },
+        { paramName: "userId", paramValue: created.userId },
         { paramName: "startsAt", paramValue: created.startsAt },
         { paramName: "endsAt", paramValue: created.endsAt },
         { paramName: "address", paramValue: created.address },

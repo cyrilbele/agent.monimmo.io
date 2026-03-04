@@ -3,12 +3,14 @@ import { db } from "../db/client";
 import { objectChanges } from "../db/schema";
 import type { ObjectType } from "./structure";
 
+export type TrackedObjectType = ObjectType | "lien";
+
 export const OBJECT_CHANGE_MODES = ["USER", "AI"] as const;
 export type ObjectChangeMode = (typeof OBJECT_CHANGE_MODES)[number];
 
 export type ObjectChangeRow = {
   id: string;
-  objectType: ObjectType;
+  objectType: TrackedObjectType;
   objectId: string;
   paramName: string;
   paramValue: string;
@@ -39,7 +41,7 @@ const truncate = (value: string): string =>
 
 const toObjectChangeRow = (row: typeof objectChanges.$inferSelect): ObjectChangeRow => ({
   id: row.id,
-  objectType: row.objectType as ObjectType,
+  objectType: row.objectType as TrackedObjectType,
   objectId: row.objectId,
   paramName: row.paramName,
   paramValue: row.paramValue,
@@ -50,7 +52,7 @@ const toObjectChangeRow = (row: typeof objectChanges.$inferSelect): ObjectChange
 export const objectChangeLogService = {
   async list(input: {
     orgId: string;
-    objectType: ObjectType;
+    objectType: TrackedObjectType;
     objectId: string;
     limit?: number;
   }): Promise<{ items: ObjectChangeRow[] }> {
@@ -75,7 +77,7 @@ export const objectChangeLogService = {
 
   async appendChanges(input: {
     orgId: string;
-    objectType: ObjectType;
+    objectType: TrackedObjectType;
     objectId: string;
     mode: ObjectChangeMode;
     changes: Array<{ paramName: string; paramValue: unknown }>;
@@ -109,7 +111,7 @@ export const objectChangeLogService = {
 
 export const trackObjectChangesSafe = async (input: {
   orgId: string;
-  objectType: ObjectType;
+  objectType: TrackedObjectType;
   objectId: string;
   mode: ObjectChangeMode;
   changes: Array<{ paramName: string; paramValue: unknown }>;
