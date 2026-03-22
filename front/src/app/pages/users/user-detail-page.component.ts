@@ -18,7 +18,7 @@ import { ActivatedRoute, RouterLink } from "@angular/router";
 import type {
   AccountUserDetailResponse,
   AccountUserLinkedPropertyResponse,
-  PropertyVisitResponse,
+  RdvResponse,
 } from "../../core/api.models";
 import { PropertyService } from "../../services/property.service";
 import { isEmailValid } from "../../core/auth-helpers";
@@ -63,7 +63,7 @@ export class UserDetailPageComponent implements OnInit {
   readonly editing = signal(false);
   readonly savePending = signal(false);
   readonly feedback = signal<string | null>(null);
-  readonly userVisits = signal<PropertyVisitResponse[]>([]);
+  readonly userVisits = signal<RdvResponse[]>([]);
   readonly visitsLoading = signal(false);
   readonly visitsError = signal<string | null>(null);
 
@@ -309,14 +309,14 @@ export class UserDetailPageComponent implements OnInit {
     this.visitsError.set(null);
 
     try {
-      const response = await this.propertyService.listCalendarVisits();
+      const response = await this.propertyService.listRdv();
       const filtered = response.items
-        .filter((visit) => visit.prospectUserId === this.userId)
+        .filter((rdv) => rdv.userId === this.userId)
         .slice()
         .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
       this.userVisits.set(filtered);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Chargement des visites impossible.";
+      const message = error instanceof Error ? error.message : "Chargement des rendez-vous impossible.";
       this.visitsError.set(message);
       this.userVisits.set([]);
     } finally {

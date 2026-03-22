@@ -28,7 +28,7 @@ import {
   type AssistantWebSearchTrace,
 } from "./web-search";
 
-export type AssistantObjectType = "bien" | "user" | "rdv" | "visite" | "lien";
+export type AssistantObjectType = "bien" | "user" | "rdv" | "lien";
 
 export type AssistantMessageResponse = {
   id: string;
@@ -145,7 +145,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
     type: "function",
     name: "search",
     description:
-      "Recherche des objets métiers locaux (bien, user, rdv, visite, lien) dans la base Monimmo.",
+      "Recherche des objets métiers locaux (bien, user, rdv, lien) dans la base Monimmo.",
     parameters: {
       type: "object",
       properties: {
@@ -155,7 +155,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
         },
         objectType: {
           type: "string",
-          enum: ["bien", "user", "rdv", "visite", "lien"],
+          enum: ["bien", "user", "rdv", "lien"],
           description: "Type d'objet ciblé. Optionnel.",
         },
       },
@@ -172,7 +172,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "user", "rdv", "visite", "lien"],
+          enum: ["bien", "user", "rdv", "lien"],
         },
         objectId: {
           type: "string",
@@ -193,7 +193,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "user", "rdv", "visite", "lien"],
+          enum: ["bien", "user", "rdv", "lien"],
         },
         typeLien: {
           type: "string",
@@ -214,7 +214,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "user", "rdv", "visite", "lien"],
+          enum: ["bien", "user", "rdv", "lien"],
         },
         params: {
           type: "object",
@@ -235,7 +235,7 @@ const ASSISTANT_OPENAI_TOOL_DEFINITIONS = [
       properties: {
         objectType: {
           type: "string",
-          enum: ["bien", "user", "rdv", "visite", "lien"],
+          enum: ["bien", "user", "rdv", "lien"],
         },
         objectId: {
           type: "string",
@@ -957,7 +957,7 @@ const extractOpenAIToolCalls = (payload: unknown): AssistantToolCall[] => {
 };
 
 const normalizeAssistantObjectType = (value: unknown): AssistantObjectType | null => {
-  if (value !== "bien" && value !== "user" && value !== "rdv" && value !== "visite" && value !== "lien") {
+  if (value !== "bien" && value !== "user" && value !== "rdv" && value !== "lien") {
     return null;
   }
 
@@ -1587,7 +1587,7 @@ const runOpenAIToolDrivenTurn = async (input: {
           "Contexte de navigation transmis par l'application:",
           `objectType=${input.context.objectType}`,
           `objectId=${input.context.objectId}`,
-          "Si l'utilisateur dit \"ce bien\", \"cet utilisateur\", \"ce rdv\" ou \"cette visite\", utilise cet objet comme référence principale.",
+          "Si l'utilisateur dit \"ce bien\", \"cet utilisateur\" ou \"ce rdv\", utilise cet objet comme référence principale.",
         ].join("\n")
       : "",
   ].filter((value) => value.length > 0);
@@ -1883,6 +1883,10 @@ const executeCreate = async (input: {
   if (input.objectType === "rdv") {
     const title = normalizeOptionalString(input.params.title) ?? "Rendez-vous";
     const propertyId = normalizeOptionalString(input.params.propertyId);
+    const rdvType = normalizeOptionalString(input.params.rdvType);
+    const userId =
+      normalizeOptionalString(input.params.userId) ??
+      normalizeOptionalString(input.params.prospectUserId);
     const startsAt = normalizeOptionalString(input.params.startsAt);
     const endsAt = normalizeOptionalString(input.params.endsAt);
 
@@ -1894,11 +1898,40 @@ const executeCreate = async (input: {
       );
     }
 
+    if (rdvType === "VISITE_BIEN") {
+      if (!userId) {
+        throw new HttpError(
+          400,
+          "ASSISTANT_INVALID_CREATE_PAYLOAD",
+          "Le rendez-vous visite nécessite userId, propertyId, startsAt et endsAt.",
+        );
+      }
+
+      const createdVisit = await propertiesService.addVisit({
+        orgId: input.orgId,
+        propertyId,
+        prospectUserId: userId,
+        startsAt,
+        endsAt,
+        changeMode: "AI",
+      });
+      const created = await calendarService.getRdvById({
+        orgId: input.orgId,
+        id: createdVisit.id,
+      });
+
+      return {
+        objectId: created.id,
+        summary: `Rendez-vous créé: ${created.title} (${formatTime(created.startsAt)}).`,
+        result: created,
+      };
+    }
+
     const created = await calendarService.createManualAppointment({
       orgId: input.orgId,
       title,
       propertyId,
-      userId: normalizeOptionalString(input.params.userId),
+      userId,
       startsAt,
       endsAt,
       address: normalizeOptionalString(input.params.address),
@@ -1909,36 +1942,6 @@ const executeCreate = async (input: {
     return {
       objectId: created.id,
       summary: `Rendez-vous créé: ${created.title} (${formatTime(created.startsAt)}).`,
-      result: created,
-    };
-  }
-
-  if (input.objectType === "visite") {
-    const propertyId = normalizeOptionalString(input.params.propertyId);
-    const prospectUserId = normalizeOptionalString(input.params.prospectUserId);
-    const startsAt = normalizeOptionalString(input.params.startsAt);
-    const endsAt = normalizeOptionalString(input.params.endsAt);
-
-    if (!propertyId || !prospectUserId || !startsAt || !endsAt) {
-      throw new HttpError(
-        400,
-        "ASSISTANT_INVALID_CREATE_PAYLOAD",
-        "La visite nécessite propertyId, prospectUserId, startsAt et endsAt.",
-      );
-    }
-
-    const created = await propertiesService.addVisit({
-      orgId: input.orgId,
-      propertyId,
-      prospectUserId,
-      startsAt,
-      endsAt,
-      changeMode: "AI",
-    });
-
-    return {
-      objectId: created.id,
-      summary: `Visite créée pour ${created.propertyTitle}.`,
       result: created,
     };
   }
@@ -2056,34 +2059,21 @@ const executeUpdate = async (input: {
   }
 
   if (input.objectType === "rdv") {
-    const updated = await calendarService.patchManualAppointmentComment({
-      orgId: input.orgId,
-      id: input.objectId,
-      comment: readPatchStringField(input.params, "comment"),
-      changeMode: "AI",
-    });
-
-    return {
-      objectId: updated.id,
-      summary: `Rendez-vous mis à jour: ${updated.title}.`,
-      result: updated,
-    };
-  }
-
-  if (input.objectType === "visite") {
-    const updated = await propertiesService.patchVisitById({
+    const compteRendu = readPatchStringField(input.params, "compteRendu");
+    const comment = readPatchStringField(input.params, "comment");
+    const updated = await calendarService.patchRdvById({
       orgId: input.orgId,
       id: input.objectId,
       changeMode: "AI",
       data: {
-        compteRendu: readPatchStringField(input.params, "compteRendu"),
+        comment: typeof comment === "undefined" ? compteRendu : comment,
         bonDeVisiteFileId: readPatchStringField(input.params, "bonDeVisiteFileId"),
       },
     });
 
     return {
       objectId: updated.id,
-      summary: `Visite mise à jour pour ${updated.propertyTitle}.`,
+      summary: `Rendez-vous mis à jour: ${updated.title}.`,
       result: updated,
     };
   }
@@ -2687,7 +2677,7 @@ export const assistantService = {
     }
 
     return respondWithOptionalWebFallback(
-      "Je peux vous aider sur les biens, utilisateurs, rendez-vous, visites et liens. Donnez-moi une action précise.",
+      "Je peux vous aider sur les biens, utilisateurs, rendez-vous et liens. Donnez-moi une action précise.",
     );
   },
 
@@ -2724,14 +2714,14 @@ export const assistantService = {
     }
 
     if (!input.objectType || input.objectType === "rdv") {
-      const listed = await calendarService.listManualAppointments({ orgId: input.orgId });
-      const filtered = listed.items.filter((item) =>
+      const listedRdv = await calendarService.listRdv({ orgId: input.orgId });
+      const filteredRdv = listedRdv.items.filter((item) =>
         normalizeText(`${item.title} ${item.propertyTitle} ${item.userFirstName ?? ""} ${item.userLastName ?? ""}`).includes(
           normalizeText(q),
         ),
       );
       if (input.objectType === "rdv") {
-        return { items: filtered };
+        return { items: filteredRdv };
       }
     }
 
@@ -2749,16 +2739,12 @@ export const assistantService = {
       }
     }
 
-    const listedVisits = await propertiesService.listCalendarVisits({ orgId: input.orgId });
-    const filteredVisits = listedVisits.items.filter((item) =>
-      normalizeText(`${item.propertyTitle} ${item.prospectFirstName} ${item.prospectLastName}`).includes(
+    const listedRdv = await calendarService.listRdv({ orgId: input.orgId });
+    const filteredRdv = listedRdv.items.filter((item) =>
+      normalizeText(`${item.title} ${item.propertyTitle} ${item.userFirstName ?? ""} ${item.userLastName ?? ""}`).includes(
         normalizeText(q),
       ),
     );
-
-    if (input.objectType === "visite") {
-      return { items: filteredVisits };
-    }
 
     return {
       items: [
@@ -2783,7 +2769,7 @@ export const assistantService = {
           )
           .slice(0, 10)
           .map((item) => ({ objectType: "lien", data: item })),
-        ...filteredVisits.slice(0, 10).map((item) => ({ objectType: "visite", data: item })),
+        ...filteredRdv.slice(0, 10).map((item) => ({ objectType: "rdv", data: item })),
       ],
     };
   },
@@ -2802,14 +2788,13 @@ export const assistantService = {
     }
 
     if (input.objectType === "rdv") {
-      return calendarService.getManualAppointmentById({ orgId: input.orgId, id: input.objectId });
+      return await calendarService.getRdvById({ orgId: input.orgId, id: input.objectId });
     }
 
     if (input.objectType === "lien") {
       return linksService.getById({ orgId: input.orgId, id: input.objectId });
     }
-
-    return propertiesService.getVisitById({ orgId: input.orgId, id: input.objectId });
+    throw new HttpError(400, "ASSISTANT_UNSUPPORTED_OBJECT", "Type d'objet non supporté");
   },
 
   toolGetParams(input: { objectType: AssistantObjectType; typeLien?: string }): unknown {

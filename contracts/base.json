@@ -1,0 +1,61 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Base object with soft delete and date tracking",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "base",
+  "kind": "abstract",
+  "model": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Identifier of the record",
+      "required": true,
+      "system": {
+        "managedBy": "backend",
+        "onCreate": true,
+        "immutable": true,
+        "clientWritable": false
+      }
+    },
+    "insertedAt": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Insertion date",
+      "required": true,
+      "system": {
+        "managedBy": "backend",
+        "onCreate": true,
+        "immutable": true,
+        "clientWritable": false
+      }
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Last update date",
+      "required": true,
+      "system": {
+        "managedBy": "backend",
+        "onCreate": true,
+        "onUpdate": true,
+        "clientWritable": false
+      }
+    },
+    "isDeleted": {
+      "type": "boolean",
+      "title": "Soft delete flag",
+      "default": false,
+      "required": true,
+      "system": {
+        "managedBy": "backend",
+        "softDelete": true,
+        "clientWritable": false
+      }
+    }
+  },
+  "storage": {
+    "columns": ["id", "insertedAt", "updatedAt", "isDeleted"],
+    "auditTrail": ["isDeleted"]
+  }
+}

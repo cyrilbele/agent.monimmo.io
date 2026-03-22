@@ -165,7 +165,7 @@ export const GlobalSearchResponseSchema = z.object({
   items: z.array(GlobalSearchItemResponseSchema),
 });
 
-export const AssistantObjectTypeSchema = z.enum(["bien", "user", "rdv", "visite", "lien"]);
+export const AssistantObjectTypeSchema = z.enum(["bien", "user", "rdv", "lien"]);
 
 export const AssistantCitationResponseSchema = z.object({
   title: z.string(),
@@ -267,13 +267,11 @@ export const ObjectDataFieldDefinitionSchema = z.object({
 
 export const ObjectDataStructureResponseSchema = z.array(ObjectDataFieldDefinitionSchema);
 
-export const LinkObjectTypeSchema = z.enum(["bien", "user", "rdv", "visite"]);
+export const LinkObjectTypeSchema = z.enum(["bien", "user", "rdv"]);
 export const LinkTypeSchema = z.enum([
   "bien_user",
   "rdv_bien",
   "rdv_user",
-  "visite_bien",
-  "visite_user",
 ]);
 
 export const LinkTypeDefinitionSchema = z.object({
@@ -327,7 +325,6 @@ export const LinkRelatedResponseSchema = z.object({
     bien: z.array(z.unknown()),
     user: z.array(z.unknown()),
     rdv: z.array(z.unknown()),
-    visite: z.array(z.unknown()),
   }),
 });
 
@@ -563,6 +560,31 @@ export const CalendarAppointmentResponseSchema = z.object({
 
 export const CalendarAppointmentListResponseSchema = z.object({
   items: z.array(CalendarAppointmentResponseSchema),
+});
+
+export const RdvTypeSchema = z.enum(["RENDEZ_VOUS", "VISITE_BIEN"]);
+
+export const RdvResponseSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  propertyId: z.string(),
+  propertyTitle: z.string(),
+  userId: z.string().nullable(),
+  userFirstName: z.string().nullable(),
+  userLastName: z.string().nullable(),
+  address: z.string().nullable(),
+  comment: z.string().nullable(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  rdvType: RdvTypeSchema,
+  bonDeVisiteFileId: z.string().nullable(),
+  bonDeVisiteFileName: z.string().nullable(),
+});
+
+export const RdvListResponseSchema = z.object({
+  items: z.array(RdvResponseSchema),
 });
 
 export const PropertyRiskStatusSchema = z.enum(["OK", "NO_DATA", "UNAVAILABLE"]);
@@ -1000,6 +1022,9 @@ export const DtoSchemaMap = {
   CalendarAppointmentCreateRequest: CalendarAppointmentCreateRequestSchema,
   CalendarAppointmentResponse: CalendarAppointmentResponseSchema,
   CalendarAppointmentListResponse: CalendarAppointmentListResponseSchema,
+  RdvType: RdvTypeSchema,
+  RdvResponse: RdvResponseSchema,
+  RdvListResponse: RdvListResponseSchema,
   PropertyRiskStatus: PropertyRiskStatusSchema,
   PropertyRiskLocation: PropertyRiskLocationSchema,
   PropertyRiskItemResponse: PropertyRiskItemResponseSchema,

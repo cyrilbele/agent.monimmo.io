@@ -1,0 +1,36 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Historisation des changements dans la base",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "auditTrail",
+  "kind": "auditTrail",
+  "extends": "tenantable",
+  "model": {
+    "contract": {
+      "type": "string",
+      "title": "contract",
+      "description": "Nom du contrat auquel le paramètre appartient"
+    },
+    "object": {
+      "type": "uuid",
+      "title": "identifiant de l'objet",
+      "description": "Identifiant de l'objet auquel le paramètre appartient"
+    },
+    "parameterName": {
+      "type": "string",
+      "title": "parametre",
+      "description": "Identifiant du paramètre"
+    },
+    "date": {
+      "type": "date-time",
+      "title": "Date du changement",
+      "description": "Identifier of the parameter"
+    },
+    "value": {
+      "type": "string",
+      "title": "Date du changement",
+      "description": "Représentation en string de la valeur"
+    }
+  }
+}

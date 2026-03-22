@@ -596,6 +596,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/calendar-events/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCalendarEventById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rdv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getRdv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rdv/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getRdvById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/visits/{id}": {
         parameters: {
             query?: never;
@@ -1091,7 +1139,7 @@ export interface components {
             items: components["schemas"]["GlobalSearchItemResponse"][];
         };
         /** @enum {string} */
-        AssistantObjectType: "bien" | "user" | "rdv" | "visite" | "lien";
+        AssistantObjectType: "bien" | "user" | "rdv" | "lien";
         AssistantCitationResponse: {
             title: string;
             /** Format: uri */
@@ -1173,9 +1221,9 @@ export interface components {
         };
         ObjectDataStructureResponse: components["schemas"]["ObjectDataFieldDefinition"][];
         /** @enum {string} */
-        LinkObjectType: "bien" | "user" | "rdv" | "visite";
+        LinkObjectType: "bien" | "user" | "rdv";
         /** @enum {string} */
-        LinkType: "bien_user" | "rdv_bien" | "rdv_user" | "visite_bien" | "visite_user";
+        LinkType: "bien_user" | "rdv_bien" | "rdv_user";
         LinkTypeDefinition: {
             typeLien: components["schemas"]["LinkType"];
             name: string;
@@ -1228,7 +1276,6 @@ export interface components {
                 bien: unknown[];
                 user: unknown[];
                 rdv: unknown[];
-                visite: unknown[];
             };
         };
         LoginRequest: {
@@ -1454,6 +1501,33 @@ export interface components {
         };
         CalendarAppointmentListResponse: {
             items: components["schemas"]["CalendarAppointmentResponse"][];
+        };
+        /** @enum {string} */
+        RdvType: "RENDEZ_VOUS" | "VISITE_BIEN";
+        RdvResponse: {
+            id: string;
+            title: string;
+            propertyId: string;
+            propertyTitle: string;
+            userId: string | null;
+            userFirstName: string | null;
+            userLastName: string | null;
+            address: string | null;
+            comment: string | null;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            rdvType: components["schemas"]["RdvType"];
+            bonDeVisiteFileId: string | null;
+            bonDeVisiteFileName: string | null;
+        };
+        RdvListResponse: {
+            items: components["schemas"]["RdvResponse"][];
         };
         /** @enum {string} */
         PropertyRiskStatus: "OK" | "NO_DATA" | "UNAVAILABLE";
@@ -1725,6 +1799,7 @@ export interface components {
     parameters: {
         IdParam: string;
         LimitParam: number;
+        ObjectChangeLimitParam: number;
         CursorParam: string;
     };
     requestBodies: never;
@@ -2211,7 +2286,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                objectType: "bien" | "user" | "rdv" | "visite";
+                objectType: "bien" | "user" | "rdv";
             };
             cookie?: never;
         };
@@ -2568,7 +2643,9 @@ export interface operations {
     };
     getObjectChangeHistory: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: components["parameters"]["ObjectChangeLimitParam"];
+            };
             header?: never;
             path: {
                 objectType: components["schemas"]["AssistantObjectType"];
@@ -3245,6 +3322,91 @@ export interface operations {
                 };
             };
             /** @description Bien introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getCalendarEventById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Détail d'un rendez-vous. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarAppointmentResponse"];
+                };
+            };
+            /** @description Rendez-vous introuvable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getRdv: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste unifiée des rendez-vous. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RdvListResponse"];
+                };
+            };
+        };
+    };
+    getRdvById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Détail d'un rendez-vous. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RdvResponse"];
+                };
+            };
+            /** @description Rendez-vous introuvable. */
             404: {
                 headers: {
                     [name: string]: unknown;

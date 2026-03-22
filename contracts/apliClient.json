@@ -1,0 +1,24 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Client API de l'application",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "apiClient",
+  "kind": "entity",
+  "extends": "base",
+  "model": {
+    "name": {
+      "type": "string",
+      "title": "Nom du client",
+      "required": true
+    },
+    "email": {
+      "type": "string",
+      "title": "Email de contact pour les changements d'API",
+      "required": true
+    }
+  },
+  "storage": {
+    "table": "apiClient"
+  }
+}

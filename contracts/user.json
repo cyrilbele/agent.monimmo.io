@@ -1,0 +1,56 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Utilisateur",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "user",
+  "kind": "entity",
+  "extends": "tenantable",
+  "model": {
+    "email": {
+      "title": "Email",
+      "type": "string",
+      "format": "email"
+    },
+    "encodedPassword": {
+      "type": "string"
+    },
+    "accountType": {
+      "type": "string",
+      "title": "Type de compte",
+      "description": "Le type de compte influence l'affichage de l'application. Chaque type de compte aura un affichage différent",
+      "enum": ["ADMIN", "AGENT", "CLIENT", "NOTAIRE"],
+      "enumMeta": {
+        "ADMIN": {
+          "label": "Administrateur",
+          "description": "Administrateur de la plateforme, a accès à l'ensemble des comptes"
+        },
+        "AGENT": {
+          "label": "Agent immobilier",
+          "description": "Agent immobilier qui gère ces biens"
+        },
+        "CLIENT": {
+          "label": "Client",
+          "description": "Client de l'agent immobilier, il peut être un acheteur ou un vendeur ou les 2 acheteur sur un bien et vendeur sur un autre"
+        },
+        "NOTAIRE": { "label": "Notaire", "description": "Notaire responsable de la vente" }
+      }
+    },
+    "addressId": {
+      "type": "ref",
+      "ref": "adresse",
+      "autoExpand": true
+    }
+  },
+  "storage": {
+    "table": "user",
+    "columns": ["email", "accountType"],
+    "auditTrail": ["email", "encodedPassword"],
+    "indexes": [
+      {
+        "name": "login",
+        "columns": ["tenantId", "isDeleted", "email"]
+      }
+    ]
+  }
+}

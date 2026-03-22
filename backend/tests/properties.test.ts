@@ -100,6 +100,44 @@ describe("properties endpoints", () => {
     expect(links).toHaveLength(0);
   });
 
+  it("accepte limit=300 sur l'historique object-changes d'un bien", async () => {
+    const token = await loginAndGetAccessToken();
+    const createResponse = await createApp().fetch(
+      new Request("http://localhost/properties", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: `Historique ${crypto.randomUUID()}`,
+          city: "Nice",
+          postalCode: "06000",
+          address: "5 avenue Jean Médecin",
+        }),
+      }),
+    );
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    const objectChangesResponse = await createApp().fetch(
+      new Request(
+        `http://localhost/object-changes/bien/${encodeURIComponent(created.id as string)}?limit=300`,
+        {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        },
+      ),
+    );
+
+    expect(objectChangesResponse.status).toBe(200);
+    const payload = await objectChangesResponse.json();
+    expect(Array.isArray(payload.items)).toBe(true);
+    expect(payload.items.length).toBeGreaterThan(0);
+  });
+
   it("liste les biens avec pagination cursor", async () => {
     const token = await loginAndGetAccessToken();
 
@@ -655,6 +693,66 @@ describe("properties endpoints", () => {
     expect(visitPayload.compteRendu).toBeNull();
     expect(visitPayload.bonDeVisiteFileId).toBeNull();
     expect(visitPayload.bonDeVisiteFileName).toBeNull();
+
+    const rdvBienLinks = await db
+      .select()
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "rdv_bien"),
+          eq(businessLinks.objectId1, visitPayload.id),
+          eq(businessLinks.objectId2, propertyPayload.id),
+        ),
+      );
+    expect(rdvBienLinks).toHaveLength(1);
+
+    const rdvUserLinks = await db
+      .select()
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "rdv_user"),
+          eq(businessLinks.objectId1, visitPayload.id),
+          eq(businessLinks.objectId2, prospectPayload.id),
+        ),
+      );
+    expect(rdvUserLinks).toHaveLength(1);
+
+    const relatedLinksResponse = await createApp().fetch(
+      new Request(`http://localhost/links/related/bien/${propertyPayload.id}`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(relatedLinksResponse.status).toBe(200);
+    const relatedLinksPayload = await relatedLinksResponse.json();
+    expect(Array.isArray(relatedLinksPayload.grouped.rdv)).toBe(true);
+    expect(relatedLinksPayload.grouped.visite).toBeUndefined();
+    expect(
+      relatedLinksPayload.grouped.rdv.some((item: { id: string }) => item.id === visitPayload.id),
+    ).toBe(true);
+
+    const visitChangesResponse = await createApp().fetch(
+      new Request(`http://localhost/object-changes/rdv/${encodeURIComponent(visitPayload.id)}?limit=300`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(visitChangesResponse.status).toBe(200);
+    const visitChangesPayload = await visitChangesResponse.json();
+    expect(Array.isArray(visitChangesPayload.items)).toBe(true);
+    expect(
+      visitChangesPayload.items.some(
+        (change: { objectType: string; objectId: string }) =>
+          change.objectType === "rdv" && change.objectId === visitPayload.id,
+      ),
+    ).toBe(true);
 
     const listVisitsResponse = await createApp().fetch(
       new Request(`http://localhost/properties/${propertyPayload.id}/visits`, {

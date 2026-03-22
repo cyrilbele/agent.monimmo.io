@@ -1,4 +1,4 @@
-import { CommonModule } from "@angular/common";
+import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -7,15 +7,15 @@ import {
   computed,
   inject,
   signal,
-} from "@angular/core";
+} from '@angular/core';
 import {
   FormBuilder,
   FormControl,
   FormGroup,
   ReactiveFormsModule,
   Validators,
-} from "@angular/forms";
-import { ActivatedRoute, RouterLink } from "@angular/router";
+} from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import type {
   AccountUserResponse,
@@ -35,7 +35,7 @@ import type {
   ObjectDataFieldDefinition,
   ObjectDataFieldType,
   ObjectChangeEntryResponse,
-} from "../../core/api.models";
+} from '../../core/api.models';
 import {
   DOCUMENT_TABS,
   PROPERTY_DETAILS_CATEGORIES,
@@ -46,50 +46,36 @@ import {
   type PropertyDetailsCategoryDefinition,
   type PropertyDetailsCategoryId,
   type PropertyDetailsFieldDefinition,
-} from "../../core/constants";
-import { FileService } from "../../services/file.service";
-import {
-  InseeCityService,
-  type InseeCityIndicators,
-} from "../../services/insee-city.service";
-import { AppSettingsService } from "../../services/app-settings.service";
-import { MessageService } from "../../services/message.service";
-import { PropertyService } from "../../services/property.service";
-import { UserService } from "../../services/user.service";
-import { VocalService } from "../../services/vocal.service";
+} from '../../core/constants';
+import { FileService } from '../../services/file.service';
+import { InseeCityService, type InseeCityIndicators } from '../../services/insee-city.service';
+import { AppSettingsService } from '../../services/app-settings.service';
+import { MessageService } from '../../services/message.service';
+import { PropertyService } from '../../services/property.service';
+import { UserService } from '../../services/user.service';
+import { VocalService } from '../../services/vocal.service';
 import {
   computeComparablesRegression,
   resolveComparablePricingLabel,
-} from "./property-comparables.utils";
-import { PropertyDetailDocumentsSectionComponent } from "./sections/property-detail-documents-section.component";
-import { PropertyDetailMessagesSectionComponent } from "./sections/property-detail-messages-section.component";
-import { PropertyDetailPropertySectionComponent } from "./sections/property-detail-property-section.component";
-import { PropertyDetailProspectsSectionComponent } from "./sections/property-detail-prospects-section.component";
-import { PropertyDetailValuationSectionComponent } from "./sections/property-detail-valuation-section.component";
-import { PropertyDetailVisitsSectionComponent } from "./sections/property-detail-visits-section.component";
+} from './property-comparables.utils';
+import { PropertyDetailDocumentsSectionComponent } from './sections/property-detail-documents-section.component';
+import { PropertyDetailMessagesSectionComponent } from './sections/property-detail-messages-section.component';
+import { PropertyDetailPropertySectionComponent } from './sections/property-detail-property-section.component';
+import { PropertyDetailProspectsSectionComponent } from './sections/property-detail-prospects-section.component';
+import { PropertyDetailValuationSectionComponent } from './sections/property-detail-valuation-section.component';
+import { PropertyDetailVisitsSectionComponent } from './sections/property-detail-visits-section.component';
 import {
   computeRentalProfitability,
   type RentalProfitabilityResult,
-} from "./property-detail-rental.utils";
-import {
-  Chart,
-  registerables,
-  type ChartDataset,
-  type ScatterDataPoint,
-} from "chart.js";
-import { marked } from "marked";
+} from './property-detail-rental.utils';
+import { Chart, registerables, type ChartDataset, type ScatterDataPoint } from 'chart.js';
+import { marked } from 'marked';
 
 Chart.register(...registerables);
 
-type MainTabId =
-  | "property"
-  | "documents"
-  | "clients"
-  | "visits"
-  | "messages"
-  | "valuation";
-type ProspectMode = "existing" | "new";
-type VisitProspectMode = "existing" | "new";
+type MainTabId = 'property' | 'documents' | 'clients' | 'visits' | 'messages' | 'valuation';
+type ProspectMode = 'existing' | 'new';
+type VisitProspectMode = 'existing' | 'new';
 type CategoryControls = Record<string, FormControl<string>>;
 type CategoryForm = FormGroup<CategoryControls>;
 type CategoryForms = Record<PropertyDetailsCategoryId, CategoryForm>;
@@ -99,6 +85,14 @@ type ComparableScatterPoint = ScatterDataPoint & {
   city?: string | null;
   postalCode?: string | null;
   distanceM?: number | null;
+  originalSalePrice?: number;
+  adjustedSalePrice?: number;
+  inflationAdjustmentFactor?: number;
+};
+type ComparableChartPoint = PropertyComparablesResponse['points'][number] & {
+  chartSalePrice: number;
+  chartPricePerM2: number | null;
+  inflationAdjustmentFactor: number;
 };
 type ExpectedDocumentItem = {
   key: string;
@@ -114,8 +108,13 @@ type MarketTrendYearRow = {
   salesCountVariationPct: number | null;
   avgPricePerM2VariationPct: number | null;
 };
-type ComparableSalesSortKey = "saleDate" | "surfaceM2" | "landSurfaceM2" | "salePrice" | "pricePerM2";
-type ComparableSalesSortDirection = "asc" | "desc";
+type ComparableSalesSortKey =
+  | 'saleDate'
+  | 'surfaceM2'
+  | 'landSurfaceM2'
+  | 'salePrice'
+  | 'pricePerM2';
+type ComparableSalesSortDirection = 'asc' | 'desc';
 type ComparableSalesSortState = {
   key: ComparableSalesSortKey;
   direction: ComparableSalesSortDirection;
@@ -135,39 +134,41 @@ type LoadComparablesOptions = {
   forceRefresh?: boolean;
 };
 
-const DEFAULT_TYPE_DOCUMENT: TypeDocument = "PIECE_IDENTITE";
-const EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR = "::";
+const DEFAULT_TYPE_DOCUMENT: TypeDocument = 'PIECE_IDENTITE';
+const EXPECTED_DOCUMENT_HIDDEN_KEY_SEPARATOR = '::';
 const FRONT_COMPARABLE_PRICE_TOLERANCE = 0.1;
 const CHART_OUTLIER_PRICE_PER_M2_MULTIPLIER = 3;
 const MIN_COMPARABLE_PRICE_PER_M2 = 500;
-const VALUATION_AI_DETAILS_KEY = "valuationAiSnapshot";
-const VALUATION_COMPARABLE_FILTERS_DETAILS_KEY = "valuationComparableFilters";
+const COMPARABLE_ANNUAL_INFLATION_RATE = 0.02;
+const COMPARABLE_YEAR_IN_MS = 365.25 * 24 * 60 * 60 * 1000;
+const VALUATION_AI_DETAILS_KEY = 'valuationAiSnapshot';
+const VALUATION_COMPARABLE_FILTERS_DETAILS_KEY = 'valuationComparableFilters';
 const SALES_PAGE_SIZE = 10;
 const COMPARABLE_TYPE_OPTIONS: Array<{ value: ComparablePropertyType; label: string }> = [
-  { value: "APPARTEMENT", label: "Appartement" },
-  { value: "MAISON", label: "Maison" },
-  { value: "IMMEUBLE", label: "Immeuble" },
-  { value: "TERRAIN", label: "Terrain" },
-  { value: "LOCAL_COMMERCIAL", label: "Local commercial" },
-  { value: "AUTRE", label: "Autre" },
+  { value: 'APPARTEMENT', label: 'Appartement' },
+  { value: 'MAISON', label: 'Maison' },
+  { value: 'IMMEUBLE', label: 'Immeuble' },
+  { value: 'TERRAIN', label: 'Terrain' },
+  { value: 'LOCAL_COMMERCIAL', label: 'Local commercial' },
+  { value: 'AUTRE', label: 'Autre' },
 ];
 const VALUATION_KEY_FIELD_REFERENCES: Array<{
   categoryId: PropertyDetailsCategoryId;
   fieldKey: string;
 }> = [
-  { categoryId: "regulation", fieldKey: "dpeClass" },
-  { categoryId: "characteristics", fieldKey: "standing" },
-  { categoryId: "amenities", fieldKey: "pool" },
-  { categoryId: "characteristics", fieldKey: "livingArea" },
-  { categoryId: "characteristics", fieldKey: "landArea" },
-  { categoryId: "regulation", fieldKey: "asbestos" },
-  { categoryId: "characteristics", fieldKey: "hasCracks" },
-  { categoryId: "characteristics", fieldKey: "hasVisAVis" },
-  { categoryId: "characteristics", fieldKey: "noiseLevel" },
-  { categoryId: "characteristics", fieldKey: "foundationUnderpinningDone" },
-  { categoryId: "characteristics", fieldKey: "condition" },
-  { categoryId: "characteristics", fieldKey: "lastRenovationYear" },
-  { categoryId: "characteristics", fieldKey: "rooms" },
+  { categoryId: 'regulation', fieldKey: 'dpeClass' },
+  { categoryId: 'characteristics', fieldKey: 'standing' },
+  { categoryId: 'amenities', fieldKey: 'pool' },
+  { categoryId: 'characteristics', fieldKey: 'livingArea' },
+  { categoryId: 'characteristics', fieldKey: 'landArea' },
+  { categoryId: 'regulation', fieldKey: 'asbestos' },
+  { categoryId: 'characteristics', fieldKey: 'hasCracks' },
+  { categoryId: 'characteristics', fieldKey: 'hasVisAVis' },
+  { categoryId: 'characteristics', fieldKey: 'noiseLevel' },
+  { categoryId: 'characteristics', fieldKey: 'foundationUnderpinningDone' },
+  { categoryId: 'characteristics', fieldKey: 'condition' },
+  { categoryId: 'characteristics', fieldKey: 'lastRenovationYear' },
+  { categoryId: 'characteristics', fieldKey: 'rooms' },
 ];
 
 const PROPERTY_GROUP_ORDER: Record<string, number> = {
@@ -182,36 +183,38 @@ const PROPERTY_GROUP_ORDER: Record<string, number> = {
 };
 
 const PROPERTY_CLIENT_RELATION_OPTIONS: Array<{
-  value: "OWNER" | "PROSPECT" | "ACHETEUR";
+  value: 'OWNER' | 'PROSPECT' | 'ACHETEUR';
   label: string;
 }> = [
-  { value: "PROSPECT", label: "Prospect" },
-  { value: "OWNER", label: "Propriétaire" },
-  { value: "ACHETEUR", label: "Acheteur" },
+  { value: 'PROSPECT', label: 'Prospect' },
+  { value: 'OWNER', label: 'Propriétaire' },
+  { value: 'ACHETEUR', label: 'Acheteur' },
 ];
 
-const mapApiFieldTypeToDetailType = (type: ObjectDataFieldType): "text" | "number" | "select" | "textarea" | "date" => {
+const mapApiFieldTypeToDetailType = (
+  type: ObjectDataFieldType,
+): 'text' | 'number' | 'select' | 'textarea' | 'date' => {
   switch (type) {
-    case "int":
-    case "float":
-      return "number";
-    case "select":
-      return "select";
-    case "text":
-      return "textarea";
-    case "date":
-      return "date";
-    case "datetime":
-      return "text";
-    case "boolean":
-      return "select";
+    case 'int':
+    case 'float':
+      return 'number';
+    case 'select':
+      return 'select';
+    case 'text':
+      return 'textarea';
+    case 'date':
+      return 'date';
+    case 'datetime':
+      return 'text';
+    case 'boolean':
+      return 'select';
     default:
-      return "text";
+      return 'text';
   }
 };
 
 @Component({
-  selector: "app-property-detail-page",
+  selector: 'app-property-detail-page',
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -223,8 +226,8 @@ const mapApiFieldTypeToDetailType = (type: ObjectDataFieldType): "text" | "numbe
     PropertyDetailMessagesSectionComponent,
     PropertyDetailValuationSectionComponent,
   ],
-  templateUrl: "./property-detail-page.component.html",
-  styleUrls: ["./property-detail-page.component.css"],
+  templateUrl: './property-detail-page.component.html',
+  styleUrls: ['./property-detail-page.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PropertyDetailPageComponent implements OnInit, OnDestroy {
@@ -238,7 +241,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private readonly userService = inject(UserService);
   private readonly vocalService = inject(VocalService);
 
-  readonly propertyId = this.route.snapshot.paramMap.get("id") ?? "";
+  readonly propertyId = this.route.snapshot.paramMap.get('id') ?? '';
 
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
@@ -269,10 +272,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly latestSimilarSurfaceMaxM2 = signal<number | null>(null);
   readonly latestSimilarTerrainMinM2 = signal<number | null>(null);
   readonly latestSimilarTerrainMaxM2 = signal<number | null>(null);
-  readonly valuationSalePriceInput = signal("");
+  readonly valuationSalePriceInput = signal('');
   readonly valuationSalePriceSaving = signal(false);
   readonly valuationSalePriceFeedback = signal<string | null>(null);
-  readonly valuationAgentJustificationInput = signal("");
+  readonly valuationAgentJustificationInput = signal('');
   readonly valuationAgentOpinionSaving = signal(false);
   readonly valuationAgentOpinionFeedback = signal<string | null>(null);
   readonly valuationAiPending = signal(false);
@@ -281,13 +284,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly valuationAiPromptPending = signal(false);
   readonly valuationAiPromptText = signal<string | null>(null);
   readonly valuationAiResult = signal<PropertyValuationAIResponse | null>(null);
+  readonly comparablesChartInflationEnabled = signal(false);
   readonly salesPage = signal(1);
   readonly comparableSalesSort = signal<ComparableSalesSortState>({
-    key: "saleDate",
-    direction: "desc",
+    key: 'saleDate',
+    direction: 'desc',
   });
   readonly clients = signal<AccountUserResponse[]>([]);
-  private comparablesChart: Chart<"scatter", ComparableScatterPoint[]> | null = null;
+  private comparablesChart: Chart<'scatter', ComparableScatterPoint[]> | null = null;
   private comparablesChartCanvas: HTMLCanvasElement | null = null;
 
   setComparablesChartCanvas(canvas: HTMLCanvasElement | null): void {
@@ -300,7 +304,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.renderComparablesChart();
   }
 
-  readonly activeMainTab = signal<MainTabId>("property");
+  readonly activeMainTab = signal<MainTabId>('property');
   readonly activePropertyCategory = signal<PropertyDetailsCategoryId>(
     PROPERTY_DETAILS_CATEGORIES[0].id,
   );
@@ -325,9 +329,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly vocalFeedback = signal<string | null>(null);
   readonly recordedVocal = signal<Blob | null>(null);
   readonly prospectModalOpen = signal(false);
-  readonly prospectMode = signal<ProspectMode>("existing");
+  readonly prospectMode = signal<ProspectMode>('existing');
   readonly visitModalOpen = signal(false);
-  readonly visitProspectMode = signal<VisitProspectMode>("existing");
+  readonly visitProspectMode = signal<VisitProspectMode>('existing');
   readonly visitFeedback = signal<string | null>(null);
   readonly clientsLoading = signal(false);
   readonly prospectSuggestionsOpen = signal(false);
@@ -344,16 +348,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   readonly objectChangeHistoryByParam = signal<Record<string, ObjectChangeEntryResponse[]>>({});
 
   readonly prospectForm = this.formBuilder.nonNullable.group({
-    relationRole: ["PROSPECT" as "OWNER" | "PROSPECT" | "ACHETEUR"],
-    existingLookup: [""],
-    userId: [""],
-    firstName: [""],
-    lastName: [""],
-    phone: [""],
-    email: [""],
-    address: [""],
-    postalCode: [""],
-    city: [""],
+    relationRole: ['PROSPECT' as 'OWNER' | 'PROSPECT' | 'ACHETEUR'],
+    existingLookup: [''],
+    userId: [''],
+    firstName: [''],
+    lastName: [''],
+    phone: [''],
+    email: [''],
+    address: [''],
+    postalCode: [''],
+    city: [''],
   });
 
   readonly uploadForm = this.formBuilder.nonNullable.group({
@@ -361,17 +365,17 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   });
 
   readonly visitForm = this.formBuilder.nonNullable.group({
-    existingLookup: [""],
-    userId: [""],
-    startsAt: [""],
-    endsAt: [""],
-    firstName: [""],
-    lastName: [""],
-    phone: [""],
-    email: [""],
-    address: [""],
-    postalCode: [""],
-    city: [""],
+    existingLookup: [''],
+    userId: [''],
+    startsAt: [''],
+    endsAt: [''],
+    firstName: [''],
+    lastName: [''],
+    phone: [''],
+    email: [''],
+    address: [''],
+    postalCode: [''],
+    city: [''],
   });
 
   readonly activePropertyCategoryDefinition = computed<PropertyDetailsCategoryDefinition>(() => {
@@ -399,7 +403,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const isCopropriete = this.resolveIsPropertyInCopropriete(property);
     if (isCopropriete === false) {
-      return this.documentTabs.filter((tab) => tab.id !== "copropriete");
+      return this.documentTabs.filter((tab) => tab.id !== 'copropriete');
     }
 
     return [...this.documentTabs];
@@ -463,7 +467,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   readonly previousStatus = computed<PropertyStatus | null>(() => {
     const current = this.property()?.status;
-    if (!current || current === "ARCHIVE") {
+    if (!current || current === 'ARCHIVE') {
       return null;
     }
 
@@ -477,7 +481,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   readonly nextStatus = computed<PropertyStatus | null>(() => {
     const current = this.property()?.status;
-    if (!current || current === "ARCHIVE") {
+    if (!current || current === 'ARCHIVE') {
       return null;
     }
 
@@ -498,8 +502,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     return `Enregistrement prêt (${this.formatSize(blob.size)})`;
   });
-  readonly prospectAutocompleteId = `prospect-autocomplete-${this.propertyId || "property"}`;
-  readonly prospectAutocompleteListId = `prospect-autocomplete-list-${this.propertyId || "property"}`;
+  readonly prospectAutocompleteId = `prospect-autocomplete-${this.propertyId || 'property'}`;
+  readonly prospectAutocompleteListId = `prospect-autocomplete-list-${this.propertyId || 'property'}`;
   readonly prospectRelationOptions = PROPERTY_CLIENT_RELATION_OPTIONS;
   readonly filteredProspectClients = computed(() => {
     const clients = this.clients();
@@ -512,18 +516,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return clients
       .filter((client) => {
         const fullName = `${client.firstName} ${client.lastName}`.trim().toLowerCase();
-        const email = (client.email ?? "").toLowerCase();
-        const phone = (client.phone ?? "").toLowerCase();
-        return (
-          fullName.includes(lookup) ||
-          email.includes(lookup) ||
-          phone.includes(lookup)
-        );
+        const email = (client.email ?? '').toLowerCase();
+        const phone = (client.phone ?? '').toLowerCase();
+        return fullName.includes(lookup) || email.includes(lookup) || phone.includes(lookup);
       })
       .slice(0, 8);
   });
-  readonly visitAutocompleteId = `visit-autocomplete-${this.propertyId || "property"}`;
-  readonly visitAutocompleteListId = `visit-autocomplete-list-${this.propertyId || "property"}`;
+  readonly visitAutocompleteId = `visit-autocomplete-${this.propertyId || 'property'}`;
+  readonly visitAutocompleteListId = `visit-autocomplete-list-${this.propertyId || 'property'}`;
   readonly filteredVisitClients = computed(() => {
     const clients = this.clients();
     const lookup = this.visitForm.controls.existingLookup.value.trim().toLowerCase();
@@ -535,13 +535,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return clients
       .filter((client) => {
         const fullName = `${client.firstName} ${client.lastName}`.trim().toLowerCase();
-        const email = (client.email ?? "").toLowerCase();
-        const phone = (client.phone ?? "").toLowerCase();
-        return (
-          fullName.includes(lookup) ||
-          email.includes(lookup) ||
-          phone.includes(lookup)
-        );
+        const email = (client.email ?? '').toLowerCase();
+        const phone = (client.phone ?? '').toLowerCase();
+        return fullName.includes(lookup) || email.includes(lookup) || phone.includes(lookup);
       })
       .slice(0, 8);
   });
@@ -561,7 +557,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   });
   readonly comparableTargetLandSurfaceM2 = computed(() => {
     const response = this.comparables();
-    if (!response || response.propertyType !== "MAISON") {
+    if (!response || response.propertyType !== 'MAISON') {
       return null;
     }
 
@@ -575,7 +571,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const distances = response.points
       .map((point) => point.distanceM)
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+      .filter(
+        (value): value is number =>
+          typeof value === 'number' && Number.isFinite(value) && value > 0,
+      );
 
     if (distances.length > 0) {
       return {
@@ -629,13 +628,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   });
   readonly comparablesTerrainDomain = computed(() => {
     const response = this.comparables();
-    if (!response || response.propertyType !== "MAISON" || response.points.length === 0) {
+    if (!response || response.propertyType !== 'MAISON' || response.points.length === 0) {
       return null;
     }
 
     const terrains = response.points
       .map((point) => point.landSurfaceM2)
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+      .filter(
+        (value): value is number =>
+          typeof value === 'number' && Number.isFinite(value) && value > 0,
+      );
 
     if (terrains.length === 0) {
       return null;
@@ -707,9 +709,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         return false;
       }
 
-      if (response.propertyType === "MAISON" && terrainMin !== null && terrainMax !== null) {
+      if (response.propertyType === 'MAISON' && terrainMin !== null && terrainMax !== null) {
         if (
-          typeof point.landSurfaceM2 !== "number" ||
+          typeof point.landSurfaceM2 !== 'number' ||
           !Number.isFinite(point.landSurfaceM2) ||
           point.landSurfaceM2 < terrainMin ||
           point.landSurfaceM2 > terrainMax
@@ -722,27 +724,30 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     });
   });
   readonly chartComparablePoints = computed(() => {
-    const points = this.filteredComparablePoints();
+    const points = this.filteredComparablePoints()
+      .map((point) => this.buildComparableChartPoint(point))
+      .filter((point): point is ComparableChartPoint => point !== null);
     if (points.length === 0) {
       return [];
     }
 
     const comparablePricePerM2Values = points
-      .map((point) => this.resolveComparablePricePerM2(point))
+      .map((point) => point.chartPricePerM2)
       .filter((value): value is number => value !== null);
     if (comparablePricePerM2Values.length === 0) {
       return points;
     }
 
     const averagePricePerM2 =
-      comparablePricePerM2Values.reduce((sum, value) => sum + value, 0) / comparablePricePerM2Values.length;
+      comparablePricePerM2Values.reduce((sum, value) => sum + value, 0) /
+      comparablePricePerM2Values.length;
     if (!Number.isFinite(averagePricePerM2) || averagePricePerM2 <= 0) {
       return points;
     }
 
     const maxAllowedPricePerM2 = averagePricePerM2 * CHART_OUTLIER_PRICE_PER_M2_MULTIPLIER;
     const filteredPoints = points.filter((point) => {
-      const pricePerM2 = this.resolveComparablePricePerM2(point);
+      const pricePerM2 = point.chartPricePerM2;
       if (pricePerM2 === null) {
         return true;
       }
@@ -751,6 +756,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     });
 
     return filteredPoints.length > 0 ? filteredPoints : points;
+  });
+  readonly comparablesChartPriceSummary = computed(() => {
+    const prices = this.chartComparablePoints()
+      .map((point) => point.chartSalePrice)
+      .filter((value): value is number => Number.isFinite(value) && value > 0);
+
+    return {
+      minPrice: prices.length > 0 ? this.roundComparable(Math.min(...prices)) : null,
+      maxPrice: prices.length > 0 ? this.roundComparable(Math.max(...prices)) : null,
+    };
   });
   readonly filteredComparableSalesSorted = computed(() => {
     const points = this.filteredComparablePoints().slice();
@@ -773,7 +788,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         return 0;
       }
 
-      return sortState.direction === "asc" ? left - right : right - left;
+      return sortState.direction === 'asc' ? left - right : right - left;
     });
 
     return points;
@@ -849,7 +864,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const latestYear = saleYears.length > 0 ? Math.max(...saleYears) : new Date().getFullYear();
     const years = Array.from({ length: 5 }, (_value, index) => latestYear - (4 - index));
 
-    const byYear = new Map<number, { salesCount: number; sumPricePerM2: number; priceCount: number }>();
+    const byYear = new Map<
+      number,
+      { salesCount: number; sumPricePerM2: number; priceCount: number }
+    >();
     for (const year of years) {
       byYear.set(year, { salesCount: 0, sumPricePerM2: 0, priceCount: 0 });
     }
@@ -878,7 +896,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       const current = byYear.get(year) ?? { salesCount: 0, sumPricePerM2: 0, priceCount: 0 };
       const previous = byYear.get(year - 1) ?? { salesCount: 0, sumPricePerM2: 0, priceCount: 0 };
       const avgPricePerM2 =
-        current.priceCount > 0 ? this.roundComparable(current.sumPricePerM2 / current.priceCount) : null;
+        current.priceCount > 0
+          ? this.roundComparable(current.sumPricePerM2 / current.priceCount)
+          : null;
       const previousAvgPricePerM2 =
         previous.priceCount > 0 ? previous.sumPricePerM2 / previous.priceCount : null;
 
@@ -897,13 +917,21 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
           avgPricePerM2 !== null &&
           previousAvgPricePerM2 !== null &&
           previousAvgPricePerM2 > 0
-            ? this.roundComparable(((avgPricePerM2 - previousAvgPricePerM2) / previousAvgPricePerM2) * 100)
+            ? this.roundComparable(
+                ((avgPricePerM2 - previousAvgPricePerM2) / previousAvgPricePerM2) * 100,
+              )
             : null,
       };
     });
   });
   readonly marketTrendSalesCount = computed(() =>
     this.marketTrendRows().reduce((sum, row) => sum + row.salesCount, 0),
+  );
+  readonly comparablesChartPriceLabel = computed(() =>
+    this.comparablesChartInflationEnabled() ? 'Prix réactualisé' : 'Prix',
+  );
+  readonly comparablesChartYAxisLabel = computed(() =>
+    this.comparablesChartInflationEnabled() ? 'Prix réactualisé (€)' : 'Prix (€)',
   );
   readonly comparablesFrontRegression = computed(() =>
     computeComparablesRegression(
@@ -917,7 +945,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     computeComparablesRegression(
       this.chartComparablePoints().map((point) => ({
         surfaceM2: point.surfaceM2,
-        salePrice: point.salePrice,
+        salePrice: point.chartSalePrice,
       })),
     ),
   );
@@ -936,7 +964,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     });
 
     if (
-      typeof askingPrice !== "number" ||
+      typeof askingPrice !== 'number' ||
       !Number.isFinite(askingPrice) ||
       askingPrice <= 0 ||
       predictedPrice === null
@@ -944,7 +972,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return {
         predictedPrice,
         deviationPct: null,
-        pricingPosition: "UNKNOWN" as const,
+        pricingPosition: 'UNKNOWN' as const,
       };
     }
 
@@ -955,7 +983,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return {
         predictedPrice,
         deviationPct,
-        pricingPosition: "UNDER_PRICED" as const,
+        pricingPosition: 'UNDER_PRICED' as const,
       };
     }
 
@@ -963,14 +991,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return {
         predictedPrice,
         deviationPct,
-        pricingPosition: "OVER_PRICED" as const,
+        pricingPosition: 'OVER_PRICED' as const,
       };
     }
 
     return {
       predictedPrice,
       deviationPct,
-      pricingPosition: "NORMAL" as const,
+      pricingPosition: 'NORMAL' as const,
     };
   });
   readonly valuationKeyCriteria = computed<ValuationKeyCriterion[]>(() => {
@@ -993,7 +1021,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       }
 
       const value = this.fieldDisplayValue(reference.categoryId, field);
-      if (!value || value === "Non renseigné") {
+      if (!value || value === 'Non renseigné') {
         continue;
       }
 
@@ -1015,9 +1043,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return this.readValuationAiSnapshotFromProperty(this.property());
   });
   readonly valuationAiJustificationHtml = computed(() => {
-    const justification = this.valuationAiSnapshot()?.valuationJustification ?? "";
+    const justification = this.valuationAiSnapshot()?.valuationJustification ?? '';
     if (!justification.trim()) {
-      return "";
+      return '';
     }
 
     const rendered = marked.parse(justification, {
@@ -1026,7 +1054,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       async: false,
     });
 
-    return typeof rendered === "string" ? rendered : "";
+    return typeof rendered === 'string' ? rendered : '';
   });
   readonly rentalProfitability = computed<RentalProfitabilityResult>(() => {
     const monthlyRent = this.rentalMonthlyRent();
@@ -1091,7 +1119,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const minSurfaceM2 = this.roundComparable(targetSurfaceM2 * 0.95);
     const maxSurfaceM2 = this.roundComparable(targetSurfaceM2 * 1.05);
-    const isHouse = response.propertyType === "MAISON";
+    const isHouse = response.propertyType === 'MAISON';
     const targetLandSurfaceM2 = isHouse ? this.resolveComparableTargetLandSurfaceM2() : null;
 
     return {
@@ -1220,7 +1248,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         }
 
         if (
-          typeof point.landSurfaceM2 !== "number" ||
+          typeof point.landSurfaceM2 !== 'number' ||
           !Number.isFinite(point.landSurfaceM2) ||
           point.landSurfaceM2 <= 0 ||
           terrainMin === null ||
@@ -1239,7 +1267,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         (
           entry,
         ): entry is {
-          point: PropertyComparablesResponse["points"][number];
+          point: PropertyComparablesResponse['points'][number];
           saleTimestamp: number;
         } => entry.saleTimestamp !== null,
       )
@@ -1255,13 +1283,17 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const xValues = points.map((point) => point.surfaceM2);
-    const yValues = points.map((point) => point.salePrice);
+    const yValues = points.map((point) => point.chartSalePrice);
     const subjectPoint = this.resolveSubjectPointForChart(response);
     if (subjectPoint) {
       const subjectX =
-        typeof subjectPoint.x === "number" && Number.isFinite(subjectPoint.x) ? subjectPoint.x : null;
+        typeof subjectPoint.x === 'number' && Number.isFinite(subjectPoint.x)
+          ? subjectPoint.x
+          : null;
       const subjectY =
-        typeof subjectPoint.y === "number" && Number.isFinite(subjectPoint.y) ? subjectPoint.y : null;
+        typeof subjectPoint.y === 'number' && Number.isFinite(subjectPoint.y)
+          ? subjectPoint.y
+          : null;
       if (subjectX !== null && subjectY !== null) {
         xValues.push(subjectX);
         yValues.push(subjectY);
@@ -1290,7 +1322,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       }
     }
 
-    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    if (
+      !Number.isFinite(minX) ||
+      !Number.isFinite(maxX) ||
+      !Number.isFinite(minY) ||
+      !Number.isFinite(maxY)
+    ) {
       return null;
     }
 
@@ -1335,7 +1372,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     if (!this.propertyId) {
       this.loading.set(false);
-      this.error.set("Identifiant du bien manquant.");
+      this.error.set('Identifiant du bien manquant.');
       return;
     }
 
@@ -1376,9 +1413,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.latestSimilarSurfaceMaxM2.set(null);
     this.latestSimilarTerrainMinM2.set(null);
     this.latestSimilarTerrainMaxM2.set(null);
-    this.valuationSalePriceInput.set("");
+    this.valuationSalePriceInput.set('');
     this.valuationSalePriceFeedback.set(null);
-    this.valuationAgentJustificationInput.set("");
+    this.valuationAgentJustificationInput.set('');
     this.valuationAgentOpinionSaving.set(false);
     this.valuationAgentOpinionFeedback.set(null);
     this.valuationAiResult.set(null);
@@ -1386,6 +1423,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.valuationAiPromptVisible.set(false);
     this.valuationAiPromptPending.set(false);
     this.valuationAiPromptText.set(null);
+    this.comparablesChartInflationEnabled.set(false);
     this.salesPage.set(1);
     this.hiddenExpectedDocumentKeys.set([]);
     this.objectChangeHistoryByParam.set({});
@@ -1394,10 +1432,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     try {
       const propertyDataStructurePromise = Promise.resolve()
-        .then(() => this.propertyService.getDataStructure("bien"))
+        .then(() => this.propertyService.getDataStructure('bien'))
         .catch(() => null);
       const objectChangesPromise = Promise.resolve()
-        .then(() => this.propertyService.listObjectChanges("bien", this.propertyId, 300))
+        .then(() => this.propertyService.listObjectChanges('bien', this.propertyId, 300))
         .catch(() => null);
       const [
         propertyDataStructure,
@@ -1407,16 +1445,15 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         prospectsResponse,
         visitsResponse,
         objectChangesResponse,
-      ] =
-        await Promise.all([
-          propertyDataStructurePromise,
-          this.propertyService.getById(this.propertyId),
-          this.messageService.listByProperty(this.propertyId, 100),
-          this.fileService.listByProperty(this.propertyId, 100),
-          this.propertyService.listProspects(this.propertyId),
-          this.propertyService.listVisits(this.propertyId),
-          objectChangesPromise,
-        ]);
+      ] = await Promise.all([
+        propertyDataStructurePromise,
+        this.propertyService.getById(this.propertyId),
+        this.messageService.listByProperty(this.propertyId, 100),
+        this.fileService.listByProperty(this.propertyId, 100),
+        this.propertyService.listProspects(this.propertyId),
+        this.propertyService.listVisits(this.propertyId),
+        objectChangesPromise,
+      ]);
 
       if (propertyDataStructure && propertyDataStructure.length > 0) {
         this.applyPropertyDataStructure(propertyDataStructure);
@@ -1424,7 +1461,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
       this.property.set(property);
       this.valuationSalePriceInput.set(this.resolveValuationSalePriceInput(property));
-      this.valuationAgentJustificationInput.set(this.resolveValuationAgentJustificationInput(property));
+      this.valuationAgentJustificationInput.set(
+        this.resolveValuationAgentJustificationInput(property),
+      );
       this.hiddenExpectedDocumentKeys.set(
         this.normalizeHiddenExpectedDocumentKeys(property.hiddenExpectedDocumentKeys),
       );
@@ -1434,10 +1473,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.prospects.set(prospectsResponse.items);
       this.visits.set(visitsResponse.items);
       this.categoryForms.set(this.createCategoryForms(property));
-      this.objectChangeHistoryByParam.set(this.groupObjectChangesByParam(objectChangesResponse?.items ?? []));
+      this.objectChangeHistoryByParam.set(
+        this.groupObjectChangesByParam(objectChangesResponse?.items ?? []),
+      );
       void this.loadPropertyRisks();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Chargement impossible.";
+      const message = error instanceof Error ? error.message : 'Chargement impossible.';
       this.error.set(message);
     } finally {
       this.loading.set(false);
@@ -1447,7 +1488,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   setMainTab(tab: MainTabId): void {
     this.activeMainTab.set(tab);
 
-    if (tab === "valuation") {
+    if (tab === 'valuation') {
       const shouldForceRefresh = !this.didInitialValuationComparablesRefresh;
       if (!this.comparablesLoading() && (shouldForceRefresh || !this.comparables())) {
         this.didInitialValuationComparablesRefresh = true;
@@ -1521,7 +1562,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const categoryDetailsPayload: Record<string, unknown> = {};
 
     for (const field of category.fields) {
-      const rawValue = form.controls[field.key]?.value ?? "";
+      const rawValue = form.controls[field.key]?.value ?? '';
       let parsedValue: unknown;
 
       try {
@@ -1531,41 +1572,45 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         return;
       }
 
-      if (field.source === "property") {
-        if (typeof parsedValue !== "string" || !parsedValue.trim()) {
+      if (field.source === 'property') {
+        if (parsedValue === null || (typeof parsedValue === 'string' && !parsedValue.trim())) {
           this.requestFeedback.set(`Le champ \"${field.label}\" est obligatoire.`);
           return;
         }
 
-        this.assignPropertyPatchValue(patchPayload, field.key, parsedValue.trim());
+        this.assignPropertyPatchValue(
+          patchPayload,
+          field.key,
+          typeof parsedValue === 'string' ? parsedValue.trim() : parsedValue,
+        );
         continue;
       }
 
       categoryDetailsPayload[field.key] = parsedValue;
     }
 
-    if (category.id === "characteristics") {
-      const sanitationTypeRaw = categoryDetailsPayload["sanitationType"];
+    if (category.id === 'characteristics') {
+      const sanitationTypeRaw = categoryDetailsPayload['sanitationType'];
       const sanitationType =
-        typeof sanitationTypeRaw === "string" ? sanitationTypeRaw.trim().toUpperCase() : "";
-      if (sanitationType !== "FOSSE_SEPTIQUE") {
-        categoryDetailsPayload["septicTankCompliant"] = null;
+        typeof sanitationTypeRaw === 'string' ? sanitationTypeRaw.trim().toUpperCase() : '';
+      if (sanitationType !== 'FOSSE_SEPTIQUE') {
+        categoryDetailsPayload['septicTankCompliant'] = null;
       }
     }
 
     patchPayload.details = categoryDetailsPayload;
 
     this.patchPending.set(true);
-    this.requestFeedback.set("Mise à jour des informations en cours...");
+    this.requestFeedback.set('Mise à jour des informations en cours...');
 
     try {
       const updated = await this.propertyService.patch(this.propertyId, patchPayload);
       this.property.set(updated);
       this.categoryForms.set(this.createCategoryForms(updated));
       this.editingPropertyCategory.set(null);
-      this.requestFeedback.set("Informations mises à jour.");
+      this.requestFeedback.set('Informations mises à jour.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise à jour impossible.";
+      const message = error instanceof Error ? error.message : 'Mise à jour impossible.';
       this.requestFeedback.set(message);
     } finally {
       this.patchPending.set(false);
@@ -1578,32 +1623,32 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   ): string {
     const property = this.property();
     if (!property) {
-      return "Non renseigné";
+      return 'Non renseigné';
     }
 
     const rawValue = this.getFieldRawValue(property, categoryId, field);
 
-    if (rawValue === null || typeof rawValue === "undefined" || rawValue === "") {
-      return "Non renseigné";
+    if (rawValue === null || typeof rawValue === 'undefined' || rawValue === '') {
+      return 'Non renseigné';
     }
 
-    if (field.type === "boolean") {
-      if (typeof rawValue === "boolean") {
-        return rawValue ? "Oui" : "Non";
+    if (field.type === 'boolean') {
+      if (typeof rawValue === 'boolean') {
+        return rawValue ? 'Oui' : 'Non';
       }
 
-      if (typeof rawValue === "string") {
+      if (typeof rawValue === 'string') {
         const normalized = rawValue.trim().toLowerCase();
-        if (normalized === "true") {
-          return "Oui";
+        if (normalized === 'true') {
+          return 'Oui';
         }
-        if (normalized === "false") {
-          return "Non";
+        if (normalized === 'false') {
+          return 'Non';
         }
       }
     }
 
-    if (field.type === "select") {
+    if (field.type === 'select') {
       const normalizedRaw = String(rawValue);
       const option = field.options?.find((item) => item.value === normalizedRaw);
       if (option) {
@@ -1611,28 +1656,28 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       }
 
       const normalizedBoolean = normalizedRaw.trim().toLowerCase();
-      if ((field.key === "pool" || field.key === "garden") && normalizedBoolean === "true") {
-        return "Oui";
+      if ((field.key === 'pool' || field.key === 'garden') && normalizedBoolean === 'true') {
+        return 'Oui';
       }
-      if ((field.key === "pool" || field.key === "garden") && normalizedBoolean === "false") {
-        return "Non";
+      if ((field.key === 'pool' || field.key === 'garden') && normalizedBoolean === 'false') {
+        return 'Non';
       }
 
       return normalizedRaw;
     }
 
-    if (field.type === "number") {
-      if (typeof rawValue === "number") {
-        return new Intl.NumberFormat("fr-FR").format(rawValue);
+    if (field.type === 'number') {
+      if (typeof rawValue === 'number') {
+        return new Intl.NumberFormat('fr-FR').format(rawValue);
       }
 
-      const parsed = Number(String(rawValue).replace(",", "."));
+      const parsed = Number(String(rawValue).replace(',', '.'));
       if (!Number.isNaN(parsed)) {
-        return new Intl.NumberFormat("fr-FR").format(parsed);
+        return new Intl.NumberFormat('fr-FR').format(parsed);
       }
     }
 
-    if (field.type === "date") {
+    if (field.type === 'date') {
       const rawString = String(rawValue);
       return rawString.length >= 10 ? rawString.slice(0, 10) : rawString;
     }
@@ -1672,7 +1717,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   fieldHistoryLabel(entry: ObjectChangeEntryResponse): string {
-    const modeLabel = entry.mode === "AI" ? "IA" : "Utilisateur";
+    const modeLabel = entry.mode === 'AI' ? 'IA' : 'Utilisateur';
     const dateLabel = this.formatDateTimeForHistory(entry.modifiedAt);
     return `${dateLabel} • ${modeLabel}`;
   }
@@ -1680,7 +1725,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   fieldHistoryValue(entry: ObjectChangeEntryResponse): string {
     const value = entry.paramValue.trim();
     if (!value) {
-      return "Valeur vide";
+      return 'Valeur vide';
     }
 
     return value;
@@ -1726,28 +1771,28 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private evaluateFieldHideRule(
     rawCurrentValue: unknown,
-    operator: "=" | "!=" | "in" | "notIn",
+    operator: '=' | '!=' | 'in' | 'notIn',
     rawRuleValue: string | number | boolean | Array<string | number | boolean>,
   ): boolean {
     const currentValue = this.normalizeRuleComparableValue(rawCurrentValue);
     const ruleValue = this.normalizeRuleComparableValue(rawRuleValue);
 
-    if (operator === "=") {
+    if (operator === '=') {
       return currentValue === ruleValue;
     }
 
-    if (operator === "!=") {
+    if (operator === '!=') {
       return currentValue !== ruleValue;
     }
 
-    if (operator === "in") {
+    if (operator === 'in') {
       if (!Array.isArray(ruleValue)) {
         return false;
       }
       return ruleValue.some((candidate) => candidate === currentValue);
     }
 
-    if (operator === "notIn") {
+    if (operator === 'notIn') {
       if (!Array.isArray(ruleValue)) {
         return false;
       }
@@ -1763,12 +1808,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return value;
     }
 
-    return new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+    return new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: false,
     }).format(parsed);
   }
@@ -1778,16 +1823,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return value.map((entry) => this.normalizeRuleComparableValue(entry));
     }
 
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
       const normalized = value.trim();
       if (!normalized) {
-        return "";
+        return '';
       }
       const lowered = normalized.toLowerCase();
-      if (lowered === "true") {
+      if (lowered === 'true') {
         return true;
       }
-      if (lowered === "false") {
+      if (lowered === 'false') {
         return false;
       }
       return normalized.toUpperCase();
@@ -1802,14 +1847,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.statusPending.set(true);
-    this.requestFeedback.set("Mise à jour du statut en cours...");
+    this.requestFeedback.set('Mise à jour du statut en cours...');
 
     try {
       const updated = await this.propertyService.updateStatus(this.propertyId, status);
       this.property.set(updated);
       this.requestFeedback.set(`Statut mis à jour: ${this.statusLabels[updated.status]}.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise à jour impossible.";
+      const message = error instanceof Error ? error.message : 'Mise à jour impossible.';
       this.requestFeedback.set(message);
     } finally {
       this.statusPending.set(false);
@@ -1835,7 +1880,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   async archiveProperty(): Promise<void> {
-    await this.updateStatus("ARCHIVE");
+    await this.updateStatus('ARCHIVE');
   }
 
   setActiveDocumentTab(tabId: DocumentTabId): void {
@@ -1957,12 +2002,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const selectedFile = this.selectedFile();
     if (!selectedFile) {
-      this.uploadFeedback.set("Veuillez sélectionner un fichier.");
+      this.uploadFeedback.set('Veuillez sélectionner un fichier.');
       return;
     }
 
     this.uploadPending.set(true);
-    this.uploadFeedback.set("Upload du document en cours...");
+    this.uploadFeedback.set('Upload du document en cours...');
 
     try {
       const typeDocument = this.uploadForm.controls.typeDocument.value;
@@ -1971,16 +2016,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         propertyId: this.propertyId,
         typeDocument,
         fileName: selectedFile.name,
-        mimeType: selectedFile.type || "application/octet-stream",
+        mimeType: selectedFile.type || 'application/octet-stream',
         size: selectedFile.size,
         contentBase64,
       });
 
       this.files.update((items) => [uploaded, ...items]);
       this.closeUploadModal();
-      this.uploadFeedback.set("Document ajouté.");
+      this.uploadFeedback.set('Document ajouté.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Upload impossible.";
+      const message = error instanceof Error ? error.message : 'Upload impossible.';
       this.uploadFeedback.set(message);
     } finally {
       this.uploadPending.set(false);
@@ -2025,13 +2070,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.vocalFeedback.set("Initialisation du micro...");
+    this.vocalFeedback.set('Initialisation du micro...');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const preferredMimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
+      const preferredMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
 
       this.stopRecorderTracks();
       this.mediaStream = stream;
@@ -2045,18 +2090,18 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         }
       };
       this.mediaRecorder.onstop = () => {
-        const mimeType = this.mediaRecorder?.mimeType || "audio/webm";
+        const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
         this.recordedVocal.set(new Blob(this.recordedChunks, { type: mimeType }));
         this.vocalRecording.set(false);
         this.stopRecorderTracks();
-        this.vocalFeedback.set("Enregistrement terminé.");
+        this.vocalFeedback.set('Enregistrement terminé.');
       };
 
       this.mediaRecorder.start();
       this.vocalRecording.set(true);
-      this.vocalFeedback.set("Enregistrement en cours...");
+      this.vocalFeedback.set('Enregistrement en cours...');
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Accès micro impossible.";
+      const message = error instanceof Error ? error.message : 'Accès micro impossible.';
       this.vocalFeedback.set(message);
       this.stopRecorderTracks();
       this.vocalRecording.set(false);
@@ -2068,7 +2113,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (this.mediaRecorder.state !== "inactive") {
+    if (this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
       return;
     }
@@ -2094,14 +2139,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.vocalPending.set(true);
-    this.vocalFeedback.set("Envoi du vocal...");
+    this.vocalFeedback.set('Envoi du vocal...');
 
     try {
       const contentBase64 = await this.blobToBase64(blob);
       await this.vocalService.upload({
         propertyId: this.propertyId,
         fileName: `vocal-${Date.now()}.webm`,
-        mimeType: blob.type || "audio/webm",
+        mimeType: blob.type || 'audio/webm',
         size: blob.size,
         contentBase64,
       });
@@ -2109,7 +2154,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.closeVocalModal(true);
       this.requestFeedback.set("Vocal ajouté. Transcription en file d'attente.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Upload vocal impossible.";
+      const message = error instanceof Error ? error.message : 'Upload vocal impossible.';
       this.vocalFeedback.set(message);
     } finally {
       this.vocalPending.set(false);
@@ -2117,19 +2162,19 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   openProspectModal(): void {
-    this.prospectMode.set("existing");
-    this.applyProspectModeConstraints("existing");
+    this.prospectMode.set('existing');
+    this.applyProspectModeConstraints('existing');
     this.prospectForm.reset({
-      relationRole: "PROSPECT",
-      existingLookup: "",
-      userId: "",
-      firstName: "",
-      lastName: "",
-      phone: "",
-      email: "",
-      address: "",
-      postalCode: "",
-      city: "",
+      relationRole: 'PROSPECT',
+      existingLookup: '',
+      userId: '',
+      firstName: '',
+      lastName: '',
+      phone: '',
+      email: '',
+      address: '',
+      postalCode: '',
+      city: '',
     });
     this.prospectSuggestionsOpen.set(false);
     this.prospectFeedback.set(null);
@@ -2155,15 +2200,15 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   setProspectMode(mode: ProspectMode): void {
     this.prospectMode.set(mode);
-    this.prospectForm.controls.userId.setValue("");
+    this.prospectForm.controls.userId.setValue('');
     this.prospectSuggestionsOpen.set(false);
     this.prospectFeedback.set(null);
     this.applyProspectModeConstraints(mode);
   }
 
   prospectOptionLabel(client: AccountUserResponse): string {
-    const fullName = `${client.firstName} ${client.lastName}`.trim() || "Sans nom";
-    const contact = client.email ?? client.phone ?? "Sans contact";
+    const fullName = `${client.firstName} ${client.lastName}`.trim() || 'Sans nom';
+    const contact = client.email ?? client.phone ?? 'Sans contact';
     return `${fullName} - ${contact}`;
   }
 
@@ -2212,12 +2257,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const mode = this.prospectMode();
     const relationRole = this.prospectForm.controls.relationRole.value;
     this.prospectPending.set(true);
-    this.prospectFeedback.set("Ajout du client en cours...");
+    this.prospectFeedback.set('Ajout du client en cours...');
 
     try {
       let created: PropertyProspectResponse;
 
-      if (mode === "existing") {
+      if (mode === 'existing') {
         const client = this.resolveSelectedProspectClient();
 
         if (!client) {
@@ -2238,7 +2283,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         const email = this.prospectForm.controls.email.value.trim().toLowerCase();
 
         if (!firstName || !lastName || !phone || !email) {
-          this.prospectFeedback.set("Renseignez les champs obligatoires du nouveau client.");
+          this.prospectFeedback.set('Renseignez les champs obligatoires du nouveau client.');
           return;
         }
 
@@ -2259,10 +2304,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.prospects.update((items) =>
         [created, ...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       );
-      this.prospectFeedback.set("Client lié.");
+      this.prospectFeedback.set('Client lié.');
       this.closeProspectModal();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Ajout impossible.";
+      const message = error instanceof Error ? error.message : 'Ajout impossible.';
       this.prospectFeedback.set(message);
     } finally {
       this.prospectPending.set(false);
@@ -2273,19 +2318,19 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const startsAt = this.getDefaultVisitStart();
     const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
 
-    this.visitProspectMode.set("existing");
+    this.visitProspectMode.set('existing');
     this.visitForm.reset({
-      existingLookup: "",
-      userId: "",
+      existingLookup: '',
+      userId: '',
       startsAt: this.formatForDateTimeInput(startsAt),
       endsAt: this.formatForDateTimeInput(endsAt),
-      firstName: "",
-      lastName: "",
-      phone: "",
-      email: "",
-      address: "",
-      postalCode: "",
-      city: "",
+      firstName: '',
+      lastName: '',
+      phone: '',
+      email: '',
+      address: '',
+      postalCode: '',
+      city: '',
     });
     this.visitFeedback.set(null);
     this.visitSuggestionsOpen.set(false);
@@ -2312,7 +2357,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   setVisitProspectMode(mode: VisitProspectMode): void {
     this.visitProspectMode.set(mode);
     this.visitFeedback.set(null);
-    this.visitForm.controls.userId.setValue("");
+    this.visitForm.controls.userId.setValue('');
     this.visitSuggestionsOpen.set(false);
   }
 
@@ -2382,7 +2427,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const endsAtRaw = this.visitForm.controls.endsAt.value.trim();
 
     if (!startsAtRaw || !endsAtRaw) {
-      this.visitFeedback.set("Renseignez les horaires de début et de fin.");
+      this.visitFeedback.set('Renseignez les horaires de début et de fin.');
       return;
     }
 
@@ -2390,7 +2435,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const endsAtIso = this.toIsoFromDateTimeInput(endsAtRaw);
 
     if (!startsAtIso || !endsAtIso) {
-      this.visitFeedback.set("Les horaires fournis sont invalides.");
+      this.visitFeedback.set('Les horaires fournis sont invalides.');
       return;
     }
 
@@ -2400,19 +2445,17 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.visitPending.set(true);
-    this.visitFeedback.set("Création de la visite en cours...");
+    this.visitFeedback.set('Création de la visite en cours...');
 
     try {
-      let prospectUserId = "";
+      let prospectUserId = '';
       const mode = this.visitProspectMode();
 
-      if (mode === "existing") {
+      if (mode === 'existing') {
         const client = this.resolveSelectedVisitClient();
 
         if (!client) {
-          this.visitFeedback.set(
-            "Sélectionnez un client existant dans la liste d'autocomplétion.",
-          );
+          this.visitFeedback.set("Sélectionnez un client existant dans la liste d'autocomplétion.");
           return;
         }
 
@@ -2424,7 +2467,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         const email = this.visitForm.controls.email.value.trim().toLowerCase();
 
         if (!firstName || !lastName || !phone || !email) {
-          this.visitFeedback.set("Renseignez les champs obligatoires du nouveau prospect.");
+          this.visitFeedback.set('Renseignez les champs obligatoires du nouveau prospect.');
           return;
         }
 
@@ -2438,7 +2481,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
             postalCode: this.normalizeEmptyAsNull(this.visitForm.controls.postalCode.value),
             city: this.normalizeEmptyAsNull(this.visitForm.controls.city.value),
           },
-          relationRole: "PROSPECT",
+          relationRole: 'PROSPECT',
         });
 
         prospectUserId = createdProspect.userId;
@@ -2456,10 +2499,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.visits.update((items) =>
         [createdVisit, ...items].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
       );
-      this.requestFeedback.set("Visite ajoutée.");
+      this.requestFeedback.set('Visite ajoutée.');
       this.closeVisitModal();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Création de visite impossible.";
+      const message = error instanceof Error ? error.message : 'Création de visite impossible.';
       this.visitFeedback.set(message);
     } finally {
       this.visitPending.set(false);
@@ -2484,14 +2527,14 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   prospectRelationLabel(relationRole: string): string {
     switch (relationRole) {
-      case "PROSPECT":
-        return "Prospect";
-      case "ACHETEUR":
-        return "Acheteur";
-      case "OWNER":
-        return "Propriétaire";
-      case "NOTAIRE":
-        return "Notaire";
+      case 'PROSPECT':
+        return 'Prospect';
+      case 'ACHETEUR':
+        return 'Acheteur';
+      case 'OWNER':
+        return 'Propriétaire';
+      case 'NOTAIRE':
+        return 'Notaire';
       default:
         return relationRole;
     }
@@ -2501,7 +2544,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     this.clientsLoading.set(true);
 
     try {
-      const response = await this.userService.list(100, undefined, "CLIENT");
+      const response = await this.userService.list(100, undefined, 'CLIENT');
       this.clients.set(response.items);
     } finally {
       this.clientsLoading.set(false);
@@ -2515,16 +2558,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     try {
       const response = await this.propertyService.getRisks(this.propertyId);
       this.risks.set(response);
-      if (
-        this.activeMainTab() === "valuation" &&
-        !this.inseeIndicators() &&
-        !this.inseeLoading()
-      ) {
+      if (this.activeMainTab() === 'valuation' && !this.inseeIndicators() && !this.inseeLoading()) {
         void this.loadInseeIndicators();
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Chargement des risques impossible.";
+      const message = error instanceof Error ? error.message : 'Chargement des risques impossible.';
       this.risksError.set(message);
     } finally {
       this.risksLoading.set(false);
@@ -2551,7 +2589,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.renderComparablesChart();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Chargement des comparables impossible.";
+        error instanceof Error ? error.message : 'Chargement des comparables impossible.';
       this.comparablesError.set(message);
     } finally {
       this.comparablesLoading.set(false);
@@ -2580,7 +2618,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.inseeIndicators.set(response);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Chargement des données INSEE impossible.";
+        error instanceof Error ? error.message : 'Chargement des données INSEE impossible.';
       this.inseeError.set(message);
     } finally {
       this.inseeLoading.set(false);
@@ -2621,6 +2659,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     this.rentalResalePrice.set(this.roundComparable(parsed));
     this.enqueueRentalInputsPersist();
+  }
+
+  setComparablesChartInflationEnabled(enabled: boolean): void {
+    this.comparablesChartInflationEnabled.set(enabled);
+    this.renderComparablesChart();
   }
 
   onComparableRadiusFilterChange(rawValue: string): void {
@@ -2867,19 +2910,19 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const parsedPrice = this.parseOptionalNumber(this.valuationSalePriceInput());
     if (parsedPrice === null || parsedPrice <= 0) {
-      this.valuationSalePriceFeedback.set("Renseignez un prix de vente valide.");
+      this.valuationSalePriceFeedback.set('Renseignez un prix de vente valide.');
       return;
     }
 
     this.valuationSalePriceSaving.set(true);
-    this.valuationSalePriceFeedback.set("Mise à jour du prix de vente...");
+    this.valuationSalePriceFeedback.set('Mise à jour du prix de vente...');
 
     try {
       const nextPrice = Math.round(parsedPrice);
       const updated = await this.propertyService.patch(this.propertyId, { price: nextPrice });
       this.property.set(updated);
       this.valuationSalePriceInput.set(String(nextPrice));
-      this.valuationSalePriceFeedback.set("Prix de vente mis à jour.");
+      this.valuationSalePriceFeedback.set('Prix de vente mis à jour.');
       this.comparables.update((current) =>
         current
           ? {
@@ -2892,7 +2935,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
           : current,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise à jour du prix impossible.";
+      const message = error instanceof Error ? error.message : 'Mise à jour du prix impossible.';
       this.valuationSalePriceFeedback.set(message);
     } finally {
       this.valuationSalePriceSaving.set(false);
@@ -2911,15 +2954,15 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const parsedPrice = this.parseOptionalNumber(this.valuationSalePriceInput());
     if (parsedPrice === null || parsedPrice <= 0) {
-      this.valuationAgentOpinionFeedback.set("Renseignez un prix de vente proposé valide.");
+      this.valuationAgentOpinionFeedback.set('Renseignez un prix de vente proposé valide.');
       return;
     }
 
     const nextPrice = Math.round(parsedPrice);
     const justification = this.valuationAgentJustificationInput().trim();
     const detailsRecord = this.isRecord(property.details) ? property.details : {};
-    const currentAgentDetails = this.isRecord(detailsRecord["valuationAgent"])
-      ? (detailsRecord["valuationAgent"] as Record<string, unknown>)
+    const currentAgentDetails = this.isRecord(detailsRecord['valuationAgent'])
+      ? (detailsRecord['valuationAgent'] as Record<string, unknown>)
       : {};
 
     this.valuationAgentOpinionSaving.set(true);
@@ -2940,9 +2983,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
       this.property.set(updated);
       this.valuationSalePriceInput.set(String(nextPrice));
-      this.valuationAgentJustificationInput.set(this.resolveValuationAgentJustificationInput(updated));
-      this.valuationSalePriceFeedback.set("Prix de vente mis à jour.");
-      this.valuationAgentOpinionFeedback.set("Avis agent enregistré.");
+      this.valuationAgentJustificationInput.set(
+        this.resolveValuationAgentJustificationInput(updated),
+      );
+      this.valuationSalePriceFeedback.set('Prix de vente mis à jour.');
+      this.valuationAgentOpinionFeedback.set('Avis agent enregistré.');
       this.comparables.update((current) =>
         current
           ? {
@@ -2955,7 +3000,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
           : current,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Enregistrement de l'avis agent impossible.";
+      const message =
+        error instanceof Error ? error.message : "Enregistrement de l'avis agent impossible.";
       this.valuationAgentOpinionFeedback.set(message);
     } finally {
       this.valuationAgentOpinionSaving.set(false);
@@ -2969,7 +3015,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.valuationAiPending.set(true);
-    this.valuationAiFeedback.set("Analyse IA en cours...");
+    this.valuationAiFeedback.set('Analyse IA en cours...');
 
     try {
       const response = await this.propertyService.runValuationAnalysis(
@@ -2980,7 +3026,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.valuationAiResult.set(response);
       this.valuationAiPromptVisible.set(false);
       this.valuationAiPromptText.set(null);
-      this.valuationAiFeedback.set("Analyse IA mise à jour.");
+      this.valuationAiFeedback.set('Analyse IA mise à jour.');
 
       this.property.update((current) => {
         if (!current) {
@@ -2998,7 +3044,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         };
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Analyse IA impossible.";
+      const message = error instanceof Error ? error.message : 'Analyse IA impossible.';
       this.valuationAiFeedback.set(message);
     } finally {
       this.valuationAiPending.set(false);
@@ -3017,7 +3063,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.valuationAiPromptPending.set(true);
-    this.valuationAiFeedback.set("Génération du prompt...");
+    this.valuationAiFeedback.set('Génération du prompt...');
 
     try {
       const response = await this.propertyService.generateValuationPrompt(
@@ -3026,9 +3072,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       );
       this.valuationAiPromptText.set(response.promptUsed.trim());
       this.valuationAiPromptVisible.set(true);
-      this.valuationAiFeedback.set("Prompt généré.");
+      this.valuationAiFeedback.set('Prompt généré.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Génération du prompt impossible.";
+      const message = error instanceof Error ? error.message : 'Génération du prompt impossible.';
       this.valuationAiFeedback.set(message);
     } finally {
       this.valuationAiPromptPending.set(false);
@@ -3040,13 +3086,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       if (current.key === key) {
         return {
           key,
-          direction: current.direction === "asc" ? "desc" : "asc",
+          direction: current.direction === 'asc' ? 'desc' : 'asc',
         };
       }
 
       return {
         key,
-        direction: key === "saleDate" ? "desc" : "asc",
+        direction: key === 'saleDate' ? 'desc' : 'asc',
       };
     });
     this.salesPage.set(1);
@@ -3059,26 +3105,26 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   comparableSalesSortIndicator(key: ComparableSalesSortKey): string {
     const direction = this.comparableSalesSortDirection(key);
-    if (direction === "asc") {
-      return "↑";
+    if (direction === 'asc') {
+      return '↑';
     }
-    if (direction === "desc") {
-      return "↓";
+    if (direction === 'desc') {
+      return '↓';
     }
 
-    return "↕";
+    return '↕';
   }
 
-  comparableSalesAriaSort(key: ComparableSalesSortKey): "ascending" | "descending" | "none" {
+  comparableSalesAriaSort(key: ComparableSalesSortKey): 'ascending' | 'descending' | 'none' {
     const direction = this.comparableSalesSortDirection(key);
-    if (direction === "asc") {
-      return "ascending";
+    if (direction === 'asc') {
+      return 'ascending';
     }
-    if (direction === "desc") {
-      return "descending";
+    if (direction === 'desc') {
+      return 'descending';
     }
 
-    return "none";
+    return 'none';
   }
 
   goToSalesPage(page: number): void {
@@ -3108,24 +3154,24 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return this.roundComparable(((clamped - min) / (max - min)) * 100);
   }
 
-  comparablePricingLabel(value: PropertyComparablesResponse["subject"]["pricingPosition"]): string {
+  comparablePricingLabel(value: PropertyComparablesResponse['subject']['pricingPosition']): string {
     return resolveComparablePricingLabel(value);
   }
 
   variationClass(value: number | null): string {
     if (value === null) {
-      return "text-slate-500";
+      return 'text-slate-500';
     }
 
     if (value > 0) {
-      return "text-emerald-700";
+      return 'text-emerald-700';
     }
 
     if (value < 0) {
-      return "text-red-700";
+      return 'text-red-700';
     }
 
-    return "text-slate-700";
+    return 'text-slate-700';
   }
 
   private buildCurrentValuationAIRequest(property: PropertyResponse): PropertyValuationAIRequest {
@@ -3133,14 +3179,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     return {
       comparableFilters: {
-        propertyType: this.comparables()?.propertyType ?? this.resolveComparableTypeFromProperty(property),
+        propertyType:
+          this.comparables()?.propertyType ?? this.resolveComparableTypeFromProperty(property),
         radiusMaxM: this.comparableRadiusFilterM(),
         surfaceMinM2: this.comparableSurfaceMinM2(),
         surfaceMaxM2: this.comparableSurfaceMaxM2(),
         landSurfaceMinM2: this.comparableTerrainMinM2(),
         landSurfaceMaxM2: this.comparableTerrainMaxM2(),
       },
-      agentAdjustedPrice: adjustedPrice !== null && adjustedPrice > 0 ? Math.round(adjustedPrice) : null,
+      agentAdjustedPrice:
+        adjustedPrice !== null && adjustedPrice > 0 ? Math.round(adjustedPrice) : null,
     };
   }
 
@@ -3155,7 +3203,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     let context: CanvasRenderingContext2D | null = null;
     try {
-      context = this.comparablesChartCanvas.getContext("2d");
+      context = this.comparablesChartCanvas.getContext('2d');
     } catch {
       context = null;
     }
@@ -3166,39 +3214,42 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const comparablePoints: ComparableScatterPoint[] = filteredPoints.map((point) => ({
-        x: point.surfaceM2,
-        y: point.salePrice,
-        saleDate: point.saleDate,
-        landSurfaceM2: point.landSurfaceM2,
-        city: point.city,
-        postalCode: point.postalCode,
-        distanceM: point.distanceM,
-      }));
+      x: point.surfaceM2,
+      y: point.chartSalePrice,
+      saleDate: point.saleDate,
+      landSurfaceM2: point.landSurfaceM2,
+      city: point.city,
+      postalCode: point.postalCode,
+      distanceM: point.distanceM,
+      originalSalePrice: point.salePrice,
+      adjustedSalePrice: point.chartSalePrice,
+      inflationAdjustmentFactor: point.inflationAdjustmentFactor,
+    }));
 
     const subjectPoint = this.resolveSubjectPointForChart(response);
     const regression = this.chartComparableRegression();
     const minX = chartDomains.xDomain.min;
     const maxX = chartDomains.xDomain.max;
-    const datasets: ChartDataset<"scatter", ComparableScatterPoint[]>[] = [
+    const datasets: ChartDataset<'scatter', ComparableScatterPoint[]>[] = [
       {
-        label: "Ventes",
+        label: 'Ventes',
         data: comparablePoints,
         showLine: false,
         pointRadius: 4,
         pointHoverRadius: 5,
-        pointBackgroundColor: "#0f172a",
+        pointBackgroundColor: '#0f172a',
       },
     ];
     if (subjectPoint) {
       datasets.push({
-        label: "Bien en cours",
+        label: 'Bien en cours',
         data: [subjectPoint],
         showLine: false,
         pointRadius: 8,
         pointHoverRadius: 10,
         pointHitRadius: 14,
-        pointBackgroundColor: "#f97316",
-        pointBorderColor: "#7c2d12",
+        pointBackgroundColor: '#f97316',
+        pointBorderColor: '#7c2d12',
         pointBorderWidth: 2,
       });
     }
@@ -3214,13 +3265,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
       if (Number.isFinite(yAtMin) && Number.isFinite(yAtMax)) {
         datasets.push({
-          label: "Droite affine",
+          label: 'Droite affine',
           data: [
             { x: minX, y: yAtMin },
             { x: maxX, y: yAtMax },
           ],
           showLine: true,
-          borderColor: "#0ea5e9",
+          borderColor: '#0ea5e9',
           borderWidth: 2,
           pointRadius: 0,
           pointHoverRadius: 0,
@@ -3230,8 +3281,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     this.destroyComparablesChart();
-    this.comparablesChart = new Chart<"scatter", ComparableScatterPoint[]>(context, {
-      type: "scatter",
+    this.comparablesChart = new Chart<'scatter', ComparableScatterPoint[]>(context, {
+      type: 'scatter',
       data: {
         datasets,
       },
@@ -3242,21 +3293,21 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         parsing: false,
         scales: {
           x: {
-            type: "linear",
+            type: 'linear',
             min: chartDomains.xDomain.min,
             max: chartDomains.xDomain.max,
             title: {
               display: true,
-              text: "Surface (m²)",
+              text: 'Surface (m²)',
             },
           },
           y: {
-            type: "linear",
+            type: 'linear',
             min: chartDomains.yDomain.min,
             max: chartDomains.yDomain.max,
             title: {
               display: true,
-              text: "Prix (€)",
+              text: this.comparablesChartYAxisLabel(),
             },
           },
         },
@@ -3265,31 +3316,62 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
             display: true,
           },
           tooltip: {
-            filter: (context) => context.dataset.label !== "Droite affine",
+            filter: (context) => context.dataset.label !== 'Droite affine',
             callbacks: {
-              title: () => "",
+              title: () => '',
               label: (context) => {
                 const raw = context.raw as ComparableScatterPoint | undefined;
-                const surface = typeof raw?.x === "number" ? raw.x : null;
-                const price = typeof raw?.y === "number" ? raw.y : null;
+                const surface = typeof raw?.x === 'number' ? raw.x : null;
+                const price = typeof raw?.y === 'number' ? raw.y : null;
                 const lines: string[] = [];
 
                 if (surface === null || price === null) {
                   return lines;
                 }
 
-                if (context.dataset.label === "Bien en cours") {
-                  lines.push("Bien en cours");
+                if (context.dataset.label === 'Bien en cours') {
+                  lines.push('Bien en cours');
                 }
 
-                const formattedSurface = new Intl.NumberFormat("fr-FR", {
+                const formattedSurface = new Intl.NumberFormat('fr-FR', {
                   maximumFractionDigits: 0,
                 }).format(surface);
-                const formattedPrice = new Intl.NumberFormat("fr-FR", {
+                const formattedPrice = new Intl.NumberFormat('fr-FR', {
                   maximumFractionDigits: 0,
                 }).format(price);
                 lines.push(`Surface: ${formattedSurface} m²`);
-                lines.push(`Prix: ${formattedPrice} €`);
+
+                if (context.dataset.label === 'Bien en cours') {
+                  lines.push(`Prix demandé: ${formattedPrice} €`);
+                } else if (this.comparablesChartInflationEnabled()) {
+                  lines.push(`Prix réactualisé: ${formattedPrice} €`);
+
+                  if (
+                    typeof raw?.originalSalePrice === 'number' &&
+                    Number.isFinite(raw.originalSalePrice) &&
+                    raw.originalSalePrice > 0
+                  ) {
+                    lines.push(
+                      `Prix de vente: ${new Intl.NumberFormat('fr-FR', {
+                        maximumFractionDigits: 0,
+                      }).format(raw.originalSalePrice)} €`,
+                    );
+                  }
+
+                  if (
+                    typeof raw?.inflationAdjustmentFactor === 'number' &&
+                    Number.isFinite(raw.inflationAdjustmentFactor) &&
+                    raw.inflationAdjustmentFactor > 1
+                  ) {
+                    lines.push(
+                      `Réactualisation: +${new Intl.NumberFormat('fr-FR', {
+                        maximumFractionDigits: 1,
+                      }).format((raw.inflationAdjustmentFactor - 1) * 100)} %`,
+                    );
+                  }
+                } else {
+                  lines.push(`Prix: ${formattedPrice} €`);
+                }
 
                 const saleDate = this.formatComparableSaleDate(raw?.saleDate);
                 if (saleDate) {
@@ -3297,26 +3379,26 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
                 }
 
                 if (
-                  response.propertyType === "MAISON" &&
-                  typeof raw?.landSurfaceM2 === "number" &&
+                  response.propertyType === 'MAISON' &&
+                  typeof raw?.landSurfaceM2 === 'number' &&
                   Number.isFinite(raw.landSurfaceM2)
                 ) {
                   lines.push(
-                    `Surface terrain: ${new Intl.NumberFormat("fr-FR", {
+                    `Surface terrain: ${new Intl.NumberFormat('fr-FR', {
                       maximumFractionDigits: 0,
                     }).format(raw.landSurfaceM2)} m²`,
                   );
                 }
 
-                if (typeof raw?.distanceM === "number" && Number.isFinite(raw.distanceM)) {
+                if (typeof raw?.distanceM === 'number' && Number.isFinite(raw.distanceM)) {
                   lines.push(
-                    `Distance: ${new Intl.NumberFormat("fr-FR", {
+                    `Distance: ${new Intl.NumberFormat('fr-FR', {
                       maximumFractionDigits: 0,
                     }).format(raw.distanceM)} m`,
                   );
                 }
 
-                const cityLabel = [raw?.postalCode, raw?.city].filter(Boolean).join(" ");
+                const cityLabel = [raw?.postalCode, raw?.city].filter(Boolean).join(' ');
                 if (cityLabel) {
                   lines.push(`Commune: ${cityLabel}`);
                 }
@@ -3346,10 +3428,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       if (property) {
         subjectPrice = this.parsePositiveNumber(property.price);
         if (subjectPrice === null) {
-          const financeDetails = this.getCategoryDetails(property, "finance");
+          const financeDetails = this.getCategoryDetails(property, 'finance');
           subjectPrice =
-            this.parsePositiveNumber(financeDetails["salePriceTtc"]) ??
-            this.parsePositiveNumber(financeDetails["netSellerPrice"]);
+            this.parsePositiveNumber(financeDetails['salePriceTtc']) ??
+            this.parsePositiveNumber(financeDetails['netSellerPrice']);
         }
       }
     }
@@ -3407,8 +3489,51 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     return this.roundComparable(sorted[middle]);
   }
 
+  private buildComparableChartPoint(
+    point: PropertyComparablesResponse['points'][number],
+  ): ComparableChartPoint | null {
+    if (!Number.isFinite(point.salePrice) || point.salePrice <= 0) {
+      return null;
+    }
+
+    const inflationAdjustmentFactor = this.resolveComparableInflationAdjustmentFactor(
+      point.saleDate,
+    );
+    const chartSalePrice = point.salePrice * inflationAdjustmentFactor;
+
+    const chartPricePerM2 =
+      Number.isFinite(point.surfaceM2) && point.surfaceM2 > 0
+        ? this.roundComparable(chartSalePrice / point.surfaceM2)
+        : null;
+
+    return {
+      ...point,
+      chartSalePrice: this.roundComparable(chartSalePrice),
+      chartPricePerM2,
+      inflationAdjustmentFactor,
+    };
+  }
+
+  private resolveComparableInflationAdjustmentFactor(saleDate: string | undefined): number {
+    if (!this.comparablesChartInflationEnabled()) {
+      return 1;
+    }
+
+    const saleTimestamp = this.parseComparableSaleTimestamp(saleDate);
+    if (saleTimestamp === null) {
+      return 1;
+    }
+
+    const elapsedMs = Math.max(Date.now() - saleTimestamp, 0);
+    if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+      return 1;
+    }
+
+    return Math.pow(1 + COMPARABLE_ANNUAL_INFLATION_RATE, elapsedMs / COMPARABLE_YEAR_IN_MS);
+  }
+
   private resolveComparablePricePerM2(
-    point: PropertyComparablesResponse["points"][number],
+    point: PropertyComparablesResponse['points'][number],
   ): number | null {
     if (Number.isFinite(point.pricePerM2) && point.pricePerM2 > 0) {
       return point.pricePerM2;
@@ -3427,24 +3552,26 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private resolveComparableSalesSortValue(
-    point: PropertyComparablesResponse["points"][number],
+    point: PropertyComparablesResponse['points'][number],
     key: ComparableSalesSortKey,
   ): number | null {
-    if (key === "saleDate") {
+    if (key === 'saleDate') {
       return this.parseComparableSaleTimestamp(point.saleDate);
     }
 
-    if (key === "surfaceM2") {
+    if (key === 'surfaceM2') {
       return Number.isFinite(point.surfaceM2) && point.surfaceM2 > 0 ? point.surfaceM2 : null;
     }
 
-    if (key === "landSurfaceM2") {
-      return typeof point.landSurfaceM2 === "number" && Number.isFinite(point.landSurfaceM2) && point.landSurfaceM2 > 0
+    if (key === 'landSurfaceM2') {
+      return typeof point.landSurfaceM2 === 'number' &&
+        Number.isFinite(point.landSurfaceM2) &&
+        point.landSurfaceM2 > 0
         ? point.landSurfaceM2
         : null;
     }
 
-    if (key === "salePrice") {
+    if (key === 'salePrice') {
       return Number.isFinite(point.salePrice) && point.salePrice > 0 ? point.salePrice : null;
     }
 
@@ -3477,15 +3604,15 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private initializeRentalProfitabilityInputs(property: PropertyResponse): void {
-    const financeDetails = this.getCategoryDetails(property, "finance");
+    const financeDetails = this.getCategoryDetails(property, 'finance');
     const defaultMonthlyRent =
-      this.parsePositiveNumber(financeDetails["monthlyRent"]) ??
-      this.parsePositiveNumber(financeDetails["estimatedRentalValue"]);
-    const holdingYearsValue = this.parsePositiveNumber(financeDetails["rentalHoldingYears"]);
+      this.parsePositiveNumber(financeDetails['monthlyRent']) ??
+      this.parsePositiveNumber(financeDetails['estimatedRentalValue']);
+    const holdingYearsValue = this.parsePositiveNumber(financeDetails['rentalHoldingYears']);
     const defaultHoldingYears =
       holdingYearsValue !== null ? Math.max(1, Math.floor(holdingYearsValue)) : 10;
     const defaultResalePrice =
-      this.parsePositiveNumber(financeDetails["rentalResalePrice"]) ??
+      this.parsePositiveNumber(financeDetails['rentalResalePrice']) ??
       this.resolveRentalPurchasePriceFromProperty(property);
 
     this.rentalMonthlyRent.set(defaultMonthlyRent);
@@ -3508,10 +3635,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return directPrice;
     }
 
-    const financeDetails = this.getCategoryDetails(property, "finance");
+    const financeDetails = this.getCategoryDetails(property, 'finance');
     const priceFromFinance =
-      this.parsePositiveNumber(financeDetails["salePriceTtc"]) ??
-      this.parsePositiveNumber(financeDetails["netSellerPrice"]);
+      this.parsePositiveNumber(financeDetails['salePriceTtc']) ??
+      this.parsePositiveNumber(financeDetails['netSellerPrice']);
     if (priceFromFinance !== null) {
       return priceFromFinance;
     }
@@ -3521,10 +3648,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private resolveValuationSalePriceInput(property: PropertyResponse): string {
     const detailsRecord = this.isRecord(property.details) ? property.details : {};
-    const valuationAgent = this.isRecord(detailsRecord["valuationAgent"])
-      ? (detailsRecord["valuationAgent"] as Record<string, unknown>)
+    const valuationAgent = this.isRecord(detailsRecord['valuationAgent'])
+      ? (detailsRecord['valuationAgent'] as Record<string, unknown>)
       : null;
-    const agentPrice = this.parsePositiveNumber(valuationAgent?.["proposedSalePrice"]);
+    const agentPrice = this.parsePositiveNumber(valuationAgent?.['proposedSalePrice']);
     if (agentPrice !== null) {
       return String(Math.round(agentPrice));
     }
@@ -3534,29 +3661,29 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return String(Math.round(directPrice));
     }
 
-    const financeDetails = this.getCategoryDetails(property, "finance");
+    const financeDetails = this.getCategoryDetails(property, 'finance');
     const priceFromFinance =
-      this.parsePositiveNumber(financeDetails["salePriceTtc"]) ??
-      this.parsePositiveNumber(financeDetails["netSellerPrice"]);
+      this.parsePositiveNumber(financeDetails['salePriceTtc']) ??
+      this.parsePositiveNumber(financeDetails['netSellerPrice']);
 
-    return priceFromFinance !== null ? String(Math.round(priceFromFinance)) : "";
+    return priceFromFinance !== null ? String(Math.round(priceFromFinance)) : '';
   }
 
   private resolveValuationAgentJustificationInput(property: PropertyResponse): string {
     if (!this.isRecord(property.details)) {
-      return "";
+      return '';
     }
 
-    const valuationAgent = this.isRecord(property.details["valuationAgent"])
-      ? (property.details["valuationAgent"] as Record<string, unknown>)
+    const valuationAgent = this.isRecord(property.details['valuationAgent'])
+      ? (property.details['valuationAgent'] as Record<string, unknown>)
       : null;
     if (!valuationAgent) {
-      return "";
+      return '';
     }
 
-    return typeof valuationAgent["justification"] === "string"
-      ? valuationAgent["justification"].trim()
-      : "";
+    return typeof valuationAgent['justification'] === 'string'
+      ? valuationAgent['justification'].trim()
+      : '';
   }
 
   private findCategoryFieldDefinition(
@@ -3583,27 +3710,30 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    const valuationRaw = rawSnapshot["aiCalculatedValuation"];
+    const valuationRaw = rawSnapshot['aiCalculatedValuation'];
     const aiCalculatedValuation =
-      typeof valuationRaw === "number" && Number.isFinite(valuationRaw) && valuationRaw > 0
+      typeof valuationRaw === 'number' && Number.isFinite(valuationRaw) && valuationRaw > 0
         ? Math.round(valuationRaw)
         : null;
     const valuationJustification =
-      typeof rawSnapshot["valuationJustification"] === "string"
-        ? rawSnapshot["valuationJustification"].trim()
-        : "";
-    const generatedAt = typeof rawSnapshot["generatedAt"] === "string" ? rawSnapshot["generatedAt"] : "";
+      typeof rawSnapshot['valuationJustification'] === 'string'
+        ? rawSnapshot['valuationJustification'].trim()
+        : '';
+    const generatedAt =
+      typeof rawSnapshot['generatedAt'] === 'string' ? rawSnapshot['generatedAt'] : '';
     const comparableCountUsed =
-      typeof rawSnapshot["comparableCountUsed"] === "number" &&
-      Number.isFinite(rawSnapshot["comparableCountUsed"])
-        ? Math.max(Math.round(rawSnapshot["comparableCountUsed"]), 0)
+      typeof rawSnapshot['comparableCountUsed'] === 'number' &&
+      Number.isFinite(rawSnapshot['comparableCountUsed'])
+        ? Math.max(Math.round(rawSnapshot['comparableCountUsed']), 0)
         : 0;
-    const rawCriteria = Array.isArray(rawSnapshot["criteriaUsed"]) ? rawSnapshot["criteriaUsed"] : [];
+    const rawCriteria = Array.isArray(rawSnapshot['criteriaUsed'])
+      ? rawSnapshot['criteriaUsed']
+      : [];
     const criteriaUsed = rawCriteria
       .filter((criterion): criterion is Record<string, unknown> => this.isRecord(criterion))
       .map((criterion) => {
-        const label = typeof criterion["label"] === "string" ? criterion["label"].trim() : "";
-        const value = typeof criterion["value"] === "string" ? criterion["value"].trim() : "";
+        const label = typeof criterion['label'] === 'string' ? criterion['label'].trim() : '';
+        const value = typeof criterion['value'] === 'string' ? criterion['value'].trim() : '';
         return label && value ? { label, value } : null;
       })
       .filter((criterion): criterion is { label: string; value: string } => criterion !== null);
@@ -3618,10 +3748,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     return {
-      propertyId: typeof rawSnapshot["propertyId"] === "string" ? rawSnapshot["propertyId"] : property.id,
+      propertyId:
+        typeof rawSnapshot['propertyId'] === 'string' ? rawSnapshot['propertyId'] : property.id,
       aiCalculatedValuation,
       valuationJustification,
-      promptUsed: "",
+      promptUsed: '',
       generatedAt,
       comparableCountUsed,
       criteriaUsed,
@@ -3634,8 +3765,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return 0;
     }
 
-    const financeDetails = this.getCategoryDetails(property, "finance");
-    return this.parsePositiveNumber(financeDetails["propertyTax"]) ?? 0;
+    const financeDetails = this.getCategoryDetails(property, 'finance');
+    return this.parsePositiveNumber(financeDetails['propertyTax']) ?? 0;
   }
 
   private resolveRentalAnnualCoproFees(): number {
@@ -3644,16 +3775,16 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return 0;
     }
 
-    const financeDetails = this.getCategoryDetails(property, "finance");
-    const annualChargesEstimate = this.parsePositiveNumber(financeDetails["annualChargesEstimate"]);
+    const financeDetails = this.getCategoryDetails(property, 'finance');
+    const annualChargesEstimate = this.parsePositiveNumber(financeDetails['annualChargesEstimate']);
     if (annualChargesEstimate !== null) {
       return annualChargesEstimate;
     }
 
-    const coproDetails = this.getCategoryDetails(property, "copropriete");
+    const coproDetails = this.getCategoryDetails(property, 'copropriete');
     const monthlyCharges =
-      this.parsePositiveNumber(coproDetails["monthlyCharges"]) ??
-      this.parsePositiveNumber(financeDetails["rentalCharges"]);
+      this.parsePositiveNumber(coproDetails['monthlyCharges']) ??
+      this.parsePositiveNumber(financeDetails['rentalCharges']);
     if (monthlyCharges === null) {
       return 0;
     }
@@ -3667,11 +3798,11 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return subjectSurface;
     }
 
-    return this.readPropertyCharacteristicNumber("livingArea");
+    return this.readPropertyCharacteristicNumber('livingArea');
   }
 
   private resolveComparableTargetLandSurfaceM2(): number | null {
-    return this.readPropertyCharacteristicNumber("landArea");
+    return this.readPropertyCharacteristicNumber('landArea');
   }
 
   private readPropertyCharacteristicNumber(fieldKey: string): number | null {
@@ -3686,8 +3817,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return directValue;
     }
 
-    const characteristics = this.isRecord(details["characteristics"])
-      ? (details["characteristics"] as Record<string, unknown>)
+    const characteristics = this.isRecord(details['characteristics'])
+      ? (details['characteristics'] as Record<string, unknown>)
       : null;
     return characteristics ? this.parsePositiveNumber(characteristics[fieldKey]) : null;
   }
@@ -3698,7 +3829,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    const parsed = Number(trimmed.replace(",", "."));
+    const parsed = Number(trimmed.replace(',', '.'));
     if (!Number.isFinite(parsed)) {
       return null;
     }
@@ -3707,12 +3838,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private parsePositiveNumber(value: unknown): number | null {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
       return value;
     }
 
-    if (typeof value === "string") {
-      const parsed = Number(value.replace(",", "."));
+    if (typeof value === 'string') {
+      const parsed = Number(value.replace(',', '.'));
       if (Number.isFinite(parsed) && parsed > 0) {
         return parsed;
       }
@@ -3774,10 +3905,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    return new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+    return new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
     }).format(date);
   }
 
@@ -3785,7 +3916,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const persistedFilters = this.readPersistedValuationComparableFilters(this.property());
     const radiusDomain = response.points
       .map((point) => point.distanceM)
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+      .filter(
+        (value): value is number =>
+          typeof value === 'number' && Number.isFinite(value) && value > 0,
+      );
     const radiusMax =
       radiusDomain.length > 0
         ? this.roundComparable(Math.max(...radiusDomain))
@@ -3816,7 +3950,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.latestSimilarSurfaceMaxM2.set(null);
     }
 
-    if (response.propertyType !== "MAISON") {
+    if (response.propertyType !== 'MAISON') {
       this.comparableTerrainMinM2.set(null);
       this.comparableTerrainMaxM2.set(null);
       this.latestSimilarTerrainMinM2.set(null);
@@ -3826,7 +3960,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const terrainValues = response.points
       .map((point) => point.landSurfaceM2)
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+      .filter(
+        (value): value is number =>
+          typeof value === 'number' && Number.isFinite(value) && value > 0,
+      );
 
     if (terrainValues.length === 0) {
       this.comparableTerrainMinM2.set(null);
@@ -3860,10 +3997,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const details = property.details;
-    const flatSurfaceMin = details["valuationComparableFiltersSurfaceMinM2"];
-    const flatSurfaceMax = details["valuationComparableFiltersSurfaceMaxM2"];
-    const flatLandMin = details["valuationComparableFiltersLandSurfaceMinM2"];
-    const flatLandMax = details["valuationComparableFiltersLandSurfaceMaxM2"];
+    const flatSurfaceMin = details['valuationComparableFiltersSurfaceMinM2'];
+    const flatSurfaceMax = details['valuationComparableFiltersSurfaceMaxM2'];
+    const flatLandMin = details['valuationComparableFiltersLandSurfaceMinM2'];
+    const flatLandMax = details['valuationComparableFiltersLandSurfaceMaxM2'];
 
     const normalize = (value: unknown): number | null => {
       const parsed = this.parsePositiveNumber(value);
@@ -3883,10 +4020,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     ) {
       const legacyRaw = property.details[VALUATION_COMPARABLE_FILTERS_DETAILS_KEY];
       if (this.isRecord(legacyRaw)) {
-        surfaceMinRaw = normalize(legacyRaw["surfaceMinM2"]);
-        surfaceMaxRaw = normalize(legacyRaw["surfaceMaxM2"]);
-        landMinRaw = normalize(legacyRaw["landSurfaceMinM2"]);
-        landMaxRaw = normalize(legacyRaw["landSurfaceMaxM2"]);
+        surfaceMinRaw = normalize(legacyRaw['surfaceMinM2']);
+        surfaceMaxRaw = normalize(legacyRaw['surfaceMaxM2']);
+        landMinRaw = normalize(legacyRaw['landSurfaceMinM2']);
+        landMaxRaw = normalize(legacyRaw['landSurfaceMaxM2']);
       }
     }
 
@@ -3918,24 +4055,25 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private resolveComparableTypeFromProperty(property: PropertyResponse): ComparablePropertyType {
     const details = property.details ?? {};
-    const directType = typeof details["propertyType"] === "string" ? details["propertyType"] : "";
-    const general = this.isRecord(details["general"]) ? details["general"] : {};
-    const rawType = directType || (typeof general["propertyType"] === "string" ? general["propertyType"] : "");
+    const directType = typeof details['propertyType'] === 'string' ? details['propertyType'] : '';
+    const general = this.isRecord(details['general']) ? details['general'] : {};
+    const rawType =
+      directType || (typeof general['propertyType'] === 'string' ? general['propertyType'] : '');
     const normalized = rawType.trim().toUpperCase();
     const match = COMPARABLE_TYPE_OPTIONS.find((option) => option.value === normalized);
-    return match?.value ?? "APPARTEMENT";
+    return match?.value ?? 'APPARTEMENT';
   }
 
   private applyProspectLookupValue(lookup: string): void {
     this.prospectForm.controls.existingLookup.setValue(lookup);
     const match = this.findClientFromLookup(lookup);
-    this.prospectForm.controls.userId.setValue(match?.id ?? "");
+    this.prospectForm.controls.userId.setValue(match?.id ?? '');
   }
 
   private applyVisitLookupValue(lookup: string): void {
     this.visitForm.controls.existingLookup.setValue(lookup);
     const match = this.findClientFromLookup(lookup);
-    this.visitForm.controls.userId.setValue(match?.id ?? "");
+    this.visitForm.controls.userId.setValue(match?.id ?? '');
   }
 
   private resolveSelectedProspectClient(): AccountUserResponse | null {
@@ -3973,7 +4111,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     const clients = this.clients();
     const exact = clients.find((client) => {
       const fullName = `${client.firstName} ${client.lastName}`.trim().toLowerCase();
-      const email = (client.email ?? "").toLowerCase();
+      const email = (client.email ?? '').toLowerCase();
       return (
         this.prospectOptionLabel(client).toLowerCase() === normalizedLookup ||
         email === normalizedLookup ||
@@ -3987,8 +4125,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const partialMatches = clients.filter((client) => {
       const fullName = `${client.firstName} ${client.lastName}`.trim().toLowerCase();
-      const email = (client.email ?? "").toLowerCase();
-      const phone = (client.phone ?? "").toLowerCase();
+      const email = (client.email ?? '').toLowerCase();
+      const phone = (client.phone ?? '').toLowerCase();
       return (
         fullName.includes(normalizedLookup) ||
         email.includes(normalizedLookup) ||
@@ -4000,7 +4138,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private applyProspectModeConstraints(mode: ProspectMode): void {
-    if (mode === "existing") {
+    if (mode === 'existing') {
       this.prospectForm.controls.existingLookup.setValidators([Validators.required]);
       this.prospectForm.controls.firstName.clearValidators();
       this.prospectForm.controls.lastName.clearValidators();
@@ -4068,7 +4206,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       const mappedType = mapApiFieldTypeToDetailType(field.type);
       const options =
         field.options?.map((option) => ({ value: option.value, label: option.label })) ??
-        (field.type === "boolean" ? [{ value: "true", label: "Oui" }, { value: "false", label: "Non" }] : undefined);
+        (field.type === 'boolean'
+          ? [
+              { value: 'true', label: 'Oui' },
+              { value: 'false', label: 'Non' },
+            ]
+          : undefined);
 
       const categoryFields = grouped.get(group) ?? [];
       categoryFields.push({
@@ -4076,7 +4219,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         label: field.name,
         type: mappedType,
         subgroup: field.subgroup,
-        source: field.source === "property" ? "property" : undefined,
+        source: field.source === 'property' ? 'property' : undefined,
         options,
         hide: field.hide,
       });
@@ -4089,7 +4232,10 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         label: this.resolvePropertyGroupLabel(id),
         fields: categoryFields,
       }))
-      .sort((left, right) => (PROPERTY_GROUP_ORDER[left.id] ?? 999) - (PROPERTY_GROUP_ORDER[right.id] ?? 999));
+      .sort(
+        (left, right) =>
+          (PROPERTY_GROUP_ORDER[left.id] ?? 999) - (PROPERTY_GROUP_ORDER[right.id] ?? 999),
+      );
 
     if (categories.length === 0) {
       return;
@@ -4122,38 +4268,38 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private normalizePropertyGroup(rawGroup: string): PropertyDetailsCategoryId {
     const normalized = rawGroup.trim().toLowerCase();
     switch (normalized) {
-      case "general":
-      case "location":
-      case "characteristics":
-      case "amenities":
-      case "copropriete":
-      case "finance":
-      case "regulation":
-      case "marketing":
+      case 'general':
+      case 'location':
+      case 'characteristics':
+      case 'amenities':
+      case 'copropriete':
+      case 'finance':
+      case 'regulation':
+      case 'marketing':
         return normalized;
       default:
-        return "general";
+        return 'general';
     }
   }
 
   private resolvePropertyGroupLabel(group: PropertyDetailsCategoryId): string {
     switch (group) {
-      case "general":
-        return "Informations générales";
-      case "location":
-        return "Localisation";
-      case "characteristics":
-        return "Caractéristiques principales";
-      case "amenities":
-        return "Prestations & équipements";
-      case "copropriete":
-        return "Copropriété";
-      case "finance":
-        return "Informations financières";
-      case "regulation":
-        return "Données réglementaires";
-      case "marketing":
-        return "Commercialisation";
+      case 'general':
+        return 'Informations générales';
+      case 'location':
+        return 'Localisation';
+      case 'characteristics':
+        return 'Caractéristiques principales';
+      case 'amenities':
+        return 'Prestations & équipements';
+      case 'copropriete':
+        return 'Copropriété';
+      case 'finance':
+        return 'Informations financières';
+      case 'regulation':
+        return 'Données réglementaires';
+      case 'marketing':
+        return 'Commercialisation';
       default:
         return group;
     }
@@ -4169,28 +4315,28 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    const copropriete = this.isRecord(details["copropriete"]) ? details["copropriete"] : null;
+    const copropriete = this.isRecord(details['copropriete']) ? details['copropriete'] : null;
     if (!copropriete) {
       return null;
     }
 
-    return this.parseBooleanDetail(copropriete["isCopropriete"]);
+    return this.parseBooleanDetail(copropriete['isCopropriete']);
   }
 
   private parseBooleanDetail(value: unknown): boolean | null {
-    if (typeof value === "boolean") {
+    if (typeof value === 'boolean') {
       return value;
     }
 
-    if (typeof value !== "string") {
+    if (typeof value !== 'string') {
       return null;
     }
 
     const normalized = value.trim().toLowerCase();
-    if (normalized === "true") {
+    if (normalized === 'true') {
       return true;
     }
-    if (normalized === "false") {
+    if (normalized === 'false') {
       return false;
     }
 
@@ -4230,13 +4376,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private toExpectedDocumentToken(value: string): string {
-    const withoutDiacritics = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const withoutDiacritics = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const normalized = withoutDiacritics
       .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
 
-    return normalized || "EXPECTED";
+    return normalized || 'EXPECTED';
   }
 
   private toCanonicalHiddenExpectedDocumentKey(rawKey: string): string | null {
@@ -4286,7 +4432,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     }
 
     const normalizedKeys = value
-      .filter((entry): entry is string => typeof entry === "string")
+      .filter((entry): entry is string => typeof entry === 'string')
       .map((entry) => this.toCanonicalHiddenExpectedDocumentKey(entry))
       .filter((entry): entry is string => Boolean(entry));
 
@@ -4327,7 +4473,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const financeDetails = this.getCategoryDetails(property, "finance");
+    const financeDetails = this.getCategoryDetails(property, 'finance');
     const nextFinanceDetails: Record<string, unknown> = {
       ...financeDetails,
       monthlyRent: this.rentalMonthlyRent(),
@@ -4342,7 +4488,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       this.property.set(updated);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Mise à jour des données de rentabilité impossible.";
+        error instanceof Error
+          ? error.message
+          : 'Mise à jour des données de rentabilité impossible.';
       this.requestFeedback.set(message);
     }
   }
@@ -4367,7 +4515,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       const message =
         error instanceof Error
           ? error.message
-          : "Mise à jour des filtres de comparables impossible.";
+          : 'Mise à jour des filtres de comparables impossible.';
       this.requestFeedback.set(message);
     }
   }
@@ -4386,7 +4534,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
         this.normalizeHiddenExpectedDocumentKeys(updated.hiddenExpectedDocumentKeys),
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mise à jour des documents masqués impossible.";
+      const message =
+        error instanceof Error ? error.message : 'Mise à jour des documents masqués impossible.';
       this.requestFeedback.set(message);
       this.hiddenExpectedDocumentKeys.set(
         this.normalizeHiddenExpectedDocumentKeys(this.property()?.hiddenExpectedDocumentKeys),
@@ -4425,7 +4574,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
     categoryId: PropertyDetailsCategoryId,
     field: PropertyDetailsFieldDefinition,
   ): unknown {
-    if (field.source === "property") {
+    if (field.source === 'property') {
       const propertyRecord = property as unknown as Record<string, unknown>;
       return propertyRecord[field.key];
     }
@@ -4445,7 +4594,7 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
     const category = this.propertyCategories().find((item) => item.id === categoryId);
     for (const field of category?.fields ?? []) {
-      if (field.source === "property") {
+      if (field.source === 'property') {
         continue;
       }
       if (Object.prototype.hasOwnProperty.call(detailsRecord, field.key)) {
@@ -4466,53 +4615,53 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private toControlValue(rawValue: unknown, field: PropertyDetailsFieldDefinition): string {
-    if (rawValue === null || typeof rawValue === "undefined") {
-      return "";
+    if (rawValue === null || typeof rawValue === 'undefined') {
+      return '';
     }
 
-    if (field.type === "boolean") {
-      if (typeof rawValue === "boolean") {
-        return rawValue ? "true" : "false";
+    if (field.type === 'boolean') {
+      if (typeof rawValue === 'boolean') {
+        return rawValue ? 'true' : 'false';
       }
 
       const normalized = String(rawValue).trim().toLowerCase();
-      if (normalized === "true") {
-        return "true";
+      if (normalized === 'true') {
+        return 'true';
       }
 
-      if (normalized === "false") {
-        return "false";
+      if (normalized === 'false') {
+        return 'false';
       }
 
-      return "";
+      return '';
     }
 
-    if (field.type === "date") {
+    if (field.type === 'date') {
       const rawString = String(rawValue);
       return rawString.length >= 10 ? rawString.slice(0, 10) : rawString;
     }
 
-    if (field.type === "select") {
+    if (field.type === 'select') {
       const normalized = String(rawValue).trim().toLowerCase();
-      if (field.key === "pool") {
-        if (normalized === "true") {
-          return "OUI";
+      if (field.key === 'pool') {
+        if (normalized === 'true') {
+          return 'OUI';
         }
-        if (normalized === "false") {
-          return "NON";
+        if (normalized === 'false') {
+          return 'NON';
         }
       }
 
-      if (field.key === "garden") {
-        if (normalized === "true") {
-          return "OUI_NU";
+      if (field.key === 'garden') {
+        if (normalized === 'true') {
+          return 'OUI_NU';
         }
-        if (normalized === "false") {
-          return "NON";
+        if (normalized === 'false') {
+          return 'NON';
         }
       }
     }
@@ -4521,47 +4670,65 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private parseFieldFormValue(rawValue: string, field: PropertyDetailsFieldDefinition): unknown {
-    if (field.type === "boolean") {
-      if (rawValue === "true") {
+    if (field.type === 'boolean') {
+      if (rawValue === 'true') {
         return true;
       }
-      if (rawValue === "false") {
+      if (rawValue === 'false') {
         return false;
       }
       return null;
     }
 
-    if (field.type === "number") {
+    if (field.type === 'number') {
       const trimmed = rawValue.trim();
       if (!trimmed) {
         return null;
       }
 
-      const parsed = Number(trimmed.replace(",", "."));
+      let canonicalNumber = trimmed.replace(/\s+/gu, '').replace(/€/gu, '').replace(/'/g, '');
+
+      if (!canonicalNumber) {
+        return null;
+      }
+
+      const hasComma = canonicalNumber.includes(',');
+      const dotCount = canonicalNumber.split('.').length - 1;
+      if (hasComma && dotCount > 0) {
+        canonicalNumber = canonicalNumber.replace(/\./g, '').replace(',', '.');
+      } else if (hasComma) {
+        canonicalNumber = canonicalNumber.replace(',', '.');
+      } else if (/^\d{1,3}(\.\d{3})+$/.test(canonicalNumber)) {
+        canonicalNumber = canonicalNumber.replace(/\./g, '');
+      } else if (dotCount > 1) {
+        canonicalNumber = canonicalNumber.replace(/\./g, '');
+      }
+
+      const parsed = Number(canonicalNumber);
       if (Number.isNaN(parsed)) {
-        throw new Error("invalid_number");
+        throw new Error('invalid_number');
       }
 
       return parsed;
     }
 
     const trimmed = rawValue.trim();
-    if (trimmed && field.type === "select") {
-      if (field.key === "pool") {
-        if (trimmed.toLowerCase() === "true") {
-          return "OUI";
+    if (trimmed && field.type === 'select') {
+      if (field.key === 'pool') {
+        if (trimmed.toLowerCase() === 'true') {
+          return 'OUI';
         }
-        if (trimmed.toLowerCase() === "false") {
-          return "NON";
+        if (trimmed.toLowerCase() === 'false') {
+          return 'NON';
         }
       }
 
-      if (field.key === "garden") {
-        if (trimmed.toLowerCase() === "true") {
-          return "OUI_NU";
+      if (field.key === 'garden') {
+        if (trimmed.toLowerCase() === 'true') {
+          return 'OUI_NU';
         }
-        if (trimmed.toLowerCase() === "false") {
-          return "NON";
+        if (trimmed.toLowerCase() === 'false') {
+          return 'NON';
         }
       }
     }
@@ -4569,12 +4736,12 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   }
 
   private isFieldValueEmpty(rawValue: unknown): boolean {
-    if (rawValue === null || typeof rawValue === "undefined") {
+    if (rawValue === null || typeof rawValue === 'undefined') {
       return true;
     }
 
-    if (typeof rawValue === "string") {
-      return rawValue.trim() === "";
+    if (typeof rawValue === 'string') {
+      return rawValue.trim() === '';
     }
 
     return false;
@@ -4583,20 +4750,33 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
   private assignPropertyPatchValue(
     patchPayload: PropertyPatchRequest,
     key: string,
-    value: string,
+    value: unknown,
   ): void {
     switch (key) {
-      case "title":
-        patchPayload.title = value;
+      case 'title':
+        if (typeof value === 'string') {
+          patchPayload.title = value;
+        }
         break;
-      case "city":
-        patchPayload.city = value;
+      case 'city':
+        if (typeof value === 'string') {
+          patchPayload.city = value;
+        }
         break;
-      case "postalCode":
-        patchPayload.postalCode = value;
+      case 'postalCode':
+        if (typeof value === 'string') {
+          patchPayload.postalCode = value;
+        }
         break;
-      case "address":
-        patchPayload.address = value;
+      case 'address':
+        if (typeof value === 'string') {
+          patchPayload.address = value;
+        }
+        break;
+      case 'price':
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          patchPayload.price = Math.round(value);
+        }
         break;
       default:
         break;
@@ -4605,8 +4785,8 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
 
   private isAudioRecordingSupported(): boolean {
     return (
-      typeof navigator !== "undefined" &&
-      typeof MediaRecorder !== "undefined" &&
+      typeof navigator !== 'undefined' &&
+      typeof MediaRecorder !== 'undefined' &&
       !!navigator.mediaDevices?.getUserMedia
     );
   }
@@ -4630,9 +4810,9 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       const reader = new FileReader();
 
       reader.onload = () => {
-        const dataUrl = String(reader.result ?? "");
-        const [, base64] = dataUrl.split(",");
-        resolve(base64 ?? "");
+        const dataUrl = String(reader.result ?? '');
+        const [, base64] = dataUrl.split(',');
+        resolve(base64 ?? '');
       };
 
       reader.onerror = () => {
@@ -4648,13 +4828,13 @@ export class PropertyDetailPageComponent implements OnInit, OnDestroy {
       const reader = new FileReader();
 
       reader.onload = () => {
-        const dataUrl = String(reader.result ?? "");
-        const [, base64] = dataUrl.split(",");
-        resolve(base64 ?? "");
+        const dataUrl = String(reader.result ?? '');
+        const [, base64] = dataUrl.split(',');
+        resolve(base64 ?? '');
       };
 
       reader.onerror = () => {
-        reject(new Error("Impossible de lire le fichier."));
+        reject(new Error('Impossible de lire le fichier.'));
       };
 
       reader.readAsDataURL(file);

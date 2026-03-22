@@ -1,13 +1,11 @@
 import type { ObjectFieldDefinition } from "../object-data/structure";
 
-export type LinkObjectType = "bien" | "user" | "rdv" | "visite";
+export type LinkObjectType = "bien" | "user" | "rdv";
 
 export type LinkType =
   | "bien_user"
   | "rdv_bien"
-  | "rdv_user"
-  | "visite_bien"
-  | "visite_user";
+  | "rdv_user";
 
 export type LinkTypeDefinition = {
   typeLien: LinkType;
@@ -51,20 +49,6 @@ const LINK_TYPE_DEFINITIONS: Record<LinkType, LinkTypeDefinition> = {
     objectType2: "user",
     paramsSchema: [relationRoleField],
   },
-  visite_bien: {
-    typeLien: "visite_bien",
-    name: "Lien visite-bien",
-    objectType1: "visite",
-    objectType2: "bien",
-    paramsSchema: [],
-  },
-  visite_user: {
-    typeLien: "visite_user",
-    name: "Lien visite-utilisateur",
-    objectType1: "visite",
-    objectType2: "user",
-    paramsSchema: [relationRoleField],
-  },
 };
 
 const cloneFieldDefinition = (field: ObjectFieldDefinition): ObjectFieldDefinition => ({
@@ -79,14 +63,12 @@ const cloneLinkTypeDefinition = (definition: LinkTypeDefinition): LinkTypeDefini
 });
 
 export const isLinkObjectType = (value: unknown): value is LinkObjectType =>
-  value === "bien" || value === "user" || value === "rdv" || value === "visite";
+  value === "bien" || value === "user" || value === "rdv";
 
 export const isLinkType = (value: unknown): value is LinkType =>
   value === "bien_user" ||
   value === "rdv_bien" ||
-  value === "rdv_user" ||
-  value === "visite_bien" ||
-  value === "visite_user";
+  value === "rdv_user";
 
 export const getLinkTypeDefinition = (typeLien: string): LinkTypeDefinition | null => {
   if (!isLinkType(typeLien)) {

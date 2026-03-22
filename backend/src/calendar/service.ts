@@ -1,11 +1,12 @@
 import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "../db/client";
-import { calendarEvents, properties, users } from "../db/schema";
+import { businessLinks, calendarEvents, properties, propertyVisits, users } from "../db/schema";
 import { HttpError } from "../http/errors";
 import {
   trackObjectChangesSafe,
   type ObjectChangeMode,
 } from "../object-data/change-log";
+import { propertiesService } from "../properties/service";
 
 type ManualCalendarPayload = {
   kind: "MANUAL_APPOINTMENT";
@@ -17,7 +18,7 @@ type ManualCalendarPayload = {
 
 type ManualCalendarData = {
   title: string;
-  propertyId: string;
+  propertyId: string | null;
   userId: string | null;
   startsAt: string;
   endsAt: string;
@@ -151,33 +152,19 @@ const parseManualData = (input: {
   title: string;
   startsAt: Date;
   endsAt: Date;
-}): ManualCalendarData | null => {
+}): ManualCalendarData => {
   const data = parseJsonRecord(input.rawData);
   const payload = parseManualPayload(input.rawPayload);
-  const propertyId =
-    normalizeOptionalString(data.propertyId) ??
-    payload?.propertyId ??
-    null;
-
-  if (!propertyId) {
-    return null;
-  }
+  const propertyId = normalizeOptionalString(data.propertyId) ?? payload?.propertyId ?? null;
 
   return {
     title: normalizeOptionalString(data.title) ?? normalizeOptionalString(input.title) ?? "Rendez-vous",
     propertyId,
-    userId:
-      normalizeOptionalString(data.userId) ?? payload?.userId ?? null,
+    userId: normalizeOptionalString(data.userId) ?? payload?.userId ?? null,
     startsAt: toIsoDateTimeString(data.startsAt) ?? input.startsAt.toISOString(),
     endsAt: toIsoDateTimeString(data.endsAt) ?? input.endsAt.toISOString(),
-    address:
-      normalizeOptionalString(data.address) ??
-      payload?.addressOverride ??
-      null,
-    comment:
-      normalizeOptionalString(data.comment) ??
-      payload?.comment ??
-      null,
+    address: normalizeOptionalString(data.address) ?? payload?.addressOverride ?? null,
+    comment: normalizeOptionalString(data.comment) ?? payload?.comment ?? null,
   };
 };
 
@@ -224,6 +211,118 @@ const assertUserExistsInOrg = async (input: { orgId: string; userId: string }) =
   return user;
 };
 
+const loadManualAppointmentLinks = async (input: {
+  orgId: string;
+  appointmentIds: string[];
+}) => {
+  const propertyIdByAppointmentId = new Map<string, string>();
+  const userIdByAppointmentId = new Map<string, string>();
+
+  if (input.appointmentIds.length === 0) {
+    return {
+      propertyIdByAppointmentId,
+      userIdByAppointmentId,
+    };
+  }
+
+  const rows = await db
+    .select({
+      typeLien: businessLinks.typeLien,
+      objectId1: businessLinks.objectId1,
+      objectId2: businessLinks.objectId2,
+    })
+    .from(businessLinks)
+    .where(
+      and(
+        eq(businessLinks.orgId, input.orgId),
+        inArray(businessLinks.objectId1, input.appointmentIds),
+        inArray(businessLinks.typeLien, ["rdv_bien", "rdv_user"]),
+      ),
+    );
+
+  for (const row of rows) {
+    if (row.typeLien === "rdv_bien" && !propertyIdByAppointmentId.has(row.objectId1)) {
+      propertyIdByAppointmentId.set(row.objectId1, row.objectId2);
+      continue;
+    }
+
+    if (row.typeLien === "rdv_user" && !userIdByAppointmentId.has(row.objectId1)) {
+      userIdByAppointmentId.set(row.objectId1, row.objectId2);
+    }
+  }
+
+  return {
+    propertyIdByAppointmentId,
+    userIdByAppointmentId,
+  };
+};
+
+const mapAppointmentToRdv = (appointment: {
+  id: string;
+  title: string;
+  propertyId: string;
+  propertyTitle: string;
+  userId: string | null;
+  userFirstName: string | null;
+  userLastName: string | null;
+  address: string | null;
+  comment: string | null;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+  updatedAt: string;
+}) => ({
+  id: appointment.id,
+  title: appointment.title,
+  propertyId: appointment.propertyId,
+  propertyTitle: appointment.propertyTitle,
+  userId: appointment.userId,
+  userFirstName: appointment.userFirstName,
+  userLastName: appointment.userLastName,
+  address: appointment.address,
+  comment: appointment.comment,
+  startsAt: appointment.startsAt,
+  endsAt: appointment.endsAt,
+  createdAt: appointment.createdAt,
+  updatedAt: appointment.updatedAt,
+  rdvType: "RENDEZ_VOUS" as const,
+  bonDeVisiteFileId: null,
+  bonDeVisiteFileName: null,
+});
+
+const mapVisitToRdv = (visit: {
+  id: string;
+  propertyId: string;
+  propertyTitle: string;
+  prospectUserId: string;
+  prospectFirstName: string;
+  prospectLastName: string;
+  startsAt: string;
+  endsAt: string;
+  compteRendu: string | null;
+  bonDeVisiteFileId: string | null;
+  bonDeVisiteFileName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}) => ({
+  id: visit.id,
+  title: "Visite",
+  propertyId: visit.propertyId,
+  propertyTitle: visit.propertyTitle,
+  userId: visit.prospectUserId,
+  userFirstName: visit.prospectFirstName,
+  userLastName: visit.prospectLastName,
+  address: null,
+  comment: visit.compteRendu,
+  startsAt: visit.startsAt,
+  endsAt: visit.endsAt,
+  createdAt: visit.createdAt,
+  updatedAt: visit.updatedAt,
+  rdvType: "VISITE_BIEN" as const,
+  bonDeVisiteFileId: visit.bonDeVisiteFileId,
+  bonDeVisiteFileName: visit.bonDeVisiteFileName,
+});
+
 export const calendarService = {
   async listManualAppointments(input: {
     orgId: string;
@@ -265,25 +364,44 @@ export const calendarService = {
       .where(and(...filters))
       .orderBy(calendarEvents.startsAt);
 
-    const rowsWithData = rows
-      .map((row) => ({
-        row,
-        data: parseManualData({
+    const linksByAppointmentId = await loadManualAppointmentLinks({
+      orgId: input.orgId,
+      appointmentIds: rows.map((row) => row.id),
+    });
+
+    const rowsWithRelations = rows
+      .map((row) => {
+        const data = parseManualData({
           rawData: row.data,
           rawPayload: row.payload,
           title: row.title,
           startsAt: row.startsAt,
           endsAt: row.endsAt,
-        }),
-      }))
+        });
+        const linkedPropertyId = linksByAppointmentId.propertyIdByAppointmentId.get(row.id) ?? null;
+        const linkedUserId = linksByAppointmentId.userIdByAppointmentId.get(row.id) ?? null;
+        const propertyId = linkedPropertyId ?? data.propertyId;
+        const userId = linkedUserId ?? data.userId;
+
+        return {
+          row,
+          data,
+          propertyId,
+          userId,
+        };
+      })
       .filter(
-        (item): item is { row: (typeof rows)[number]; data: ManualCalendarData } =>
-          item.data !== null,
+        (
+          item,
+        ): item is {
+          row: (typeof rows)[number];
+          data: ManualCalendarData;
+          propertyId: string;
+          userId: string | null;
+        } => typeof item.propertyId === "string" && item.propertyId.length > 0,
       );
 
-    const propertyIds = Array.from(
-      new Set(rowsWithData.map((item) => item.data.propertyId)),
-    );
+    const propertyIds = Array.from(new Set(rowsWithRelations.map((item) => item.propertyId)));
 
     const propertyRows =
       propertyIds.length > 0
@@ -302,9 +420,7 @@ export const calendarService = {
     const propertyById = new Map(propertyRows.map((property) => [property.id, property]));
     const userIds = Array.from(
       new Set(
-        rowsWithData
-          .map((item) => item.data.userId)
-          .filter((userId): userId is string => Boolean(userId)),
+        rowsWithRelations.map((item) => item.userId).filter((userId): userId is string => Boolean(userId)),
       ),
     );
 
@@ -340,11 +456,9 @@ export const calendarService = {
     );
 
     return {
-      items: rowsWithData.map((item) => {
-        const property = propertyById.get(item.data.propertyId);
-        const linkedUser = item.data.userId
-          ? userById.get(item.data.userId)
-          : undefined;
+      items: rowsWithRelations.map((item) => {
+        const property = propertyById.get(item.propertyId);
+        const linkedUser = item.userId ? userById.get(item.userId) : undefined;
         const resolvedAddress =
           item.data.address ??
           (property
@@ -358,9 +472,9 @@ export const calendarService = {
         return {
           id: item.row.id,
           title: item.data.title,
-          propertyId: item.data.propertyId,
+          propertyId: item.propertyId,
           propertyTitle: property?.title ?? "Bien introuvable",
-          userId: item.data.userId,
+          userId: item.userId,
           userFirstName: linkedUser?.firstName ?? null,
           userLastName: linkedUser?.lastName ?? null,
           address: resolvedAddress,
@@ -429,21 +543,29 @@ export const calendarService = {
       startsAt: row.startsAt,
       endsAt: row.endsAt,
     });
-    if (!parsedData) {
-      throw new HttpError(
-        400,
-        "INVALID_CALENDAR_APPOINTMENT_DATA",
-        "Données rendez-vous invalides",
-      );
+    const linksByAppointmentId = await loadManualAppointmentLinks({
+      orgId: input.orgId,
+      appointmentIds: [input.id],
+    });
+    const currentPropertyId =
+      linksByAppointmentId.propertyIdByAppointmentId.get(input.id) ??
+      parsedData.propertyId;
+    if (!currentPropertyId) {
+      throw new HttpError(400, "INVALID_CALENDAR_APPOINTMENT_DATA", "Données rendez-vous invalides");
     }
+    const currentUserId =
+      linksByAppointmentId.userIdByAppointmentId.get(input.id) ??
+      parsedData.userId;
 
     const nextData: ManualCalendarData = {
       ...parsedData,
+      propertyId: currentPropertyId,
+      userId: currentUserId ?? null,
       comment: normalizeOptionalString(input.comment),
     };
     const nextPayload: ManualCalendarPayload = {
       kind: MANUAL_PAYLOAD_KIND,
-      propertyId: nextData.propertyId,
+      propertyId: currentPropertyId,
       userId: nextData.userId,
       addressOverride: nextData.address,
       comment: nextData.comment,
@@ -554,18 +676,44 @@ export const calendarService = {
     const now = new Date();
     const id = crypto.randomUUID();
 
-    await db.insert(calendarEvents).values({
-      id,
-      orgId: input.orgId,
-      provider: MANUAL_PROVIDER,
-      externalId: `manual_${crypto.randomUUID()}`,
-      title,
-      startsAt,
-      endsAt,
-      payload: JSON.stringify(payload),
-      data: serializeManualData(data),
-      createdAt: now,
-      updatedAt: now,
+    await db.transaction(async (tx) => {
+      await tx.insert(calendarEvents).values({
+        id,
+        orgId: input.orgId,
+        provider: MANUAL_PROVIDER,
+        externalId: `manual_${crypto.randomUUID()}`,
+        title,
+        startsAt,
+        endsAt,
+        payload: JSON.stringify(payload),
+        data: serializeManualData(data),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(businessLinks).values({
+        id: crypto.randomUUID(),
+        orgId: input.orgId,
+        typeLien: "rdv_bien",
+        objectId1: id,
+        objectId2: property.id,
+        params: "{}",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      if (linkedUser) {
+        await tx.insert(businessLinks).values({
+          id: crypto.randomUUID(),
+          orgId: input.orgId,
+          typeLien: "rdv_user",
+          objectId1: id,
+          objectId2: linkedUser.id,
+          params: "{}",
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     });
 
     const created = {
@@ -608,5 +756,103 @@ export const calendarService = {
     });
 
     return created;
+  },
+
+  async listRdv(input: {
+    orgId: string;
+    from?: string;
+    to?: string;
+  }) {
+    const [appointments, visits] = await Promise.all([
+      this.listManualAppointments(input),
+      propertiesService.listCalendarVisits(input),
+    ]);
+
+    const items = [
+      ...appointments.items.map((item) => mapAppointmentToRdv(item)),
+      ...visits.items.map((item) => mapVisitToRdv(item)),
+    ].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+    return { items };
+  },
+
+  async getRdvById(input: {
+    orgId: string;
+    id: string;
+  }) {
+    const manualAppointment = await db.query.calendarEvents.findFirst({
+      where: and(
+        eq(calendarEvents.id, input.id),
+        eq(calendarEvents.orgId, input.orgId),
+        eq(calendarEvents.provider, MANUAL_PROVIDER),
+      ),
+    });
+    if (manualAppointment) {
+      return mapAppointmentToRdv(
+        await this.getManualAppointmentById({
+          orgId: input.orgId,
+          id: input.id,
+        }),
+      );
+    }
+
+    const visit = await db.query.propertyVisits.findFirst({
+      where: and(eq(propertyVisits.id, input.id), eq(propertyVisits.orgId, input.orgId)),
+    });
+    if (visit) {
+      return mapVisitToRdv(
+        await propertiesService.getVisitById({
+          orgId: input.orgId,
+          id: input.id,
+        }),
+      );
+    }
+
+    throw new HttpError(404, "RDV_NOT_FOUND", "Rendez-vous introuvable");
+  },
+
+  async patchRdvById(input: {
+    orgId: string;
+    id: string;
+    changeMode?: ObjectChangeMode;
+    data: {
+      comment?: string | null;
+      bonDeVisiteFileId?: string | null;
+    };
+  }) {
+    const manualAppointment = await db.query.calendarEvents.findFirst({
+      where: and(
+        eq(calendarEvents.id, input.id),
+        eq(calendarEvents.orgId, input.orgId),
+        eq(calendarEvents.provider, MANUAL_PROVIDER),
+      ),
+    });
+    if (manualAppointment) {
+      const updated = await this.patchManualAppointmentComment({
+        orgId: input.orgId,
+        id: input.id,
+        comment: input.data.comment,
+        changeMode: input.changeMode,
+      });
+      return mapAppointmentToRdv(updated);
+    }
+
+    const visit = await db.query.propertyVisits.findFirst({
+      where: and(eq(propertyVisits.id, input.id), eq(propertyVisits.orgId, input.orgId)),
+    });
+    if (visit) {
+      const updated = await propertiesService.patchVisitById({
+        orgId: input.orgId,
+        id: input.id,
+        changeMode: input.changeMode,
+        data: {
+          compteRendu: input.data.comment,
+          bonDeVisiteFileId: input.data.bonDeVisiteFileId,
+        },
+      });
+      return mapVisitToRdv(updated);
+    }
+
+    throw new HttpError(404, "RDV_NOT_FOUND", "Rendez-vous introuvable");
   },
 };

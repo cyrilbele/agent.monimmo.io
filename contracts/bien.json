@@ -1,0 +1,99 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Bien immobilier",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "bien",
+  "kind": "entity",
+  "extends": "tenantable",
+  "model": {
+    "status": {
+      "type": "string",
+      "title": "Statut du bien",
+      "enum": [
+        "PROSPECTION",
+        "MANDAT_SIGNE",
+        "EN_DIFFUSION",
+        "OFFRES",
+        "COMPROMIS",
+        "VENDU",
+        "ARCHIVE"
+      ],
+      "enumMeta": {
+        "PROSPECTION": {
+          "label": "Prospection",
+          "description": "#Description détaillée: Bien identifié, prospection en cours.\n#Taches:\n- évaluation\n-préparation mandat.\n\n#Condition de sortie:\n- mandat signé"
+        },
+        "MANDAT_SIGNE": {
+          "label": "Mandat Signé",
+          "description": "#Description détaillée: Mandat Signé, commercialisation en cours.\n#Taches:\n-récupération documents du bien\n- préparation annonce.\n\n#Condition de sortie:\n- annonce en cours de diffusion"
+        },
+        "EN_DIFFUSION": {
+          "label": "En Diffusion",
+          "description": "#Description détaillée: Annonce en cours de diffusion.\n#Taches:\n- organisation visites\n\n#Condition de sortie:\n- offre accepté par le vendeur"
+        },
+        "OFFRES": {
+          "label": "Offres",
+          "description": "#Description détaillée: Offre accepté, préparation compromis.\n#Taches:\n- facilitation notaires\n- organisation rdv notaire\n-.\n\n#Condition de sortie:\n- compormis signé"
+        },
+        "COMPROMIS": {
+          "label": "Compromis signé",
+          "description": "#Description détaillée: Compromis signé, attente signature vente.\n#Taches:\n- Suivi offre bancaire\n- organisation rdv notaire\n-.\n\n#Condition de sortie:\n- vente signée"
+        },
+        "VENDU": {
+          "label": "Vendu",
+          "description": "#Description détaillée: Appartement vendu.\n#Taches:\n- Enregistrement vente, suivi comptable\n"
+        },
+        "ARCHIVE": {
+          "label": "Archivé",
+          "description": "#Description détaillée: bien archivé suite vente ou refus ou abandon"
+        }
+      },
+      "required": true,
+      "default": "PROSPECTION"
+    },
+    "addressId": {
+      "type": "ref",
+      "ref": "adresse",
+      "autoExpand": true
+    },
+    "files": {
+      "type": "array",
+      "itemsType": "ref",
+      "ref": "bien_file",
+      "refColumn": "bienId"
+    },
+    "typeBien": {
+      "type": "string",
+      "title": "Type de bien",
+      "group": "general",
+      "enum": ["MAISON", "APPARTEMENT", "TERRAIN"],
+      "enumMeta": {
+        "MAISON": {
+          "label": "Prospection",
+          "description": "#Description détaillée: Bien identifié, prospection en cours.\n#Taches:\n- évaluation\n-préparation mandat.\n\n#Condition de sortie:\n- mandat signé"
+        },
+        "APPARTEMENT": {
+          "label": "Mandat Signé",
+          "description": "#Description détaillée: Mandat Signé, commercialisation en cours.\n#Taches:\n-récupération documents du bien\n- préparation annonce.\n\n#Condition de sortie:\n- annonce en cours de diffusion"
+        },
+        "TERRAIN": {
+          "label": "En Diffusion",
+          "description": "#Description détaillée: Annonce en cours de diffusion.\n#Taches:\n- organisation visites\n\n#Condition de sortie:\n- offre accepté par le vendeur"
+        }
+      },
+      "required": true
+    },
+    "surfaceTerrain": {
+      "type": "number",
+      "title": "Surface du terrain",
+      "unit": "m²",
+      "hideIf": [{ "target": "/typeBien", "op": "=", "value": "APPARTEMENT" }]
+    }
+  },
+  "storage": {
+    "table": "bien",
+    "columns": ["status", "typeBien"],
+    "auditTrail": ["status"]
+  }
+}

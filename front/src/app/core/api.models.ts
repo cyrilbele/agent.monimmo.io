@@ -102,7 +102,7 @@ export interface AppSettingsPatchRequest {
   assistantSoul?: string | null;
 }
 
-export type AssistantObjectType = "bien" | "user" | "rdv" | "visite" | "lien";
+export type AssistantObjectType = "bien" | "user" | "rdv" | "lien";
 
 export interface AssistantCitationResponse {
   title: string;
@@ -197,8 +197,8 @@ export interface ObjectChangeListResponse {
   items: ObjectChangeEntryResponse[];
 }
 
-export type LinkObjectType = "bien" | "user" | "rdv" | "visite";
-export type LinkType = "bien_user" | "rdv_bien" | "rdv_user" | "visite_bien" | "visite_user";
+export type LinkObjectType = "bien" | "user" | "rdv";
+export type LinkType = "bien_user" | "rdv_bien" | "rdv_user";
 
 export interface LinkResponse {
   id: string;
@@ -239,7 +239,6 @@ export interface LinkRelatedResponse {
     bien: unknown[];
     user: unknown[];
     rdv: unknown[];
-    visite: unknown[];
   };
 }
 
@@ -464,6 +463,31 @@ export interface CalendarAppointmentResponse {
 
 export interface CalendarAppointmentListResponse {
   items: CalendarAppointmentResponse[];
+}
+
+export type RdvType = "RENDEZ_VOUS" | "VISITE_BIEN";
+
+export interface RdvResponse {
+  id: string;
+  title: string;
+  propertyId: string;
+  propertyTitle: string;
+  userId: string | null;
+  userFirstName: string | null;
+  userLastName: string | null;
+  address: string | null;
+  comment: string | null;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+  updatedAt: string;
+  rdvType: RdvType;
+  bonDeVisiteFileId: string | null;
+  bonDeVisiteFileName: string | null;
+}
+
+export interface RdvListResponse {
+  items: RdvResponse[];
 }
 
 export type PropertyRiskStatus = "OK" | "NO_DATA" | "UNAVAILABLE";

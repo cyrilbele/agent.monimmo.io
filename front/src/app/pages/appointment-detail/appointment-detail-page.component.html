@@ -1,0 +1,86 @@
+<section class="space-y-4" aria-labelledby="appointment-detail-title">
+  <header class="panel p-5">
+    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Rendez-vous</p>
+    <h2 id="appointment-detail-title" class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+      Fiche rendez-vous
+    </h2>
+  </header>
+
+  @if (loading()) {
+    <section class="panel p-5 text-sm text-slate-700" role="status" aria-live="polite">
+      Chargement du rendez-vous...
+    </section>
+  } @else if (error()) {
+    <section class="panel border border-red-200 bg-red-50 p-5 text-sm text-red-700" role="alert">
+      {{ error() }}
+    </section>
+  } @else if (rdv(); as rdv) {
+    <article class="panel space-y-5 p-5">
+      <div class="grid gap-4 md:grid-cols-2">
+        <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Titre</h3>
+          <p class="mt-3 text-base font-semibold text-slate-900">
+            {{ rdv.title }}
+          </p>
+        </section>
+
+        <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Horaires</h3>
+          <p class="mt-3 text-base font-semibold text-slate-900">
+            {{ rdv.startsAt | date: "EEEE d MMMM y, HH:mm":"":"fr" }}
+          </p>
+          <p class="mt-1 text-sm text-slate-600">
+            Fin: {{ rdv.endsAt | date: "HH:mm":"":"fr" }}
+          </p>
+        </section>
+      </div>
+
+      <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Bien concerné</h3>
+        <a
+          [routerLink]="['/app/bien', rdv.propertyId]"
+          class="mt-3 inline-flex text-base font-semibold text-slate-900 transition hover:text-blue-700"
+        >
+          {{ rdv.propertyTitle }}
+        </a>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Client concerné</h3>
+        @if (rdv.userId) {
+          <a
+            [routerLink]="['/app/utilisateurs', rdv.userId]"
+            class="mt-3 inline-flex text-base font-semibold text-slate-900 transition hover:text-blue-700"
+          >
+            {{ rdv.userFirstName || "" }} {{ rdv.userLastName || "" }}
+          </a>
+        } @else {
+          <p class="mt-3 text-sm text-slate-500">Aucun client associé.</p>
+        }
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Adresse</h3>
+        <p class="mt-3 text-sm text-slate-700">
+          {{ rdv.address || "Adresse non renseignée." }}
+        </p>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Commentaire</h3>
+        <p class="mt-3 whitespace-pre-wrap text-sm text-slate-700">
+          {{ rdv.comment || "Aucun commentaire." }}
+        </p>
+      </section>
+
+      @if (rdv.rdvType === "VISITE_BIEN") {
+        <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Bon de visite</h3>
+          <p class="mt-3 text-sm text-slate-700">
+            {{ rdv.bonDeVisiteFileName || "Aucun bon de visite chargé." }}
+          </p>
+        </section>
+      }
+    </article>
+  }
+</section>

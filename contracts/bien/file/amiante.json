@@ -1,0 +1,19 @@
+{
+  "$contract": "2026.03.08",
+  "$description": "Fichier diagnostic amiante",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "bien_file_amiante",
+  "kind": "entity",
+  "extends": "bien_file",
+  "model": {
+    "presence": {
+      "type": "string",
+      "title": "Présence",
+      "enum": ["non", "oui"]
+    }
+  },
+  "storage": {
+    "table": "bien_file"
+  }
+}

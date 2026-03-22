@@ -224,7 +224,7 @@ export const globalSearchService = {
         id: row.id,
         label: `Visite · ${row.propertyTitle}`,
         subtitle: toVisitSubtitle(row),
-        route: `/app/visites/${encodeURIComponent(row.id)}`,
+        route: `/app/rdv/${encodeURIComponent(row.id)}`,
         createdAtMs: toTimestamp(row.createdAt),
       })),
     ]
@@ -236,4 +236,3 @@ export const globalSearchService = {
     };
   },
 };
-

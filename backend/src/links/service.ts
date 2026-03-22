@@ -222,20 +222,18 @@ const assertLinkObjectExists = async (input: {
   }
 
   if (input.objectType === "rdv") {
-    const found = await db.query.calendarEvents.findFirst({
-      where: and(eq(calendarEvents.id, input.objectId), eq(calendarEvents.orgId, input.orgId)),
-    });
-    if (!found) {
+    const [appointment, visit] = await Promise.all([
+      db.query.calendarEvents.findFirst({
+        where: and(eq(calendarEvents.id, input.objectId), eq(calendarEvents.orgId, input.orgId)),
+      }),
+      db.query.propertyVisits.findFirst({
+        where: and(eq(propertyVisits.id, input.objectId), eq(propertyVisits.orgId, input.orgId)),
+      }),
+    ]);
+    if (!appointment && !visit) {
       throw new HttpError(404, "LINK_OBJECT_NOT_FOUND", "Rendez-vous introuvable pour ce lien.");
     }
     return;
-  }
-
-  const found = await db.query.propertyVisits.findFirst({
-    where: and(eq(propertyVisits.id, input.objectId), eq(propertyVisits.orgId, input.orgId)),
-  });
-  if (!found) {
-    throw new HttpError(404, "LINK_OBJECT_NOT_FOUND", "Visite introuvable pour ce lien.");
   }
 };
 
@@ -254,13 +252,11 @@ const loadHydratedObject = async (input: {
     }
 
     if (input.objectType === "rdv") {
-      return await calendarService.getManualAppointmentById({
+      return await calendarService.getRdvById({
         orgId: input.orgId,
         id: input.objectId,
       });
     }
-
-    return await propertiesService.getVisitById({ orgId: input.orgId, id: input.objectId });
   } catch {
     return null;
   }
@@ -534,14 +530,12 @@ export const linksService = {
       bien: [],
       user: [],
       rdv: [],
-      visite: [],
     };
 
     const toHydrateByType: Record<LinkObjectType, Set<string>> = {
       bien: new Set(),
       user: new Set(),
       rdv: new Set(),
-      visite: new Set(),
     };
 
     for (const row of allRows) {
@@ -588,7 +582,6 @@ export const linksService = {
       hydrate("bien", [...toHydrateByType.bien]),
       hydrate("user", [...toHydrateByType.user]),
       hydrate("rdv", [...toHydrateByType.rdv]),
-      hydrate("visite", [...toHydrateByType.visite]),
     ]);
 
     return {

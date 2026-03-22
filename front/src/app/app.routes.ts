@@ -89,10 +89,10 @@ export const routes: Routes = [
           ),
       },
       {
-        path: "visites/:id",
+        path: "rdv/:id",
         loadComponent: () =>
-          import("./pages/visit-detail/visit-detail-page.component").then(
-            (module) => module.VisitDetailPageComponent,
+          import("./pages/appointment-detail/appointment-detail-page.component").then(
+            (module) => module.AppointmentDetailPageComponent,
           ),
       },
       {

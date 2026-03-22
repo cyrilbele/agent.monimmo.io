@@ -128,6 +128,10 @@ describe("GET /search", () => {
     expect(payload.items.some((item: { type: string; id: string }) => item.type === "USER" && item.id === userId)).toBe(true);
     expect(payload.items.some((item: { type: string; id: string }) => item.type === "VOCAL" && item.id === vocalId)).toBe(true);
     expect(payload.items.some((item: { type: string; id: string }) => item.type === "VISIT" && item.id === visitId)).toBe(true);
+    const visitItem = payload.items.find(
+      (item: { type: string; id: string; route: string }) => item.type === "VISIT" && item.id === visitId,
+    );
+    expect(visitItem?.route).toBe(`/app/rdv/${encodeURIComponent(visitId)}`);
   });
 
   it("n'expose pas les objets d'une autre organisation", async () => {
@@ -171,4 +175,3 @@ describe("GET /search", () => {
     expect(payload.items.some((item: { id: string }) => item.id === foreignPropertyId)).toBe(false);
   });
 });
-

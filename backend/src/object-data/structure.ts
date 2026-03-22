@@ -1,6 +1,6 @@
 import { getLinkTypeDefinition, listLinkTypeDefinitions } from "../links/catalog";
 
-export type ObjectType = "bien" | "user" | "rdv" | "visite";
+export type ObjectType = "bien" | "user" | "rdv";
 
 export type ObjectFieldType =
   | "string"
@@ -359,20 +359,10 @@ const rdvFields: ObjectFieldDefinition[] = [
   { key: "comment", name: "Commentaire", group: "notes", type: "text" },
 ];
 
-const visiteFields: ObjectFieldDefinition[] = [
-  { key: "propertyId", name: "Bien lié", group: "relations", type: "string", required: true },
-  { key: "prospectUserId", name: "Prospect lié", group: "relations", type: "string", required: true },
-  { key: "startsAt", name: "Début", group: "schedule", type: "datetime", required: true },
-  { key: "endsAt", name: "Fin", group: "schedule", type: "datetime", required: true },
-  { key: "compteRendu", name: "Compte-rendu", group: "notes", type: "text" },
-  { key: "bonDeVisiteFileId", name: "Fichier bon de visite", group: "documents", type: "string" },
-];
-
 const byObjectType: Record<ObjectType, ObjectFieldDefinition[]> = {
   bien: bienFields,
   user: userFields,
   rdv: rdvFields,
-  visite: visiteFields,
 };
 
 export const getObjectDataStructure = (objectType: ObjectType): ObjectFieldDefinition[] =>

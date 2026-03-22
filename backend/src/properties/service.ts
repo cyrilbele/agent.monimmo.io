@@ -2238,32 +2238,56 @@ export const propertiesService = {
       bonDeVisiteFileId: null,
     };
 
-    await db.insert(propertyVisits).values({
-      id: visitId,
-      orgId: input.orgId,
-      propertyId: input.propertyId,
-      prospectUserId: input.prospectUserId,
-      startsAt,
-      endsAt,
-      compteRendu: null,
-      bonDeVisiteFileId: null,
-      data: serializeVisitBusinessData(visitData),
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await db.insert(propertyTimelineEvents).values({
-      id: crypto.randomUUID(),
-      propertyId: input.propertyId,
-      orgId: input.orgId,
-      eventType: "VISIT_SCHEDULED",
-      payload: JSON.stringify({
-        visitId,
+    await db.transaction(async (tx) => {
+      await tx.insert(propertyVisits).values({
+        id: visitId,
+        orgId: input.orgId,
+        propertyId: input.propertyId,
         prospectUserId: input.prospectUserId,
-        startsAt: startsAt.toISOString(),
-        endsAt: endsAt.toISOString(),
-      }),
-      createdAt: now,
+        startsAt,
+        endsAt,
+        compteRendu: null,
+        bonDeVisiteFileId: null,
+        data: serializeVisitBusinessData(visitData),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(businessLinks).values({
+        id: crypto.randomUUID(),
+        orgId: input.orgId,
+        typeLien: "rdv_bien",
+        objectId1: visitId,
+        objectId2: input.propertyId,
+        params: "{}",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(businessLinks).values({
+        id: crypto.randomUUID(),
+        orgId: input.orgId,
+        typeLien: "rdv_user",
+        objectId1: visitId,
+        objectId2: input.prospectUserId,
+        params: JSON.stringify({ relationRole: "PROSPECT" }),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(propertyTimelineEvents).values({
+        id: crypto.randomUUID(),
+        propertyId: input.propertyId,
+        orgId: input.orgId,
+        eventType: "VISIT_SCHEDULED",
+        payload: JSON.stringify({
+          visitId,
+          prospectUserId: input.prospectUserId,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+        }),
+        createdAt: now,
+      });
     });
 
     const createdVisit = {
@@ -2286,7 +2310,7 @@ export const propertiesService = {
 
     await trackObjectChangesSafe({
       orgId: input.orgId,
-      objectType: "visite",
+      objectType: "rdv",
       objectId: createdVisit.id,
       mode: input.changeMode ?? "USER",
       changes: [
@@ -2431,7 +2455,7 @@ export const propertiesService = {
 
     await trackObjectChangesSafe({
       orgId: input.orgId,
-      objectType: "visite",
+      objectType: "rdv",
       objectId: updatedVisit.id,
       mode: input.changeMode ?? "USER",
       changes: changes.filter((change) => isTrackableValue(change.paramValue)),

@@ -53,6 +53,21 @@ describe("links endpoints", () => {
     expect(Array.isArray(detailPayload.paramsSchema)).toBe(true);
   });
 
+  it("rejette l'ancien objectType visite dans /data-structure", async () => {
+    const token = await loginAndGetAccessToken();
+
+    const response = await createApp().fetch(
+      new Request("http://localhost/data-structure/visite", {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload.code).toBe("INVALID_OBJECT_TYPE");
+  });
+
   it("gère le CRUD /links et l'upsert unique", async () => {
     const token = await loginAndGetAccessToken();
     const marker = crypto.randomUUID().slice(0, 8);

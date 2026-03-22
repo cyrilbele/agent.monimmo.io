@@ -1,0 +1,61 @@
+{
+  "$contract": "2026.03.08",
+  "$description": "Fichier d'un bien",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "bien_file",
+  "kind": "entity",
+  "extends": "tenantable",
+  "fields": {
+    "bienId": {
+      "type": "ref",
+      "ref": "bien",
+      "required": true
+    },
+    "fichier": {
+      "type": "file",
+      "autoExpand": true
+    },
+    "type": {
+      "type": "string",
+      "required": true,
+      "enum": ["DPE", "AMIANTE", "PHOTO", "MANDAT", "PV_AG"],
+      "enumMeta": {
+        "DPE": {
+          "label": "Diagnostic de performance énergétique",
+          "description": "Diagnostic DPE du bien",
+          "contract": "bien_file_dpe"
+        },
+        "AMIANTE": {
+          "label": "Diagnostic amiante",
+          "description": "Diagnostic amiante du bien",
+          "contract": "bien_file_amiante"
+        },
+        "PHOTO": {
+          "label": "Photo",
+          "description": "Photo du bien",
+          "contract": "bien_file_photo"
+        },
+        "PV_AG": {
+          "label": "PV Assemblée générale",
+          "description": "PV de l'assemblée générale",
+          "contract": "bien_file"
+        }
+      }
+    }
+  },
+  "storage": {
+    "table": "bien_file",
+    "columns": ["bienId", "type"],
+    "indexes": [
+      {
+        "name": "fichiers du bien",
+        "columns": ["tenantId", "bienId", "isDeleted"]
+      },
+      {
+        "name": "fichiers du bien d'un certain type",
+        "columns": ["tenantId", "bienId", "type", "isDeleted"]
+      }
+    ]
+  }
+}

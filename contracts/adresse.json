@@ -1,0 +1,99 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Adresse",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "adresse",
+  "kind": "entity",
+  "extends": "tenantable",
+  "model": {
+    "label": {
+      "type": "string",
+      "title": "nom de l'adresse"
+    },
+    "street1": {
+      "type": "string",
+      "title": "adresse",
+      "required": true
+    },
+    "street2": {
+      "type": "string",
+      "title": "complément adresse"
+    },
+    "postalCode": {
+      "type": "string",
+      "title": "code postal",
+      "required": true,
+      "pattern": "\\d{5}",
+      "minLength": 5,
+      "maxLength": 5
+    },
+    "city": {
+      "type": "string",
+      "title": "ville",
+      "required": true
+    },
+    "countryCode": {
+      "type": "string",
+      "title": "code pays",
+      "required": true,
+      "format": "country-code",
+      "default": "FR"
+    },
+    "latitude": {
+      "type": "number",
+      "title": "latitude",
+      "min": -90,
+      "max": 90
+    },
+    "longitude": {
+      "type": "number",
+      "title": "longitude",
+      "min": -180,
+      "max": 180
+    },
+    "geolocSource": {
+      "type": "string",
+      "enum": ["google", "geopf"]
+    },
+    "geolocQuality": {
+      "type": "string",
+      "enum": ["ROOFTOP", "RANGE_INTERPOLATED", "GEOMETRIC_CENTER", "APPROXIMATE"],
+      "enumMeta": {
+        "ROOFTOP": {
+          "label": "Toit",
+          "description": "le résultat renvoyé reflète un geocode précis"
+        },
+        "RANGE_INTERPOLATED": {
+          "label": "Interpolé",
+          "description": "#le résultat renvoyé reflète une approximation (généralement sur une route) interpolée entre deux points précis (des intersections, par exemple). Les résultats interpolés sont généralement renvoyés lorsque le geocoding rooftop est indisponible pour une adresse postale"
+        },
+        "GEOMETRIC_CENTER": {
+          "label": "Centre géométrique",
+          "description": "le résultat renvoyé est le centre géométrique d'un résultat, comme une polyligne (par exemple, une rue) ou un polygone (une région)."
+        },
+        "APPROXIMATE": {
+          "label": "Approximatif",
+          "description": "le résultat renvoyé est approximatif"
+        }
+      }
+    }
+  },
+  "storage": {
+    "table": "adresse",
+    "auditTrail": ["street1", "street2", "postalCode", "city"]
+  },
+  "hooks": {
+    "afterCreate": [
+      {
+        "run": "geolocalise"
+      }
+    ],
+    "afterUpdate": [
+      {
+        "run": "geolocalise",
+        "whenFieldsChanged": ["street1", "postalCode", "city", "countryCode"]
+      }
+    ]
+  }
+}

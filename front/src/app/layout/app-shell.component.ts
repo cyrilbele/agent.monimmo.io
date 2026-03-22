@@ -20,7 +20,7 @@ import { filter, map, startWith } from "rxjs";
 import type {
   GlobalSearchItemResponse,
   GlobalSearchItemType,
-  PropertyVisitResponse,
+  RdvResponse,
   VocalResponse,
 } from "../core/api.models";
 import { AuthService } from "../core/auth.service";
@@ -68,11 +68,11 @@ export class AppShellComponent {
   private lastGlobalSearchRequestId = 0;
   private readonly userLabelsById = signal<Record<string, string>>({});
   private readonly propertyLabelsById = signal<Record<string, string>>({});
-  private readonly visitLabelsById = signal<Record<string, string>>({});
+  private readonly appointmentLabelsById = signal<Record<string, string>>({});
   private readonly vocalLabelsById = signal<Record<string, string>>({});
   private readonly pendingUserIds = new Set<string>();
   private readonly pendingPropertyIds = new Set<string>();
-  private readonly pendingVisitIds = new Set<string>();
+  private readonly pendingAppointmentIds = new Set<string>();
   private readonly pendingVocalIds = new Set<string>();
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
@@ -215,7 +215,7 @@ export class AppShellComponent {
     if (type === "VOCAL") {
       return "Vocal";
     }
-    return "Visite";
+    return "Rendez-vous";
   }
 
   private buildBreadcrumbs(url: string): BreadcrumbItem[] {
@@ -247,10 +247,10 @@ export class AppShellComponent {
           crumbs.push({ label: this.vocalLabelsById()[entityId] ?? "Vocal" });
         }
         break;
-      case "visites":
+      case "rdv":
         crumbs.push({ label: "Calendrier", route: "/app/calendrier" });
         if (entityId) {
-          crumbs.push({ label: this.visitLabelsById()[entityId] ?? "Visite" });
+          crumbs.push({ label: this.appointmentLabelsById()[entityId] ?? "Rendez-vous" });
         }
         break;
       case "bien":
@@ -321,8 +321,8 @@ export class AppShellComponent {
           await this.prefetchPropertyLabel(entityId);
         }
         break;
-      case "visites":
-        await this.prefetchVisitLabel(entityId);
+      case "rdv":
+        await this.prefetchRdvLabel(entityId);
         break;
       case "vocaux":
         await this.prefetchVocalLabel(entityId);
@@ -369,21 +369,23 @@ export class AppShellComponent {
     }
   }
 
-  private async prefetchVisitLabel(visitId: string): Promise<void> {
-    if (this.visitLabelsById()[visitId] || this.pendingVisitIds.has(visitId)) {
+  private async prefetchRdvLabel(rdvId: string): Promise<void> {
+    if (this.appointmentLabelsById()[rdvId] || this.pendingAppointmentIds.has(rdvId)) {
       return;
     }
 
-    this.pendingVisitIds.add(visitId);
+    this.pendingAppointmentIds.add(rdvId);
 
     try {
-      const visit = await this.propertyService.getVisitById(visitId);
-      const label = this.visitLabelFromVisit(visit);
-      this.visitLabelsById.update((current) => ({ ...current, [visitId]: label }));
+      const rdv = await this.propertyService.getRdvById(rdvId);
+      this.appointmentLabelsById.update((current) => ({
+        ...current,
+        [rdvId]: this.rdvLabel(rdv),
+      }));
     } catch {
-      this.visitLabelsById.update((current) => ({ ...current, [visitId]: "Visite" }));
+      this.appointmentLabelsById.update((current) => ({ ...current, [rdvId]: "Rendez-vous" }));
     } finally {
-      this.pendingVisitIds.delete(visitId);
+      this.pendingAppointmentIds.delete(rdvId);
     }
   }
 
@@ -405,22 +407,22 @@ export class AppShellComponent {
     }
   }
 
-  private visitLabelFromVisit(visit: PropertyVisitResponse): string {
-    const propertyTitle = visit.propertyTitle.trim();
-    const dateLabel = this.formatDateTime(visit.startsAt);
-    if (propertyTitle && dateLabel) {
-      return `${propertyTitle} · ${dateLabel}`;
-    }
-    if (propertyTitle) {
-      return propertyTitle;
-    }
-    return dateLabel ? `Visite · ${dateLabel}` : "Visite";
-  }
-
   private labelFromVocal(vocal: VocalResponse): string {
     const dateLabel = this.formatDateTime(vocal.createdAt);
     const typeLabel = this.vocalTypeLabel(vocal);
     return dateLabel ? `${typeLabel} · ${dateLabel}` : typeLabel;
+  }
+
+  private rdvLabel(rdv: RdvResponse): string {
+    const title = rdv.title.trim();
+    const dateLabel = this.formatDateTime(rdv.startsAt);
+    if (title && dateLabel) {
+      return `${title} · ${dateLabel}`;
+    }
+    if (title) {
+      return title;
+    }
+    return dateLabel ? `Rendez-vous · ${dateLabel}` : "Rendez-vous";
   }
 
   private vocalTypeLabel(vocal: VocalResponse): string {

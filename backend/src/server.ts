@@ -34,6 +34,8 @@ import {
   PropertyStatusUpdateRequestSchema,
   PropertyValuationAIPromptResponseSchema,
   PropertyValuationAIRequestSchema,
+  RdvListResponseSchema,
+  RdvResponseSchema,
   PrivacyEraseRequestSchema,
   PrivacyEraseResponseSchema,
   PrivacyExportRequestSchema,
@@ -351,14 +353,16 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return me.user;
       };
 
-      const parseLimit = (): number => {
+      const parseLimit = (options?: { max?: number; defaultValue?: number }): number => {
+        const max = options?.max ?? 100;
+        const defaultValue = options?.defaultValue ?? 20;
         const raw = url.searchParams.get("limit");
         if (!raw) {
-          return 20;
+          return defaultValue;
         }
 
         const limit = Number(raw);
-        if (Number.isNaN(limit) || limit < 1 || limit > 100) {
+        if (Number.isNaN(limit) || limit < 1 || limit > max) {
           throw new HttpError(400, "INVALID_LIMIT", "Le paramètre limit est invalide");
         }
 
@@ -591,7 +595,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
       if (objectDataStructureMatch && request.method === "GET") {
         const user = await getAuthenticatedUser();
         const objectType = decodeURIComponent(objectDataStructureMatch[1]).toLowerCase();
-        if (objectType !== "bien" && objectType !== "user" && objectType !== "rdv" && objectType !== "visite") {
+        if (objectType !== "bien" && objectType !== "user" && objectType !== "rdv") {
           throw new HttpError(400, "INVALID_OBJECT_TYPE", "Type d'objet invalide");
         }
 
@@ -849,7 +853,6 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           objectType !== "bien" &&
           objectType !== "user" &&
           objectType !== "rdv" &&
-          objectType !== "visite" &&
           objectType !== "lien"
         ) {
           throw new HttpError(400, "INVALID_OBJECT_TYPE", "Type d'objet invalide");
@@ -860,7 +863,7 @@ export const createApp = (options?: { openapiPath?: string }) => ({
             orgId: user.orgId,
             objectType,
             objectId,
-            limit: parseLimit(),
+            limit: parseLimit({ max: 500, defaultValue: 200 }),
           }),
         );
 
@@ -947,6 +950,18 @@ export const createApp = (options?: { openapiPath?: string }) => ({
         return withCors(request, json(response, { status: 200 }));
       }
 
+      if (request.method === "GET" && url.pathname === "/rdv") {
+        const user = await getAuthenticatedUser();
+        const response = RdvListResponseSchema.parse(
+          await calendarService.listRdv({
+            orgId: user.orgId,
+            from: url.searchParams.get("from") ?? undefined,
+            to: url.searchParams.get("to") ?? undefined,
+          }),
+        );
+        return withCors(request, json(response, { status: 200 }));
+      }
+
       if (request.method === "POST" && url.pathname === "/calendar-events") {
         const user = await getAuthenticatedUser();
         const payload = await parseJson(CalendarAppointmentCreateRequestSchema);
@@ -961,6 +976,30 @@ export const createApp = (options?: { openapiPath?: string }) => ({
           comment: payload.comment ?? null,
         });
         return withCors(request, json(response, { status: 201 }));
+      }
+
+      const calendarEventByIdMatch = url.pathname.match(/^\/calendar-events\/([^/]+)$/);
+      if (calendarEventByIdMatch && request.method === "GET") {
+        const eventId = decodeURIComponent(calendarEventByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = await calendarService.getManualAppointmentById({
+          orgId: user.orgId,
+          id: eventId,
+        });
+        return withCors(request, json(response, { status: 200 }));
+      }
+
+      const rdvByIdMatch = url.pathname.match(/^\/rdv\/([^/]+)$/);
+      if (rdvByIdMatch && request.method === "GET") {
+        const rdvId = decodeURIComponent(rdvByIdMatch[1]);
+        const user = await getAuthenticatedUser();
+        const response = RdvResponseSchema.parse(
+          await calendarService.getRdvById({
+            orgId: user.orgId,
+            id: rdvId,
+          }),
+        );
+        return withCors(request, json(response, { status: 200 }));
       }
 
       const visitByIdMatch = url.pathname.match(/^\/visits\/([^/]+)$/);

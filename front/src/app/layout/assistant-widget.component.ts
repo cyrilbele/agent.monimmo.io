@@ -318,9 +318,9 @@ export class AssistantWidgetComponent implements OnDestroy {
       };
     }
 
-    if (section === "visites") {
+    if (section === "rdv") {
       return {
-        objectType: "visite",
+        objectType: "rdv",
         objectId,
       };
     }

@@ -92,6 +92,108 @@ describe("calendar events endpoints", () => {
     expect(listResponse.status).toBe(200);
     const listPayload = await listResponse.json();
     expect(listPayload.items.some((item: { id: string }) => item.id === created.id)).toBe(true);
+
+    const byIdResponse = await createApp().fetch(
+      new Request(`http://localhost/calendar-events/${encodeURIComponent(created.id as string)}`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(byIdResponse.status).toBe(200);
+    const byIdPayload = await byIdResponse.json();
+    expect(byIdPayload.id).toBe(created.id);
+  });
+
+  it("expose un rdv unifié pour une visite via /rdv et /rdv/{id}", async () => {
+    const token = await loginDemoAndGetToken();
+    const now = new Date();
+    const marker = `calendar-rdv-unified-${crypto.randomUUID().slice(0, 8)}`;
+    const propertyId = crypto.randomUUID();
+    const userId = crypto.randomUUID();
+    const passwordHash = await Bun.password.hash("temporary-password");
+
+    await db.insert(properties).values({
+      id: propertyId,
+      orgId: "org_demo",
+      title: `${marker} Bien`,
+      city: "Nice",
+      postalCode: "06000",
+      address: "7 rue basse",
+      status: "PROSPECTION",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(users).values({
+      id: userId,
+      orgId: "org_demo",
+      firstName: "Lina",
+      lastName: "Client",
+      email: `${marker}@example.test`,
+      phone: "0601020304",
+      address: null,
+      postalCode: null,
+      city: null,
+      personalNotes: null,
+      accountType: "CLIENT",
+      role: "CLIENT",
+      passwordHash,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const createVisitResponse = await createApp().fetch(
+      new Request(`http://localhost/properties/${encodeURIComponent(propertyId)}/visits`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          prospectUserId: userId,
+          startsAt: "2026-03-12T09:00:00.000Z",
+          endsAt: "2026-03-12T09:45:00.000Z",
+        }),
+      }),
+    );
+    expect(createVisitResponse.status).toBe(201);
+    const createdVisit = await createVisitResponse.json();
+
+    const rdvByIdResponse = await createApp().fetch(
+      new Request(`http://localhost/rdv/${encodeURIComponent(createdVisit.id as string)}`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      }),
+    );
+    expect(rdvByIdResponse.status).toBe(200);
+    const rdvByIdPayload = await rdvByIdResponse.json();
+    expect(rdvByIdPayload.id).toBe(createdVisit.id);
+    expect(rdvByIdPayload.rdvType).toBe("VISITE_BIEN");
+    expect(rdvByIdPayload.userId).toBe(userId);
+
+    const rdvListResponse = await createApp().fetch(
+      new Request(
+        "http://localhost/rdv?from=2026-03-12T00:00:00.000Z&to=2026-03-13T00:00:00.000Z",
+        {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        },
+      ),
+    );
+    expect(rdvListResponse.status).toBe(200);
+    const rdvListPayload = await rdvListResponse.json();
+    expect(
+      rdvListPayload.items.some(
+        (item: { id: string; rdvType: string }) =>
+          item.id === createdVisit.id && item.rdvType === "VISITE_BIEN",
+      ),
+    ).toBe(true);
   });
 
   it("n'expose pas les rendez-vous d'une autre organisation", async () => {
@@ -231,5 +333,31 @@ describe("calendar events endpoints", () => {
         ),
       );
     expect(links).toHaveLength(0);
+
+    const rdvPropertyLinks = await db
+      .select()
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "rdv_bien"),
+          eq(businessLinks.objectId1, created.id),
+          eq(businessLinks.objectId2, propertyId),
+        ),
+      );
+    expect(rdvPropertyLinks).toHaveLength(1);
+
+    const rdvUserLinks = await db
+      .select()
+      .from(businessLinks)
+      .where(
+        and(
+          eq(businessLinks.orgId, "org_demo"),
+          eq(businessLinks.typeLien, "rdv_user"),
+          eq(businessLinks.objectId1, created.id),
+          eq(businessLinks.objectId2, userId),
+        ),
+      );
+    expect(rdvUserLinks).toHaveLength(1);
   });
 });

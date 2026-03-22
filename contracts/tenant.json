@@ -1,0 +1,18 @@
+{
+  "$contract": "2026.03.09",
+  "$description": "Client de l'application",
+  "$author": "Cyril Bèle",
+  "$change": "initial release",
+  "entity": "tenant",
+  "kind": "entity",
+  "extends": "base",
+  "model": {
+    "name": {
+      "type": "string"
+    }
+  },
+  "storage": {
+    "table": "tenant",
+    "columns": ["name"]
+  }
+}

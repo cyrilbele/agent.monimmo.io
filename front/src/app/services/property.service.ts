@@ -23,6 +23,8 @@ import type {
   CalendarAppointmentCreateRequest,
   CalendarAppointmentListResponse,
   CalendarAppointmentResponse,
+  RdvListResponse,
+  RdvResponse,
   PropertyResponse,
   PropertyStatus,
   ComparablePropertyType,
@@ -282,6 +284,23 @@ export class PropertyService {
     return this.api.request<CalendarAppointmentListResponse>("GET", "/calendar-events", {
       params: { from, to },
     });
+  }
+
+  getCalendarAppointmentById(appointmentId: string): Promise<CalendarAppointmentResponse> {
+    return this.api.request<CalendarAppointmentResponse>(
+      "GET",
+      `/calendar-events/${encodeURIComponent(appointmentId)}`,
+    );
+  }
+
+  listRdv(from?: string, to?: string): Promise<RdvListResponse> {
+    return this.api.request<RdvListResponse>("GET", "/rdv", {
+      params: { from, to },
+    });
+  }
+
+  getRdvById(rdvId: string): Promise<RdvResponse> {
+    return this.api.request<RdvResponse>("GET", `/rdv/${encodeURIComponent(rdvId)}`);
   }
 
   createCalendarAppointment(

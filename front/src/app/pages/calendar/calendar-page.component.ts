@@ -24,13 +24,10 @@ import frLocale from "@fullcalendar/core/locales/fr";
 import type {
   AccountUserResponse,
   CalendarAppointmentCreateRequest,
-  CalendarAppointmentResponse,
-  PropertyVisitResponse,
+  RdvResponse,
 } from "../../core/api.models";
 import { PropertyService } from "../../services/property.service";
 import { UserService } from "../../services/user.service";
-
-type CalendarEventKind = "VISIT" | "APPOINTMENT";
 
 type PropertyOption = {
   id: string;
@@ -223,16 +220,13 @@ export class CalendarPageComponent implements OnDestroy {
   }
 
   private onCalendarEventClick(clickInfo: EventClickArg): void {
-    const kind = clickInfo.event.extendedProps["kind"] as CalendarEventKind | undefined;
+    const eventId = clickInfo.event.id;
 
-    if (kind !== "VISIT") {
+    if (typeof eventId !== "string" || !eventId) {
       return;
     }
 
-    const visitId = clickInfo.event.id;
-    if (typeof visitId === "string" && visitId) {
-      void this.router.navigate(["/app/visites", visitId]);
-    }
+    void this.router.navigate(["/app/rdv", eventId]);
   }
 
   private async loadCalendarData(): Promise<void> {
@@ -240,9 +234,8 @@ export class CalendarPageComponent implements OnDestroy {
     this.error.set(null);
 
     try {
-      const [visitsResponse, appointmentsResponse, propertiesResponse, clientsResponse] = await Promise.all([
-        this.propertyService.listCalendarVisits(),
-        this.propertyService.listCalendarAppointments(),
+      const [rdvResponse, propertiesResponse, clientsResponse] = await Promise.all([
+        this.propertyService.listRdv(),
         this.propertyService.list(100),
         this.userService.list(100, undefined, "CLIENT"),
       ]);
@@ -262,12 +255,7 @@ export class CalendarPageComponent implements OnDestroy {
       this.ensureSelectedPropertyExists(propertyOptions);
       this.ensureSelectedClientExists(clientOptions);
 
-      this.calendarEvents.set([
-        ...visitsResponse.items.map((visit) => this.toVisitCalendarEvent(visit)),
-        ...appointmentsResponse.items.map((appointment) =>
-          this.toAppointmentCalendarEvent(appointment),
-        ),
-      ]);
+      this.calendarEvents.set(rdvResponse.items.map((rdv) => this.toRdvCalendarEvent(rdv)));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Chargement du calendrier impossible.";
       this.error.set(message);
@@ -279,39 +267,27 @@ export class CalendarPageComponent implements OnDestroy {
     }
   }
 
-  private toVisitCalendarEvent(visit: PropertyVisitResponse): EventInput {
-    return {
-      id: visit.id,
-      title: `${visit.propertyTitle} · ${visit.prospectFirstName} ${visit.prospectLastName}`.trim(),
-      start: visit.startsAt,
-      end: visit.endsAt,
-      extendedProps: {
-        kind: "VISIT" as const,
-        propertyId: visit.propertyId,
-        prospectUserId: visit.prospectUserId,
-      },
-    };
-  }
-
-  private toAppointmentCalendarEvent(appointment: CalendarAppointmentResponse): EventInput {
-    const clientLabel = [appointment.userFirstName, appointment.userLastName]
+  private toRdvCalendarEvent(rdv: RdvResponse): EventInput {
+    const clientLabel = [rdv.userFirstName, rdv.userLastName]
       .filter((part): part is string => Boolean(part))
       .join(" ")
       .trim();
+    const title = clientLabel ? `${rdv.title} · ${clientLabel}` : rdv.title;
+    const isManualAppointment = rdv.rdvType === "RENDEZ_VOUS";
 
     return {
-      id: appointment.id,
-      title: clientLabel ? `${appointment.title} · ${clientLabel}` : appointment.title,
-      start: appointment.startsAt,
-      end: appointment.endsAt,
-      backgroundColor: "#0f766e",
-      borderColor: "#0f766e",
+      id: rdv.id,
+      title,
+      start: rdv.startsAt,
+      end: rdv.endsAt,
+      backgroundColor: isManualAppointment ? "#0f766e" : undefined,
+      borderColor: isManualAppointment ? "#0f766e" : undefined,
       extendedProps: {
-        kind: "APPOINTMENT" as const,
-        propertyId: appointment.propertyId,
-        userId: appointment.userId,
-        address: appointment.address,
-        comment: appointment.comment,
+        rdvType: rdv.rdvType,
+        propertyId: rdv.propertyId,
+        userId: rdv.userId,
+        address: rdv.address,
+        comment: rdv.comment,
       },
     };
   }

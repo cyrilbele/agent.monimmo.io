@@ -43,7 +43,6 @@ describe("PropertyService", () => {
                     bien: [],
                     user: [],
                     rdv: [],
-                    visite: [],
                   },
                 });
               }
@@ -123,6 +122,9 @@ describe("PropertyService", () => {
       "2026-01-01T00:00:00.000Z",
       "2026-12-31T00:00:00.000Z",
     );
+    await service.getCalendarAppointmentById("appointment:1");
+    await service.listRdv("2026-01-01T00:00:00.000Z", "2026-12-31T00:00:00.000Z");
+    await service.getRdvById("rdv:1");
     await service.createCalendarAppointment({
       title: "Rendez-vous notaire",
       propertyId: "property:1",
@@ -237,6 +239,13 @@ describe("PropertyService", () => {
         "/calendar-events",
         { params: { from: "2026-01-01T00:00:00.000Z", to: "2026-12-31T00:00:00.000Z" } },
       ],
+      ["GET", "/calendar-events/appointment%3A1"],
+      [
+        "GET",
+        "/rdv",
+        { params: { from: "2026-01-01T00:00:00.000Z", to: "2026-12-31T00:00:00.000Z" } },
+      ],
+      ["GET", "/rdv/rdv%3A1"],
       [
         "POST",
         "/calendar-events",

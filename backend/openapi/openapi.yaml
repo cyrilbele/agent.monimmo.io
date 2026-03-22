@@ -363,7 +363,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [bien, user, rdv, visite]
+            enum: [bien, user, rdv]
       responses:
         "200":
           description: Structure des paramètres pour un type d'objet.
@@ -637,6 +637,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ObjectChangeLimitParam"
         - in: path
           name: objectType
           required: true
@@ -1166,6 +1167,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /calendar-events/{id}:
+    get:
+      tags: [Visits]
+      operationId: getCalendarEventById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail d'un rendez-vous.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarAppointmentResponse"
+        "404":
+          description: Rendez-vous introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /rdv:
+    get:
+      tags: [Visits]
+      operationId: getRdv
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Liste unifiée des rendez-vous.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RdvListResponse"
+  /rdv/{id}:
+    get:
+      tags: [Visits]
+      operationId: getRdvById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Détail d'un rendez-vous.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RdvResponse"
+        "404":
+          description: Rendez-vous introuvable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /visits/{id}:
     get:
       tags: [Visits]
@@ -1669,6 +1738,15 @@ components:
         minimum: 1
         maximum: 100
         default: 20
+    ObjectChangeLimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 200
     CursorParam:
       name: cursor
       in: query
@@ -1990,7 +2068,7 @@ components:
             $ref: "#/components/schemas/GlobalSearchItemResponse"
     AssistantObjectType:
       type: string
-      enum: [bien, user, rdv, visite, lien]
+      enum: [bien, user, rdv, lien]
     AssistantCitationResponse:
       type: object
       required: [title, url, snippet]
@@ -2166,10 +2244,10 @@ components:
         $ref: "#/components/schemas/ObjectDataFieldDefinition"
     LinkObjectType:
       type: string
-      enum: [bien, user, rdv, visite]
+      enum: [bien, user, rdv]
     LinkType:
       type: string
-      enum: [bien_user, rdv_bien, rdv_user, visite_bien, visite_user]
+      enum: [bien_user, rdv_bien, rdv_user]
     LinkTypeDefinition:
       type: object
       required: [typeLien, name, objectType1, objectType2, paramsSchema]
@@ -2266,7 +2344,7 @@ components:
             $ref: "#/components/schemas/LinkRelatedItemResponse"
         grouped:
           type: object
-          required: [bien, user, rdv, visite]
+          required: [bien, user, rdv]
           properties:
             bien:
               type: array
@@ -2275,9 +2353,6 @@ components:
               type: array
               items: {}
             rdv:
-              type: array
-              items: {}
-            visite:
               type: array
               items: {}
     LoginRequest:
@@ -2780,6 +2855,82 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CalendarAppointmentResponse"
+    RdvType:
+      type: string
+      enum: [RENDEZ_VOUS, VISITE_BIEN]
+    RdvResponse:
+      type: object
+      required:
+        [
+          id,
+          title,
+          propertyId,
+          propertyTitle,
+          userId,
+          userFirstName,
+          userLastName,
+          address,
+          comment,
+          startsAt,
+          endsAt,
+          createdAt,
+          updatedAt,
+          rdvType,
+          bonDeVisiteFileId,
+          bonDeVisiteFileName,
+        ]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        propertyId:
+          type: string
+        propertyTitle:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        userFirstName:
+          type: string
+          nullable: true
+        userLastName:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        rdvType:
+          $ref: "#/components/schemas/RdvType"
+        bonDeVisiteFileId:
+          type: string
+          nullable: true
+        bonDeVisiteFileName:
+          type: string
+          nullable: true
+    RdvListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RdvResponse"
     PropertyRiskStatus:
       type: string
       enum: [OK, NO_DATA, UNAVAILABLE]
